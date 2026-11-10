@@ -199,9 +199,13 @@ section[id] { scroll-margin-top: 68px; }
 .is-pixels rect.is-active { stroke: #FFFFFF; stroke-width: 3; paint-order: stroke; }
 
 @media (max-width: 860px) {
-  .hero { padding: 48px 0 64px; }
-  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
-  .hero-art { order: -1; }
+  /* phones: message + "register" button first, the interactive strawberry right after */
+  .hero { padding: 32px 0 56px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .eyebrow { margin-bottom: 12px; }
+  .lead { margin-top: 14px; }
+  .cta-row { margin-top: 22px; }
+  .hero-points { margin-top: 18px; }
   .art-frame { width: 100%; gap: 14px; }
   .logo-stage { width: 190px; }
 }
@@ -278,6 +282,9 @@ section[id] { scroll-margin-top: 68px; }
 .page-hero h1 { font-size: clamp(32px, 4.4vw, 46px); font-weight: 700; }
 .page-hero .lead { margin-top: 12px; }
 .join-section { padding-top: 56px; }
+.btn-whatsapp { background: #25D366; color: #052E16; margin-top: 6px; }
+.btn-whatsapp:hover { background: #3BE07A; color: #052E16; }
+.btn-whatsapp svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
 .success-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 10px; }
 
 /* ========== Register ========== */
@@ -310,7 +317,7 @@ fieldset.field { border: 0; padding: 0; margin: 0; }
 .req { color: #BE123C; }
 .optional { font-family: var(--font-body); font-weight: 400; color: var(--slate); font-size: 14px; }
 
-.field input[type="text"], .field input[type="number"], .field input[type="email"], .field input[type="password"], .field input[type="search"], .field input[type="date"], .field input[type="url"], .field select, .field textarea {
+.field input[type="text"], .field input[type="number"], .field input[type="email"], .field input[type="password"], .field input[type="search"], .field input[type="date"], .field input[type="url"], .field input[type="tel"], .field select, .field textarea {
   width: 100%; min-height: 50px;
   padding: 12px 14px;
   font: inherit; font-size: 16px; color: var(--night);
@@ -338,7 +345,7 @@ fieldset.field { border: 0; padding: 0; margin: 0; }
 .error { color: #BE123C; font-size: 14px; min-height: 0; }
 .error:empty { display: none; }
 .hint { color: var(--slate); font-size: 13px; text-align: left; direction: ltr; }
-
+.hint-rtl { color: var(--slate); font-size: 13px; line-height: 1.5; }
 /* Segmented radio */
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .segmented-3 { grid-template-columns: repeat(3, 1fr); }

@@ -23,6 +23,14 @@ document.getElementById('year').textContent = new Date().getFullYear();
     const { db, fs } = await getDb();
     const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
     const s = { ...DEFAULT_SETTINGS, ...(snap.exists() ? snap.data() : {}) };
+    // optional WhatsApp group link, shown on the success screen
+    const group = typeof s.whatsappGroup === 'string' && /^https:\/\/\S+$/.test(s.whatsappGroup.trim()) ? s.whatsappGroup.trim() : '';
+    if (group) {
+      const btn = document.getElementById('group-btn');
+      btn.href = group;
+      btn.hidden = false;
+      document.getElementById('success-text').textContent = 'صرت من أول أعضاء المجتمع. الخطوة الجاية: انضم لقروب الواتساب عشان توصلك كل الأخبار.';
+    }
     if (s.registrationOpen === false) {
       document.getElementById('closed-msg').textContent = s.closedMessage || DEFAULT_SETTINGS.closedMessage;
       form.hidden = true;
@@ -72,6 +80,24 @@ function normalizeUrl(v) {
   } catch { return ''; }
 }
 
+// Arabic-Indic / Persian digits → 0-9 (Arabic keyboards type ٠٥٩…)
+const latinDigits = (s) => String(s ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x6F0);
+
+// "059 123 4567" / "٠٥٩١٢٣٤٥٦٧" / "00970…" / "+972…" → "+970591234567"; '' if it can't be a phone number
+function normalizePhone(v) {
+  let s = latinDigits(v).replace(/[\s\-().]/g, '');
+  if (!s) return '';
+  if (s.startsWith('00')) s = `+${s.slice(2)}`;
+  else if (/^05\d{8}$/.test(s)) s = `+970${s.slice(1)}`; // Palestinian mobile (Jawwal / Ooredoo)
+  else if (/^5\d{8}$/.test(s)) s = `+970${s}`;
+  else if (/^(970|972)\d{9}$/.test(s)) s = `+${s}`;
+  return /^\+[1-9]\d{7,14}$/.test(s) ? s : '';
+}
+const normalizeEmail = (v) => {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s.length <= 120 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s) ? s : '';
+};
+
 const rules = {
   name: (v) => {
     v = clean(v);
@@ -80,6 +106,9 @@ const rules = {
     if (v.length > 80) return 'الاسم طويل (80 حرف كحد أقصى)';
     return '';
   },
+  whatsapp: (v) => (!String(v).trim() ? 'اكتب رقم الواتساب عشان نقدر نتواصل معك'
+    : normalizePhone(v) ? '' : 'الرقم مش صحيح. مثال: 0591234567 أو ‎+970591234567'),
+  email: (v) => (!String(v).trim() || normalizeEmail(v) ? '' : 'الإيميل مش صحيح. مثال: name@example.com'),
   status: (v) => (['tawjihi', 'student', 'graduate'].includes(v) ? '' : 'اختار حالتك: توجيهي، جامعة، أو خريج'),
   specialty: (v) => (v ? '' : 'اختار تخصصك'),
   specialtyOther: (v) => {
@@ -165,6 +194,7 @@ form.addEventListener('submit', async (e) => {
   const f = form.elements;
   const data = {
     name: clean(f.name.value),
+    whatsapp: normalizePhone(f.whatsapp.value),
     status: f.status.value,
     specialty: specialty.value === '__other' ? clean(otherInput.value) : specialty.value,
     age: Number(f.age.value),
@@ -178,6 +208,8 @@ form.addEventListener('submit', async (e) => {
   }
   const portfolio = normalizeUrl(f.portfolio.value);
   if (portfolio) data.portfolio = portfolio;
+  const email = normalizeEmail(f.email.value);
+  if (email) data.email = email;
 
   setLoading(true);
   try {

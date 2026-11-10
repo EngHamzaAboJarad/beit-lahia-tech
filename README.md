@@ -122,6 +122,26 @@ powershell -File scripts/seed-emulator.ps1
 
 Firebase Console › Firestore Database › `members`. للتصدير لملف Excel/CSV بتقدر تستخدم BigQuery export أو سكربت صغير بـ Admin SDK.
 
+## الحماية من التسجيلات الوهمية (App Check)
+
+الكود جاهز ومطفي. شغّله لما تبدأ تنشر الرابط على نطاق واسع، أو أول ما تشوف تسجيلات وهمية:
+
+1. اعمل مفتاح **reCAPTCHA v3** من https://www.google.com/recaptcha/admin، وحط الدومين `beit-lahia-tech.web.app`.
+2. Firebase Console › **App Check** › Apps › اختار تطبيق الويب «Beit Lahia Tech» › reCAPTCHA v3 › الصق الـ **secret key**.
+3. حط الـ **site key** بـ `public/firebase-config.js` بـ `appCheckSiteKey`، وارفع الموقع.
+4. استنى يوم أو يومين، وشوف بـ App Check › APIs › Cloud Firestore إنه أغلب الطلبات «Verified».
+5. بعدها اضغط **Enforce** على Cloud Firestore.
+
+ملاحظة: reCAPTCHA بيزيد تحميل حوالي 150KB على كل صفحة، عشان هيك مطفي لحد ما تحتاجه.
+
+## صورة المشاركة (og.png)
+
+مصدرها `design/og.html`. لإعادة توليدها بعد تعديل:
+
+```bash
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --hide-scrollbars --window-size=1200,630 --virtual-time-budget=8000 --screenshot="public\og.png" "file:///D:/bitlahia/design/og.html"
+```
+
 ## حماية إضافية (مستحسن قبل النشر الواسع)
 
 - فعّل **App Check** مع reCAPTCHA Enterprise عشان تمنع البوتات تضيف تسجيلات من برا الموقع.

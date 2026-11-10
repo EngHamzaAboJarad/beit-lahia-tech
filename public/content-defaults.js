@@ -62,6 +62,7 @@ export const DEFAULT_CONTENT = {
 export const DEFAULT_SETTINGS = {
   registrationOpen: true,
   closedMessage: 'التسجيل مسكّر حالياً. تابعنا، رح نفتحه قريباً.',
+  whatsappGroup: '', // https://chat.whatsapp.com/… — shown after a successful registration
 };
 
 export const EVENT_TYPES = { event: 'فعالية', course: 'دورة', announcement: 'إعلان' };

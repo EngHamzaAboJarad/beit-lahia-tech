@@ -179,21 +179,31 @@ function filtered() {
     if (ct === 'yes' && !m.contacted) return false;
     if (ct === 'no' && m.contacted) return false;
     if (q) {
-      const hay = [m.name, m.specialty, m.university, m.residence, m.notes, m.portfolio].join(' ').toLowerCase();
+      const hay = [m.name, m.whatsapp, m.email, m.specialty, m.university, m.residence, m.notes, m.portfolio].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 }
 
+const waLink = (n) => (typeof n === 'string' && /^\+\d{8,15}$/.test(n) ? `https://wa.me/${n.slice(1)}` : '');
+
 function renderMembers() {
   const rows = filtered();
+  // same WhatsApp number registered more than once → flag it
+  const seen = members.reduce((m, x) => { if (x.whatsapp) m[x.whatsapp] = (m[x.whatsapp] || 0) + 1; return m; }, {});
   $('members-count').textContent = `${rows.length} من ${members.length} تسجيل`;
   $('members-empty').hidden = rows.length > 0;
   $('members-body').replaceChildren(...rows.map((m) => {
     const tr = h('tr', { class: m.contacted ? 'is-contacted' : '' },
       h('td', { class: 'cell-name' }, h('strong', {}, m.name),
+        seen[m.whatsapp] > 1 ? h('span', { class: 'badge badge-dup', title: 'نفس رقم الواتساب مسجّل أكثر من مرة' }, 'مكرر') : null,
         m.notes ? h('details', { class: 'cell-notes' }, h('summary', {}, 'ملاحظات'), h('p', {}, m.notes)) : null),
+      h('td', { class: 'cell-contact' },
+        waLink(m.whatsapp)
+          ? h('a', { class: 'wa-btn', href: waLink(m.whatsapp), target: '_blank', rel: 'noopener noreferrer', title: 'فتح محادثة واتساب' }, h('bdi', { dir: 'ltr' }, m.whatsapp))
+          : h('span', { class: 'muted' }, '—'),
+        m.email ? h('a', { class: 'mail-link', href: `mailto:${m.email}`, dir: 'ltr' }, m.email) : null),
       h('td', {}, h('span', { class: `pill pill-${m.status}` }, STATUS[m.status] || m.status)),
       h('td', {}, m.specialty),
       h('td', {}, m.age),
@@ -244,14 +254,14 @@ $('refresh-members').addEventListener('click', loadMembers);
 
 $('export-csv').addEventListener('click', () => {
   const rows = filtered();
-  const head = ['الاسم', 'الحالة', 'التخصص', 'العمر', 'سنوات الخبرة', 'وين مقيم', 'الجامعة', 'معرض الأعمال', 'ملاحظات', 'تواصلنا', 'تاريخ التسجيل'];
+  const head = ['الاسم', 'واتساب', 'الإيميل', 'الحالة', 'التخصص', 'العمر', 'سنوات الخبرة', 'وين مقيم', 'الجامعة', 'معرض الأعمال', 'ملاحظات', 'تواصلنا', 'تاريخ التسجيل'];
   const esc = (v) => {
     let s = String(v ?? '');
     if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // stop spreadsheet formula injection
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [head, ...rows.map((m) => [
-    m.name, STATUS[m.status] || m.status, m.specialty, m.age, m.experience ? EXPERIENCE[m.experience] : '',
+    m.name, m.whatsapp || '', m.email || '', STATUS[m.status] || m.status, m.specialty, m.age, m.experience ? EXPERIENCE[m.experience] : '',
     m.residence, m.university || '', m.portfolio || '', m.notes || '', m.contacted ? 'نعم' : 'لا',
     m.createdAt ? dateTimeFmt.format(m.createdAt.toDate()) : '',
   ])].map((r) => r.map(esc).join(','));
@@ -624,16 +634,20 @@ async function loadSettings() {
   } catch (e) { toast(errMsg(e), true); }
   $('set-open').checked = s.registrationOpen !== false;
   $('set-msg').value = s.closedMessage || '';
+  $('set-group').value = s.whatsappGroup || '';
   syncOpenLabel();
 }
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const group = $('set-group').value.trim();
+  if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('set-group').focus(); return; }
   const btn = $('settings-save');
   setBusy(btn, true);
   try {
     await fs.setDoc(fs.doc(db, 'site', 'settings'), {
       registrationOpen: $('set-open').checked,
       closedMessage: $('set-msg').value.trim() || DEFAULT_SETTINGS.closedMessage,
+      whatsappGroup: group,
       updatedAt: fs.serverTimestamp(),
     });
     toast($('set-open').checked ? 'انحفظ: التسجيل مفتوح' : 'انحفظ: التسجيل مسكّر');

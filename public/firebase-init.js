@@ -1,5 +1,9 @@
 // Shared Firebase bootstrap for every page (lazy: nothing loads until a page asks for it)
-import { firebaseConfig as localConfig } from './firebase-config.js';
+// namespace import: a stale cached firebase-config.js missing a newer export must never break the page
+import * as siteConfig from './firebase-config.js';
+
+const localConfig = siteConfig.firebaseConfig;
+const appCheckSiteKey = siteConfig.appCheckSiteKey || '';
 
 export const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 export const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -18,7 +22,15 @@ export function getApp() {
           return res.json();
         })(),
       ]);
-      return initializeApp(config);
+      const app = initializeApp(config);
+      // App Check must start before Firestore/Auth make their first request
+      if (appCheckSiteKey && !IS_LOCAL) {
+        try {
+          const ac = await import(`${SDK}/firebase-app-check.js`);
+          ac.initializeAppCheck(app, { provider: new ac.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+        } catch (e) { console.warn('[app-check]', e); }
+      }
+      return app;
     })();
     appPromise.catch(() => { appPromise = null; });
   }

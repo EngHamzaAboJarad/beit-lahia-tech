@@ -87,6 +87,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .cell-notes { margin-top: 4px; font-size: 13px; color: var(--slate); }
 .cell-notes summary { cursor: pointer; color: var(--emerald-deep); }
 .cell-notes p { margin-top: 4px; white-space: pre-line; max-width: 320px; }
+.cell-contact { display: table-cell; white-space: nowrap; }
+.wa-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border-radius: 8px;
+  background: #ECFDF5; color: var(--emerald-deeper); font-weight: 600; font-size: 14px; text-decoration: none;
+}
+.wa-btn:hover { background: #D1FAE5; color: var(--emerald-deeper); }
+.wa-btn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #25D366; }
+.mail-link { display: block; margin-top: 4px; font-size: 13px; color: var(--slate); }
+.badge-dup { margin-top: 4px; background: #FEF3C7; color: #92400E; }
 .cell-link { white-space: nowrap; font-weight: 600; display: inline-flex; min-height: 32px; align-items: center; }
 .cell-date { white-space: nowrap; color: var(--slate); font-size: 14px; }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }

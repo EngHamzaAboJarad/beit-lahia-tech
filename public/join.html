@@ -11,13 +11,21 @@
   <meta property="og:locale" content="ar_PS">
   <meta property="og:title" content="سجّل بكميونتي تقني بيت لاهيا">
   <meta property="og:description" content="عبّي النموذج وكون من أول أعضاء المجتمع.">
-  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://beit-lahia-tech.web.app/join">
+  <meta property="og:url" content="https://beit-lahia-tech.web.app/join">
+  <meta property="og:image" content="https://beit-lahia-tech.web.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="شعار الفراولة البكسلية مع عبارة: معاً نبني جيلاً تقنياً من بيت لاهيا">
+  <meta property="og:site_name" content="كميونتي تقني بيت لاهيا">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://beit-lahia-tech.web.app/og.png">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=6">
-  <script type="module" src="/app.js?v=6"></script>
+  <link rel="stylesheet" href="/styles.css?v=7">
+  <script type="module" src="/app.js?v=7"></script>
 </head>
 <body class="page-join">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -80,11 +88,25 @@
         </aside>
 
         <div class="form-card">
-          <form id="join-form" novalidate>
+          <form id="join-form" method="post" action="/join" novalidate>
             <div class="field">
               <label for="name">الاسم الكامل <span class="req" aria-hidden="true">*</span></label>
               <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="80" placeholder="مثال: محمد أحمد">
               <p class="error" id="name-error" aria-live="polite"></p>
+            </div>
+
+            <div class="row-2">
+              <div class="field">
+                <label for="whatsapp">رقم الواتساب <span class="req" aria-hidden="true">*</span></label>
+                <input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" dir="ltr" autocomplete="tel" required maxlength="20" placeholder="059xxxxxxx">
+                <p class="hint-rtl">من خلاله بنضيفك لقروب مسارك. لو برا فلسطين اكتبه مع رمز الدولة (+…)</p>
+                <p class="error" id="whatsapp-error" aria-live="polite"></p>
+              </div>
+              <div class="field">
+                <label for="email">الإيميل <span class="optional">(اختياري)</span></label>
+                <input id="email" name="email" type="email" inputmode="email" dir="ltr" autocomplete="email" maxlength="120" placeholder="name@example.com">
+                <p class="error" id="email-error" aria-live="polite"></p>
+              </div>
             </div>
 
             <fieldset class="field">
@@ -214,9 +236,13 @@
           <div class="success" id="success" hidden tabindex="-1">
             <svg width="56" height="63" aria-hidden="true"><use href="#logo"/></svg>
             <h2>وصل تسجيلك، أهلاً فيك!</h2>
-            <p>صرت من أول أعضاء المجتمع. رح نتواصل معك أول ما نطلق المجموعات والأنشطة.</p>
+            <p id="success-text">صرت من أول أعضاء المجتمع. رح نتواصل معك على الواتساب أول ما نطلق المجموعات والأنشطة.</p>
+            <a class="btn btn-whatsapp" id="group-btn" href="#" target="_blank" rel="noopener noreferrer" hidden>
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M8.8 8.6c.2-.5.5-.5.8-.5h.5c.2 0 .4 0 .5.4l.7 1.6c.1.2 0 .4-.1.6l-.4.5c-.1.1-.2.3 0 .5.6 1 1.4 1.8 2.4 2.3.2.1.4.1.5 0l.6-.7c.1-.2.4-.2.6-.1l1.5.7c.2.1.4.2.4.4 0 .5-.2 1.2-.7 1.5-.5.3-1.4.5-2.8-.1a8.6 8.6 0 0 1-4-3.6c-.6-1-.8-2.2-.5-3z"/></svg>
+              انضم لقروب الواتساب
+            </a>
             <div class="success-actions">
-              <a class="btn btn-primary" href="/">ارجع للرئيسية</a>
+              <a class="btn btn-ghost-dark" href="/">ارجع للرئيسية</a>
               <button type="button" class="btn btn-ghost-dark" id="again-btn">تسجيل شخص آخر</button>
             </div>
           </div>
