@@ -1,6 +1,9 @@
-// Beit Lahia Tech — landing page: live content from Firestore + motion (transform/opacity only)
+// Beit Lahia Tech — landing page.
+// Order of work: 1) paint the page from its own files (plus the last saved content, from this browser),
+// 2) start the motion, 3) only after the page has loaded and the browser is idle, fetch fresh content
+// from Firestore in the background and update what changed.
 import { getDbLite } from './firebase-init.js';
-import { withDefaults, safeUrl, EVENT_TYPES } from './content-defaults.js';
+import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES } from './content-defaults.js';
 import { LINES } from './motivation.js';
 
 const root = document.documentElement;
@@ -21,11 +24,28 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
-/* ---------- Header: solid + shadow once the page scrolls ---------- */
+/* ---------- Header: solid on scroll + mobile menu ---------- */
 const header = document.querySelector('.site-header');
 const onScrollHeader = () => header && header.classList.toggle('is-scrolled', window.scrollY > 8);
 onScrollHeader();
 window.addEventListener('scroll', onScrollHeader, { passive: true });
+
+(function mobileMenu() {
+  const btn = document.getElementById('menu-btn');
+  const nav = document.getElementById('site-nav');
+  if (!btn || !nav) return;
+  const set = (open) => {
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'إغلاق القائمة' : 'فتح القائمة');
+    nav.classList.toggle('is-open', open);
+    header.classList.toggle('menu-open', open);
+  };
+  btn.addEventListener('click', () => set(btn.getAttribute('aria-expanded') !== 'true'));
+  nav.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && nav.classList.contains('is-open')) { set(false); btn.focus(); } });
+  document.addEventListener('click', (e) => { if (!header.contains(e.target)) set(false); });
+  window.matchMedia('(min-width: 861px)').addEventListener('change', () => set(false));
+})();
 
 /* ---------- Hero: the pixel strawberry assembles itself ---------- */
 const GRID = ['..g..g..', '.gggggg.', 'rrrrrrrr', 'rrhrrhrr', 'rrrrrrrr', '.rrhrrr.', '.rrrrhr.', '..rrrr..', '...rr...'];
@@ -152,15 +172,92 @@ function motivationCard(svg, pixels) {
   setTimeout(() => { autoplay(); setInterval(autoplay, 4800); }, 2200);
 }
 
+/* ---------- Scroll reveal (staggered inside [data-stagger]); re-runnable for new content ---------- */
+const io = !reduce && 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      const el = e.target;
+      el.classList.add('is-in');
+      const d = parseFloat(el.style.getPropertyValue('--d')) || 0;
+      setTimeout(() => el.classList.add('is-done'), 900 + d * 90);
+      io.unobserve(el);
+    });
+  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 })
+  : null;
+
+function setupReveals(scope = document) {
+  scope.querySelectorAll('[data-stagger]').forEach((parent) => {
+    [...parent.children].forEach((el, i) => {
+      if (el.classList.contains('reveal')) return;
+      el.classList.add('reveal');
+      el.style.setProperty('--d', i);
+    });
+  });
+  scope.querySelectorAll('.reveal:not([data-rv])').forEach((el) => {
+    el.dataset.rv = '1';
+    if (io) io.observe(el); else el.classList.add('is-in', 'is-done');
+  });
+}
+
+/* ---------- Journey: the line draws itself as you scroll (refreshable) ---------- */
+const journey = (function journeyLine() {
+  const wrap = document.querySelector('.journey-wrap');
+  if (!wrap) return { refresh() {} };
+  const track = wrap.querySelector('.journey-track');
+  const wide = window.matchMedia('(min-width: 861px)');
+  let steps = []; let nodes = [];
+
+  const layout = () => {
+    if (!nodes.length) return;
+    if (wide.matches) { track.style.top = ''; track.style.height = ''; return; }
+    const box = wrap.getBoundingClientRect();
+    const first = nodes[0].getBoundingClientRect();
+    const last = nodes[nodes.length - 1].getBoundingClientRect();
+    track.style.top = `${first.top + first.height / 2 - box.top}px`;
+    track.style.height = `${last.top - first.top}px`;
+  };
+  let ticking = false;
+  const update = () => {
+    ticking = false;
+    if (!steps.length) return;
+    if (reduce) { wrap.style.setProperty('--p', 1); steps.forEach((s) => s.classList.add('is-on')); return; }
+    const line = window.innerHeight * 0.62;
+    const r = (wide.matches ? wrap : track).getBoundingClientRect();
+    let p = wide.matches ? (line - r.top) / (r.height * 0.9) : (line - r.top) / Math.max(r.height, 1);
+    p = Math.min(1, Math.max(0, p));
+    wrap.style.setProperty('--p', p.toFixed(4));
+    steps.forEach((s, i) => {
+      const on = wide.matches
+        ? p > 0 && p >= i / Math.max(steps.length - 1, 1) - 0.001
+        : nodes[i].getBoundingClientRect().top + nodes[i].offsetHeight / 2 <= line;
+      s.classList.toggle('is-on', on);
+    });
+  };
+  const request = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
+  const refresh = () => {
+    steps = [...wrap.querySelectorAll('.jstep')];
+    nodes = steps.map((s) => s.querySelector('.jnode'));
+    layout(); update();
+  };
+  if (!reduce) {
+    window.addEventListener('scroll', request, { passive: true });
+    window.addEventListener('resize', () => { layout(); request(); });
+  }
+  if (document.fonts) document.fonts.ready.then(() => { layout(); request(); }); // fonts swap in late now
+  return { refresh };
+})();
+
 /* ---------- Live content (edited from /admin) ---------- */
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
 const pad = (n) => String(n).padStart(2, '0');
 const dateFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
 function renderContent(c) {
   document.querySelectorAll('[data-c]').forEach((el) => {
     const v = get(c, el.dataset.c);
-    if (typeof v === 'string' && v.trim()) el.textContent = v;
+    if (typeof v === 'string' && v.trim() && el.textContent !== v) el.textContent = v;
   });
 
   // goals: keep the six icons from the static markup and reuse them in order
@@ -171,29 +268,42 @@ function renderContent(c) {
       icons.length ? icons[i % icons.length].cloneNode(true) : null,
       h('h3', {}, g.title), h('p', {}, g.text))));
   }
-
-  const journey = document.getElementById('journey-list');
-  if (journey && c.journey.length) {
-    journey.replaceChildren(...c.journey.map((s, i, all) => h('li', { class: i === all.length - 1 ? 'jstep jstep-last' : 'jstep' },
+  const list = document.getElementById('journey-list');
+  if (list && c.journey.length) {
+    list.replaceChildren(...c.journey.map((s, i, all) => h('li', { class: i === all.length - 1 ? 'jstep jstep-last' : 'jstep' },
       h('span', { class: 'jnode', 'aria-hidden': 'true' }, h('i')),
       h('span', { class: 'stage' }, pad(i + 1)), h('h3', {}, s.title), h('p', {}, s.text))));
   }
-
   const fields = document.getElementById('fields-list');
   if (fields && c.fields.length) fields.replaceChildren(...c.fields.filter(Boolean).map((t) => h('li', {}, t)));
-
   const faq = document.getElementById('faq-list');
-  if (faq && c.faq.length) {
-    faq.replaceChildren(...c.faq.map((f) => h('details', {}, h('summary', {}, f.q), h('p', {}, f.a))));
-  }
+  if (faq && c.faq.length) faq.replaceChildren(...c.faq.map((f) => h('details', {}, h('summary', {}, f.q), h('p', {}, f.a))));
+}
+
+// Upcoming first (soonest on top), announcements without a date after them; past events are hidden.
+function sortEvents(events) {
+  const t = today();
+  return events
+    .filter((e) => !e.date || e.date >= t)
+    .sort((a, b) => {
+      if (a.date && b.date) return a.date.localeCompare(b.date);
+      if (a.date) return -1;
+      if (b.date) return 1;
+      return (b.ts || 0) - (a.ts || 0);
+    });
 }
 
 function renderEvents(events) {
   const section = document.getElementById('events');
   const grid = document.getElementById('events-grid');
-  if (!section || !grid || !events.length) return;
+  const nav = document.getElementById('nav-events');
+  if (!section || !grid) return;
+  const list = sortEvents(events);
+  section.hidden = !list.length;
+  if (nav) nav.hidden = !list.length;
+  if (!list.length) return;
   grid.setAttribute('data-stagger', '');
-  grid.replaceChildren(...events.map((e) => {
+  grid.replaceChildren(...list.map((e) => {
     const link = safeUrl(e.link);
     let when = '';
     if (e.date) { const d = new Date(`${e.date}T12:00:00`); if (!isNaN(d)) when = dateFmt.format(d); }
@@ -206,15 +316,28 @@ function renderEvents(events) {
       e.description ? h('p', { class: 'event-desc' }, e.description) : null,
       link ? h('a', { class: 'event-link', href: link, target: '_blank', rel: 'noopener noreferrer' }, 'التفاصيل') : null);
   }));
-  section.hidden = false;
-  const nav = document.getElementById('nav-events');
-  if (nav) nav.hidden = false;
+}
+
+// The eyebrow above the headline follows the registration switch in /admin › الإعدادات.
+function renderSettings(s, content) {
+  const eyebrow = document.querySelector('[data-c="hero.eyebrow"]');
+  if (eyebrow) {
+    const open = !s || s.registrationOpen !== false;
+    const text = open ? (content?.hero?.eyebrow || DEFAULT_CONTENT.hero.eyebrow) : 'التسجيل مسكّر حالياً';
+    if (eyebrow.textContent !== text) eyebrow.textContent = text;
+    eyebrow.closest('.eyebrow')?.classList.toggle('is-closed', !open);
+  }
+  const contact = document.getElementById('footer-contact');
+  const wa = s && typeof s.contactWhatsapp === 'string' && /^\+\d{8,15}$/.test(s.contactWhatsapp) ? s.contactWhatsapp : '';
+  if (contact) {
+    contact.hidden = !wa;
+    if (wa) contact.href = `https://wa.me/${wa.slice(1)}`;
+  }
 }
 
 /* ---------- Gallery (hidden until the admin publishes photos) ---------- */
 let photos = [];
 let lbIndex = 0;
-let liteDb = null;
 
 function renderGallery(list) {
   const section = document.getElementById('gallery');
@@ -243,7 +366,8 @@ async function showPhoto(i) {
   document.getElementById('lb-count').textContent = `${lbIndex + 1} / ${photos.length}`;
   lb.classList.toggle('is-single', photos.length < 2);
   try {
-    const snap = await liteDb.fs.getDoc(liteDb.fs.doc(liteDb.db, 'galleryFull', p.id));
+    const { db, fs } = await getDbLite();
+    const snap = await fs.getDoc(fs.doc(db, 'galleryFull', p.id));
     if (snap.exists() && photos[lbIndex] === p) img.src = snap.data().src;
   } catch { /* keep the preview */ }
 }
@@ -273,95 +397,66 @@ if (lb) {
   });
 }
 
-async function loadLive() {
+/* ---------- Putting live data on the page ---------- */
+const CACHE_KEY = 'blt-live-v1';
+const readCache = () => { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch { return null; } };
+const writeCache = (v) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(v)); } catch { /* private mode / full */ } };
+
+function applyLive(live) {
+  const content = live.content ? withDefaults(live.content) : null;
+  if (content) renderContent(content);
+  renderEvents(live.events || []);
+  renderSettings(live.settings || null, content);
+}
+
+async function fetchLive() {
   const { db, fs } = await getDbLite();
-  liteDb = { db, fs };
-  const [contentSnap, eventsSnap, gallerySnap] = await Promise.all([
-    fs.getDoc(fs.doc(db, 'site', 'content')),
+  const [contentSnap, settingsSnap, eventsSnap, gallerySnap] = await Promise.all([
+    fs.getDoc(fs.doc(db, 'site', 'content')).catch(() => null),
+    fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null),
     fs.getDocs(fs.query(fs.collection(db, 'events'), fs.where('published', '==', true))).catch(() => null),
     fs.getDocs(fs.query(fs.collection(db, 'gallery'), fs.where('published', '==', true))).catch(() => null),
   ]);
-  if (gallerySnap) {
-    renderGallery(gallerySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)));
-  }
-  if (contentSnap.exists()) renderContent(withDefaults(contentSnap.data()));
-  if (eventsSnap) {
-    const events = eventsSnap.docs.map((d) => d.data())
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    renderEvents(events);
-  }
+  const plain = (snap) => {
+    if (!snap || !snap.exists()) return null;
+    const { updatedAt, createdAt, ...rest } = snap.data();
+    return rest;
+  };
+  const live = {
+    content: plain(contentSnap),
+    settings: plain(settingsSnap),
+    events: eventsSnap ? eventsSnap.docs.map((d) => {
+      const e = d.data();
+      return { type: e.type, title: e.title, date: e.date || '', place: e.place || '', description: e.description || '', link: e.link || '', ts: e.createdAt?.toMillis?.() || 0 };
+    }) : [],
+  };
+  const gallery = gallerySnap ? gallerySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)) : [];
+  return { live, gallery };
 }
 
-// Hold the hero text briefly so edited copy doesn't flash in after the static copy.
-root.classList.add('content-pending');
-const timeout = new Promise((r) => setTimeout(r, 1200));
-await Promise.race([loadLive().catch((e) => console.warn('[content]', e)), timeout]);
-root.classList.remove('content-pending');
+// 1) last-known content from this browser: shows instantly, no network
+const cached = readCache();
+if (cached) applyLive(cached);
 
-/* ---------- Scroll reveal (staggered inside [data-stagger]) ---------- */
-document.querySelectorAll('[data-stagger]').forEach((parent) => {
-  [...parent.children].forEach((el, i) => { el.classList.add('reveal'); el.style.setProperty('--d', i); });
+// 2) motion starts right away on whatever is on the page
+setupReveals();
+journey.refresh();
+
+// 3) fresh data, only once the page is fully loaded and the browser is idle
+const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(fn, 200));
+const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
+afterLoad(async () => {
+  try {
+    const { live, gallery } = await fetchLive();
+    if (JSON.stringify(live) !== JSON.stringify(cached)) {
+      applyLive(live);
+      writeCache(live);
+    }
+    renderGallery(gallery);
+    setupReveals();
+    journey.refresh();
+  } catch (e) {
+    console.warn('[content]', e); // the static page is already complete
+  }
 });
-const reveals = document.querySelectorAll('.reveal');
-const settle = (el) => {
-  el.classList.add('is-in');
-  const d = parseFloat(el.style.getPropertyValue('--d')) || 0;
-  setTimeout(() => el.classList.add('is-done'), 900 + d * 90);
-};
-if (reduce || !('IntersectionObserver' in window)) {
-  reveals.forEach((el) => el.classList.add('is-in', 'is-done'));
-} else {
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => { if (e.isIntersecting) { settle(e.target); io.unobserve(e.target); } });
-  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
-  reveals.forEach((el) => io.observe(el));
-}
-
-/* ---------- Journey: the line draws itself as you scroll ---------- */
-(function journey() {
-  const wrap = document.querySelector('.journey-wrap');
-  if (!wrap) return;
-  const track = wrap.querySelector('.journey-track');
-  const steps = [...wrap.querySelectorAll('.jstep')];
-  const nodes = steps.map((s) => s.querySelector('.jnode'));
-  if (!steps.length) return;
-  const wide = window.matchMedia('(min-width: 861px)');
-
-  const layout = () => {
-    if (wide.matches) { track.style.top = ''; track.style.height = ''; return; }
-    const box = wrap.getBoundingClientRect();
-    const first = nodes[0].getBoundingClientRect();
-    const last = nodes[nodes.length - 1].getBoundingClientRect();
-    track.style.top = `${first.top + first.height / 2 - box.top}px`;
-    track.style.height = `${last.top - first.top}px`;
-  };
-
-  let ticking = false;
-  const update = () => {
-    ticking = false;
-    const line = window.innerHeight * 0.62;
-    const r = (wide.matches ? wrap : track).getBoundingClientRect();
-    let p = wide.matches ? (line - r.top) / (r.height * 0.9) : (line - r.top) / Math.max(r.height, 1);
-    p = Math.min(1, Math.max(0, p));
-    wrap.style.setProperty('--p', p.toFixed(4));
-    steps.forEach((s, i) => {
-      const on = wide.matches
-        ? p > 0 && p >= i / Math.max(steps.length - 1, 1) - 0.001
-        : nodes[i].getBoundingClientRect().top + nodes[i].offsetHeight / 2 <= line;
-      s.classList.toggle('is-on', on);
-    });
-  };
-  const request = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
-
-  layout();
-  if (reduce) {
-    wrap.style.setProperty('--p', 1);
-    steps.forEach((s) => s.classList.add('is-on'));
-    return;
-  }
-  update();
-  window.addEventListener('scroll', request, { passive: true });
-  window.addEventListener('resize', () => { layout(); request(); });
-  if (document.fonts) document.fonts.ready.then(() => { layout(); request(); });
-})();

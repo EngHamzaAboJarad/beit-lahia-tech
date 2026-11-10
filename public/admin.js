@@ -416,6 +416,8 @@ function renderEvents() {
     return h('li', { class: ev.published ? 'event-row' : 'event-row is-draft' },
       h('div', { class: 'event-row-top' },
         h('span', { class: ev.published ? 'badge badge-live' : 'badge badge-draft' }, ev.published ? 'منشور' : 'مسودة'),
+        ev.date && ev.date < new Date().toISOString().slice(0, 10)
+          ? h('span', { class: 'badge badge-draft', title: 'تاريخها فات، فما بتظهر على الموقع' }, 'انتهت') : null,
         h('span', { class: 'meta' }, [EVENT_TYPES[ev.type] || 'فعالية', when, ev.place].filter(Boolean).join(' · '))),
       h('h3', {}, ev.title),
       ev.description ? h('p', { class: 'meta' }, ev.description.length > 140 ? `${ev.description.slice(0, 140)}…` : ev.description) : null,
@@ -623,6 +625,15 @@ async function deletePhoto(p) {
 }
 
 /* =================== Settings =================== */
+// same rules as the registration form: Arabic digits ok, local 05x → +970
+function normalizePhone(v) {
+  let s = String(v ?? '').replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660).replace(/[\s\-().]/g, '');
+  if (!s) return '';
+  if (s.startsWith('00')) s = `+${s.slice(2)}`;
+  else if (/^05\d{8}$/.test(s)) s = `+970${s.slice(1)}`;
+  else if (/^(970|972)\d{9}$/.test(s)) s = `+${s}`;
+  return /^\+[1-9]\d{7,14}$/.test(s) ? s : '';
+}
 const syncOpenLabel = () => { $('set-open-label').textContent = $('set-open').checked ? 'التسجيل مفتوح' : 'التسجيل مسكّر'; };
 $('set-open').addEventListener('change', syncOpenLabel);
 
@@ -635,12 +646,16 @@ async function loadSettings() {
   $('set-open').checked = s.registrationOpen !== false;
   $('set-msg').value = s.closedMessage || '';
   $('set-group').value = s.whatsappGroup || '';
+  $('set-contact').value = s.contactWhatsapp || '';
   syncOpenLabel();
 }
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const group = $('set-group').value.trim();
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('set-group').focus(); return; }
+  const contactRaw = $('set-contact').value.trim();
+  const contact = normalizePhone(contactRaw);
+  if (contactRaw && !contact) { toast('رقم التواصل مش صحيح. مثال: 0591234567', true); $('set-contact').focus(); return; }
   const btn = $('settings-save');
   setBusy(btn, true);
   try {
@@ -648,6 +663,7 @@ $('settings-form').addEventListener('submit', async (e) => {
       registrationOpen: $('set-open').checked,
       closedMessage: $('set-msg').value.trim() || DEFAULT_SETTINGS.closedMessage,
       whatsappGroup: group,
+      contactWhatsapp: contact,
       updatedAt: fs.serverTimestamp(),
     });
     toast($('set-open').checked ? 'انحفظ: التسجيل مفتوح' : 'انحفظ: التسجيل مسكّر');

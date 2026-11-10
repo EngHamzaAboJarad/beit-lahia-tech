@@ -30,9 +30,10 @@ service cloud.firestore {
     }
 
     function isValidMember(d) {
-      return d.keys().hasAll(['name', 'whatsapp', 'status', 'specialty', 'age', 'residence', 'createdAt'])
+      return d.keys().hasAll(['name', 'whatsapp', 'status', 'specialty', 'age', 'residence', 'consent', 'createdAt'])
         && d.keys().hasOnly(['name', 'whatsapp', 'email', 'status', 'specialty', 'age', 'experience',
-                             'residence', 'university', 'portfolio', 'notes', 'source', 'createdAt'])
+                             'residence', 'university', 'portfolio', 'notes', 'consent', 'source', 'createdAt'])
+        && d.consent == true
         && d.whatsapp is string && d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$')
         && (!('email' in d) || (isStr(d.email, 6, 120) && d.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$')))
         && (!('portfolio' in d) || (isStr(d.portfolio, 10, 300) && d.portfolio.matches('^https?://[^\\s]+$')))

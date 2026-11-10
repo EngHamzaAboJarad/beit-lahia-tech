@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=7">
-  <link rel="stylesheet" href="/admin.css?v=7">
-  <script type="module" src="/admin.js?v=7"></script>
+  <link rel="stylesheet" href="/styles.css?v=8">
+  <link rel="stylesheet" href="/admin.css?v=8">
+  <script type="module" src="/admin.js?v=8"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -266,6 +266,11 @@
             <label for="set-group">رابط قروب الواتساب <span class="optional">(اختياري)</span></label>
             <input id="set-group" type="url" dir="ltr" maxlength="200" placeholder="https://chat.whatsapp.com/…">
             <p class="muted small">إذا حطيته، بيطلع زر «انضم لقروب الواتساب» للشخص مباشرة بعد ما يسجّل.</p>
+          </div>
+          <div class="field">
+            <label for="set-contact">رقم واتساب الإدارة للتواصل <span class="optional">(اختياري)</span></label>
+            <input id="set-contact" type="tel" dir="ltr" maxlength="20" placeholder="0591234567">
+            <p class="muted small">بيطلع كزر «تواصل معنا» بالفوتر، وبصفحة الخصوصية لطلبات تعديل أو حذف البيانات.</p>
           </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit" id="settings-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>

@@ -1,5 +1,7 @@
-// Beit Lahia Tech — registration form → Cloud Firestore
-import { getDb } from './firebase-init.js';
+// Beit Lahia Tech — registration form → Cloud Firestore.
+// The form works the moment the page paints; the (light) Firestore SDK loads afterwards, when the
+// browser is idle or as soon as someone starts typing — whichever comes first.
+import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS } from './content-defaults.js';
 
 const COLLECTION = 'members';
@@ -18,7 +20,9 @@ const notesCount = document.getElementById('notes-count');
 document.getElementById('year').textContent = new Date().getFullYear();
 
 // Registration can be closed from /admin → show the message instead of the form.
-(async () => {
+const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
+const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
+afterLoad(async () => {
   try {
     const { db, fs } = await getDb();
     const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
@@ -39,7 +43,17 @@ document.getElementById('year').textContent = new Date().getFullYear();
   } catch (e) {
     console.warn('[settings]', e); // keep the form usable if settings can't be read
   }
-})();
+});
+
+// someone started filling the form → fetch the SDK now so "send" is instant
+form.addEventListener('focusin', () => { getDb().catch(() => {}); }, { once: true });
+
+// under-18: a gentle note about telling their parents
+const minorNote = document.getElementById('minor-note');
+form.elements.age.addEventListener('input', () => {
+  const n = Number(form.elements.age.value);
+  minorNote.hidden = !(n >= 14 && n < 18);
+});
 
 specialty.addEventListener('change', () => {
   const isOther = specialty.value === '__other';
@@ -128,6 +142,7 @@ const rules = {
   residence: (v) => (clean(v).length >= 2 ? '' : 'اكتب وين مقيم حالياً'),
   portfolio: (v) => (!String(v).trim() || normalizeUrl(v) ? '' : 'الرابط مش صحيح. مثال: github.com/اسمك'),
   university: (v) => (isTawjihi() || clean(v).length >= 2 ? '' : 'اكتب اسم الجامعة أو الكلية'),
+  consent: () => (form.elements.consent.checked ? '' : 'لازم توافق على سياسة الخصوصية عشان نكمّل'),
 };
 
 function fieldOf(name) {
@@ -200,6 +215,7 @@ form.addEventListener('submit', async (e) => {
     age: Number(f.age.value),
     residence: clean(f.residence.value),
     notes: notes.value.trim().slice(0, 1000),
+    consent: true,
     source: 'web',
   };
   if (!isTawjihi()) {
@@ -241,6 +257,7 @@ document.getElementById('again-btn').addEventListener('click', () => {
   Object.keys(rules).forEach(clearError);
   otherWrap.hidden = true;
   otherInput.required = false;
+  minorNote.hidden = true;
   applyStatus();
   notesCount.textContent = '0';
   successEl.hidden = true;
