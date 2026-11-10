@@ -503,6 +503,7 @@ const SCHEMA = [
   { title: 'من نحن', fields: [
     ['about.kicker', 'السطر الصغير فوق العنوان'], ['about.title', 'العنوان'],
     ['about.text', 'الفقرة الأولى (بخط أكبر)', 'textarea'], ['about.text2', 'الفقرة الثانية', 'textarea'],
+    ['about.showStat', 'إظهار كرت الرقم (مثلاً «16 عضو مؤسس») جنب كرت الرؤية', 'switch'],
     ['about.statNumber', 'الرقم بالكرت (مثلاً عدد المؤسسين)'], ['about.statLabel', 'النص تحت الرقم'],
     ['about.visionTitle', 'عنوان كرت الرؤية'], ['about.vision', 'نص الرؤية', 'textarea'],
   ] },
@@ -533,6 +534,13 @@ window.addEventListener('beforeunload', (e) => { if (content.dirty) { e.preventD
 let uid = 0;
 function inputFor(label, type, value, onInput) {
   const id = `ce-${++uid}`;
+  if (type === 'switch') {
+    const box = h('input', { id, type: 'checkbox' });
+    box.checked = value === true;
+    box.addEventListener('change', () => { onInput(box.checked); markDirty(); });
+    return h('div', { class: 'field field-switch' }, h('label', { class: 'switch', for: id },
+      box, h('span', { class: 'switch-ui', 'aria-hidden': 'true' }), h('span', {}, label)));
+  }
   const control = type === 'textarea'
     ? h('textarea', { id, rows: 3, value })
     : type === 'lines'

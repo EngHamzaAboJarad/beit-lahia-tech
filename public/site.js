@@ -265,6 +265,10 @@ function renderContent(c) {
     if (typeof v === 'string' && v.trim() && el.textContent !== v) el.textContent = v;
   });
 
+  // «من نحن»: the number card is optional; when hidden, the vision card takes the whole side column
+  const stat = document.getElementById('about-stat');
+  if (stat) stat.hidden = c.about.showStat !== true;
+
   // goals: keep the six icons from the static markup and reuse them in order
   const goals = document.getElementById('goals-grid');
   if (goals && c.goals.length) {
