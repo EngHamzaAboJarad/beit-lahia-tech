@@ -53,7 +53,10 @@ const FILL = { g: '#34D399', r: '#F43F5E', h: '#FDA4AF' };
     pixels.push(r);
   }));
   heroLogo.replaceWith(svg);
-  if (!reduce) setTimeout(() => svg.classList.add('is-floating'), 1500);
+  if (!reduce) setTimeout(() => {
+    svg.classList.add('is-floating'); // pixels: hover transitions on
+    svg.parentElement.classList.add('is-floating'); // the stage floats, so the ghost cursor moves with it
+  }, 1500);
   motivationCard(svg, pixels);
 })();
 
@@ -111,20 +114,42 @@ function motivationCard(svg, pixels) {
     if (fromUser) pausedUntil = Date.now() + 9000; // let the person read before auto-play resumes
   };
 
+  // the ghost cursor teaches "click a pixel" until the visitor tries it once
+  const ghost = document.getElementById('ghost-cursor');
+  const stage = svg.parentElement;
+  let learned = false;
+  const retireGhost = () => { if (learned) return; learned = true; if (ghost) ghost.classList.add('is-gone'); };
+
+  const ghostClick = (px) => {
+    const s = stage.getBoundingClientRect();
+    const r = px.getBoundingClientRect();
+    // the arrow's tip is ~ (5px, 2px) inside its 26px box
+    ghost.style.setProperty('--x', `${r.left + r.width / 2 - s.left - 5}px`);
+    ghost.style.setProperty('--y', `${r.top + r.height / 2 - s.top - 2}px`);
+    ghost.classList.add('is-on');
+    setTimeout(() => {
+      if (learned) return;
+      ghost.classList.add('is-click');
+      select(px, false);
+      setTimeout(() => ghost.classList.remove('is-click'), 260);
+    }, 1000);
+  };
+
   // hover on desktop, tap on touch
-  svg.addEventListener('pointerover', (e) => { if (e.target.dataset.i && e.pointerType === 'mouse') select(e.target, true); });
-  svg.addEventListener('click', (e) => { if (e.target.dataset.i) select(e.target, true); });
+  svg.addEventListener('pointerover', (e) => {
+    if (e.target.dataset.i && e.pointerType === 'mouse') { retireGhost(); select(e.target, true); }
+  });
+  svg.addEventListener('click', (e) => { if (e.target.dataset.i) { retireGhost(); select(e.target, true); } });
 
   if (reduce) return;
-  // auto-play: a random pixel lights up and types its line every few seconds
-  setTimeout(() => {
-    setInterval(() => {
-      if (document.hidden || Date.now() < pausedUntil) return;
-      let px;
-      do { px = pixels[Math.floor(Math.random() * pixels.length)]; } while (pixels.length > 1 && Number(px.dataset.i) === lastIndex);
-      select(px, false);
-    }, 4200);
-  }, 2600);
+  // auto-play: every few seconds a pixel gets "clicked" (by the ghost until the visitor has tried it)
+  const autoplay = () => {
+    if (document.hidden || Date.now() < pausedUntil) return;
+    let px;
+    do { px = pixels[Math.floor(Math.random() * pixels.length)]; } while (pixels.length > 1 && Number(px.dataset.i) === lastIndex);
+    if (!learned && ghost) ghostClick(px); else select(px, false);
+  };
+  setTimeout(() => { autoplay(); setInterval(autoplay, 4800); }, 2200);
 }
 
 /* ---------- Live content (edited from /admin) ---------- */
