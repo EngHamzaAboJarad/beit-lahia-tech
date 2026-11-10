@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>لوحة الإدارة | كميونتي تقني بيت لاهيا</title>
+  <meta name="theme-color" content="#0B1220">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css?v=4">
+  <link rel="stylesheet" href="/admin.css?v=4">
+  <script type="module" src="/admin.js?v=4"></script>
+</head>
+<body class="admin">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="logo" viewBox="0 0 236 266">
+      <g fill="#34D399"><rect x="60" y="0" width="26" height="26" rx="5"/><rect x="150" y="0" width="26" height="26" rx="5"/><rect x="30" y="30" width="26" height="26" rx="5"/><rect x="60" y="30" width="26" height="26" rx="5"/><rect x="90" y="30" width="26" height="26" rx="5"/><rect x="120" y="30" width="26" height="26" rx="5"/><rect x="150" y="30" width="26" height="26" rx="5"/><rect x="180" y="30" width="26" height="26" rx="5"/></g>
+      <g fill="#F43F5E"><rect x="0" y="60" width="26" height="26" rx="5"/><rect x="30" y="60" width="26" height="26" rx="5"/><rect x="60" y="60" width="26" height="26" rx="5"/><rect x="90" y="60" width="26" height="26" rx="5"/><rect x="120" y="60" width="26" height="26" rx="5"/><rect x="150" y="60" width="26" height="26" rx="5"/><rect x="180" y="60" width="26" height="26" rx="5"/><rect x="210" y="60" width="26" height="26" rx="5"/><rect x="0" y="90" width="26" height="26" rx="5"/><rect x="30" y="90" width="26" height="26" rx="5"/><rect x="90" y="90" width="26" height="26" rx="5"/><rect x="120" y="90" width="26" height="26" rx="5"/><rect x="180" y="90" width="26" height="26" rx="5"/><rect x="210" y="90" width="26" height="26" rx="5"/><rect x="0" y="120" width="26" height="26" rx="5"/><rect x="30" y="120" width="26" height="26" rx="5"/><rect x="60" y="120" width="26" height="26" rx="5"/><rect x="90" y="120" width="26" height="26" rx="5"/><rect x="120" y="120" width="26" height="26" rx="5"/><rect x="150" y="120" width="26" height="26" rx="5"/><rect x="180" y="120" width="26" height="26" rx="5"/><rect x="210" y="120" width="26" height="26" rx="5"/><rect x="30" y="150" width="26" height="26" rx="5"/><rect x="60" y="150" width="26" height="26" rx="5"/><rect x="120" y="150" width="26" height="26" rx="5"/><rect x="150" y="150" width="26" height="26" rx="5"/><rect x="180" y="150" width="26" height="26" rx="5"/><rect x="30" y="180" width="26" height="26" rx="5"/><rect x="60" y="180" width="26" height="26" rx="5"/><rect x="90" y="180" width="26" height="26" rx="5"/><rect x="120" y="180" width="26" height="26" rx="5"/><rect x="180" y="180" width="26" height="26" rx="5"/><rect x="60" y="210" width="26" height="26" rx="5"/><rect x="90" y="210" width="26" height="26" rx="5"/><rect x="120" y="210" width="26" height="26" rx="5"/><rect x="150" y="210" width="26" height="26" rx="5"/><rect x="90" y="240" width="26" height="26" rx="5"/><rect x="120" y="240" width="26" height="26" rx="5"/></g>
+      <g fill="#FDA4AF"><rect x="60" y="90" width="26" height="26" rx="5"/><rect x="150" y="90" width="26" height="26" rx="5"/><rect x="90" y="150" width="26" height="26" rx="5"/><rect x="150" y="180" width="26" height="26" rx="5"/></g>
+    </symbol>
+  </svg>
+
+  <!-- Loading -->
+  <div class="admin-center" id="view-loading">
+    <span class="spinner spinner-lg" aria-hidden="true"></span>
+    <p class="visually-hidden">جاري التحميل…</p>
+  </div>
+
+  <!-- Login -->
+  <main class="admin-center" id="view-login" hidden>
+    <div class="auth-card">
+      <svg width="48" height="54" aria-hidden="true"><use href="#logo"/></svg>
+      <h1>لوحة الإدارة</h1>
+      <p class="muted">كميونتي تقني بيت لاهيا</p>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="login-email">الإيميل</label>
+          <input id="login-email" type="email" autocomplete="username" dir="ltr" required>
+        </div>
+        <div class="field">
+          <label for="login-password">كلمة السر</label>
+          <input id="login-password" type="password" autocomplete="current-password" dir="ltr" required>
+        </div>
+        <p class="error" id="login-error" role="alert"></p>
+        <button class="btn btn-primary btn-block" type="submit" id="login-btn">
+          <span class="btn-label">دخول</span><span class="spinner" aria-hidden="true"></span>
+        </button>
+      </form>
+      <a class="back-home" href="/">الرجوع للموقع</a>
+    </div>
+  </main>
+
+  <!-- Signed in but not an admin -->
+  <main class="admin-center" id="view-denied" hidden>
+    <div class="auth-card">
+      <svg width="48" height="54" aria-hidden="true"><use href="#logo"/></svg>
+      <h1>الحساب مش أدمن</h1>
+      <p class="muted">سجّلت دخول بـ <bdi id="denied-email"></bdi>، بس هاد الحساب مش مضاف كأدمن.</p>
+      <p class="muted">لإضافته: من Firebase Console › Firestore اعمل document بالـ collection <code>admins</code> اسمه (Document ID) هاد الرقم:</p>
+      <div class="uid-row">
+        <code id="denied-uid" dir="ltr"></code>
+        <button class="btn btn-ghost-dark btn-sm" type="button" id="copy-uid">نسخ</button>
+      </div>
+      <button class="btn btn-ghost-dark btn-block" type="button" data-signout>تسجيل خروج</button>
+    </div>
+  </main>
+
+  <!-- Dashboard -->
+  <div id="view-app" hidden>
+    <header class="admin-top">
+      <div class="admin-top-row">
+        <a class="admin-brand" href="/admin">
+          <svg width="30" height="34" aria-hidden="true"><use href="#logo"/></svg>
+          <span><strong>لوحة الإدارة</strong><small>كميونتي تقني بيت لاهيا</small></span>
+        </a>
+        <div class="admin-user">
+          <bdi class="admin-email" id="admin-email"></bdi>
+          <a class="btn btn-ghost-light btn-sm" href="/" target="_blank" rel="noopener">عرض الموقع</a>
+          <button class="btn btn-ghost-light btn-sm" type="button" data-signout>خروج</button>
+        </div>
+      </div>
+      <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
+        <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
+        <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
+        <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
+        <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
+      </nav>
+    </header>
+
+    <main class="admin-main">
+      <!-- Members -->
+      <section id="tab-members" role="tabpanel" aria-labelledby="tab-btn-members">
+        <div class="stats" id="stats"></div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field grow">
+              <label for="f-search" class="visually-hidden">بحث</label>
+              <input id="f-search" type="search" placeholder="بحث بالاسم، التخصص، الجامعة، الإقامة…">
+            </div>
+            <div class="field">
+              <label for="f-status" class="visually-hidden">الحالة</label>
+              <select id="f-status">
+                <option value="">كل الحالات</option>
+                <option value="tawjihi">طالب توجيهي</option>
+                <option value="student">طالب جامعة</option>
+                <option value="graduate">خريج</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-exp" class="visually-hidden">الخبرة</label>
+              <select id="f-exp">
+                <option value="">كل الخبرات</option>
+                <option value="none">لسا ببدأ</option>
+                <option value="lt1">أقل من سنة</option>
+                <option value="1-2">1 – 2 سنة</option>
+                <option value="3-5">3 – 5 سنوات</option>
+                <option value="5+">أكثر من 5 سنوات</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-contacted" class="visually-hidden">التواصل</label>
+              <select id="f-contacted">
+                <option value="">الكل</option>
+                <option value="no">لسا ما تواصلنا</option>
+                <option value="yes">تواصلنا معهم</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="refresh-members">تحديث</button>
+            <button class="btn btn-primary btn-sm" type="button" id="export-csv">تصدير Excel</button>
+          </div>
+          <p class="muted small" id="members-count"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">الاسم</th>
+                  <th scope="col">الحالة</th>
+                  <th scope="col">التخصص</th>
+                  <th scope="col">العمر</th>
+                  <th scope="col">الخبرة</th>
+                  <th scope="col">الإقامة</th>
+                  <th scope="col">الجامعة</th>
+                  <th scope="col">الأعمال</th>
+                  <th scope="col">التاريخ</th>
+                  <th scope="col">تواصلنا</th>
+                  <th scope="col"><span class="visually-hidden">إجراءات</span></th>
+                </tr>
+              </thead>
+              <tbody id="members-body"></tbody>
+            </table>
+          </div>
+          <p class="empty" id="members-empty" hidden>ما في تسجيلات بهاد الفلتر.</p>
+        </div>
+      </section>
+
+      <!-- Content -->
+      <section id="tab-content" role="tabpanel" aria-labelledby="tab-btn-content" hidden>
+        <div class="tab-intro">
+          <h2>محتوى الصفحة الرئيسية</h2>
+          <p class="muted">أي تعديل بتحفظه بيظهر على الموقع فوراً، بدون ما نرفع نسخة جديدة.</p>
+        </div>
+        <div id="content-editor"></div>
+        <div class="savebar" id="content-savebar">
+          <span class="savebar-msg" id="content-status">كل التعديلات محفوظة</span>
+          <div class="savebar-actions">
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="content-reset">رجّع النص الأصلي</button>
+            <button class="btn btn-primary btn-sm" type="button" id="content-save">
+              <span class="btn-label">احفظ التعديلات</span><span class="spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Events -->
+      <section id="tab-events" role="tabpanel" aria-labelledby="tab-btn-events" hidden>
+        <div class="events-layout">
+          <form class="panel" id="event-form" novalidate>
+            <h2 id="event-form-title">فعالية أو إعلان جديد</h2>
+            <div class="field">
+              <label for="ev-type">النوع</label>
+              <select id="ev-type">
+                <option value="event">فعالية</option>
+                <option value="course">دورة</option>
+                <option value="announcement">إعلان</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ev-title">العنوان <span class="req" aria-hidden="true">*</span></label>
+              <input id="ev-title" type="text" maxlength="120" required>
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label for="ev-date">التاريخ <span class="optional">(اختياري)</span></label>
+                <input id="ev-date" type="date">
+              </div>
+              <div class="field">
+                <label for="ev-place">المكان <span class="optional">(اختياري)</span></label>
+                <input id="ev-place" type="text" maxlength="120" placeholder="مثال: أونلاين، أو اسم المكان">
+              </div>
+            </div>
+            <div class="field">
+              <label for="ev-desc">الوصف</label>
+              <textarea id="ev-desc" rows="4" maxlength="2000"></textarea>
+            </div>
+            <div class="field">
+              <label for="ev-link">رابط <span class="optional">(اختياري — تسجيل، تفاصيل…)</span></label>
+              <input id="ev-link" type="url" dir="ltr" maxlength="500" placeholder="https://">
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="ev-published" checked>
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span>منشور على الموقع</span>
+            </label>
+            <p class="error" id="event-error" role="alert"></p>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit" id="event-save"><span class="btn-label">أضف</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark" type="button" id="event-cancel" hidden>إلغاء التعديل</button>
+            </div>
+          </form>
+          <div class="panel">
+            <h2>كل الفعاليات والإعلانات</h2>
+            <ul class="event-list" id="event-list"></ul>
+            <p class="empty" id="events-empty" hidden>ما في فعاليات لسا. أول وحدة بتضيفها وبتنشرها رح يظهر سكشن الفعاليات على الصفحة الرئيسية.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings" hidden>
+        <form class="panel narrow-panel" id="settings-form">
+          <h2>التسجيل</h2>
+          <label class="switch">
+            <input type="checkbox" id="set-open">
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span id="set-open-label">التسجيل مفتوح</span>
+          </label>
+          <div class="field">
+            <label for="set-msg">الرسالة اللي بتظهر لما يكون التسجيل مسكّر</label>
+            <textarea id="set-msg" rows="3" maxlength="300"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit" id="settings-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

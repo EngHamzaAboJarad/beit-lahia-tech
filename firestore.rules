@@ -1,0 +1,89 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // الأدمن = مستخدم مسجّل دخول وإله document باسم الـ UID تبعه في admins (بينضاف من الكونسول بس)
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isStr(v, min, max) {
+      return v is string && v.size() >= min && v.size() <= max;
+    }
+
+    function registrationOpen() {
+      let path = /databases/$(database)/documents/site/settings;
+      return !exists(path) || get(path).data.get('registrationOpen', true) != false;
+    }
+
+    // ---------- التسجيلات ----------
+    // الزوار: إضافة تسجيل صالح بس (ولما يكون التسجيل مفتوح).
+    // الأدمن: قراءة، حذف، وتعليم «تواصلنا» فقط.
+    match /members/{memberId} {
+      allow create: if registrationOpen() && isValidMember(request.resource.data);
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contacted'])
+        && request.resource.data.contacted is bool;
+    }
+
+    function isValidMember(d) {
+      return d.keys().hasAll(['name', 'status', 'specialty', 'age', 'residence', 'createdAt'])
+        && d.keys().hasOnly(['name', 'status', 'specialty', 'age', 'experience',
+                             'residence', 'university', 'portfolio', 'notes', 'source', 'createdAt'])
+        && (!('portfolio' in d) || (isStr(d.portfolio, 10, 300) && d.portfolio.matches('^https?://[^\\s]+$')))
+        && isStr(d.name, 2, 80)
+        && d.status in ['tawjihi', 'student', 'graduate']
+        // طالب التوجيهي ما إله جامعة ولا خبرة؛ الباقي لازم يبعتوهم
+        && (d.status == 'tawjihi' || d.keys().hasAll(['experience', 'university']))
+        && isStr(d.specialty, 2, 80)
+        && d.age is int && d.age >= 14 && d.age <= 70
+        && (!('experience' in d) || d.experience in ['none', 'lt1', '1-2', '3-5', '5+'])
+        && isStr(d.residence, 2, 80)
+        && (!('university' in d) || isStr(d.university, 2, 120))
+        && (!('notes' in d) || isStr(d.notes, 0, 1000))
+        && (!('source' in d) || d.source == 'web')
+        && d.createdAt == request.time;
+    }
+
+    // ---------- محتوى الصفحة والإعدادات ----------
+    match /site/{docId} {
+      allow read: if docId in ['content', 'settings'];
+      allow write: if isAdmin() && docId in ['content', 'settings']
+        && request.resource.size() < 200 * 1024;
+    }
+
+    // ---------- الفعاليات ----------
+    // الزوار بيشوفوا المنشور بس؛ الأدمن بيشوف ويعدّل الكل.
+    match /events/{eventId} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update: if isAdmin() && isValidEvent(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    function isValidEvent(d) {
+      return d.keys().hasOnly(['type', 'title', 'date', 'place', 'description', 'link',
+                               'published', 'createdAt', 'updatedAt'])
+        && d.type in ['event', 'course', 'announcement']
+        && isStr(d.title, 1, 120)
+        && d.published is bool
+        && (!('date' in d) || isStr(d.date, 0, 10))
+        && (!('place' in d) || isStr(d.place, 0, 120))
+        && (!('description' in d) || isStr(d.description, 0, 2000))
+        && (!('link' in d) || (isStr(d.link, 0, 500) && (d.link == '' || d.link.matches('^https?://.+'))));
+    }
+
+    // ---------- الأدمنز ----------
+    // كل مستخدم بيقدر يتأكد إذا هو أدمن؛ الإضافة والحذف من الكونسول فقط.
+    match /admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // أي مسار ثاني مقفول
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
