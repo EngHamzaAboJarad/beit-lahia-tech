@@ -105,7 +105,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'content', 'events', 'settings'];
+const TABS = ['members', 'content', 'events', 'gallery', 'settings'];
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -133,6 +133,7 @@ function boot() {
   loadMembers();
   loadContent();
   loadEvents();
+  loadGallery();
   loadSettings();
 }
 
@@ -271,6 +272,7 @@ const SCHEMA = [
   { title: 'رحلة العضو (لمين المجتمع)', fields: [['journeyHead.title', 'عنوان السكشن'], ['journeyHead.text', 'وصف السكشن', 'textarea']],
     list: { path: 'journey', label: 'محطة', add: 'أضف محطة', min: 2, max: 6, item: [['title', 'العنوان'], ['text', 'النص', 'textarea']] } },
   { title: 'سكشن الفعاليات', note: 'الفعاليات نفسها بتضيفها من تبويب «الفعاليات».', fields: [['eventsHead.title', 'عنوان السكشن'], ['eventsHead.text', 'وصف السكشن']] },
+  { title: 'سكشن المعرض', note: 'الصور نفسها بترفعها من تبويب «المعرض».', fields: [['galleryHead.title', 'عنوان السكشن'], ['galleryHead.text', 'وصف السكشن']] },
   { title: 'المجالات', fields: [['fieldsHead.title', 'عنوان السكشن'], ['fieldsHead.text', 'وصف السكشن', 'textarea'], ['fields', 'المجالات (كل مجال بسطر)', 'lines']] },
   { title: 'الدعوة للتسجيل', fields: [['cta.title', 'العنوان'], ['cta.text', 'النص'], ['cta.button', 'نص الزر']] },
   { title: 'الأسئلة الشائعة',
@@ -482,6 +484,131 @@ async function deleteEvent(ev) {
     if (editingId === ev.id) resetEventForm();
     toast('انحذفت');
     await loadEvents();
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+/* =================== Gallery =================== */
+// Photos live in Firestore (no Cloud Storage / paid plan needed):
+//   gallery/{id}     → thumb (small data URL), caption, published, order, w, h   (listed on the home page)
+//   galleryFull/{id} → src (full image data URL, ≤ ~900 KB)                       (loaded when a photo is opened)
+let gallery = [];
+
+const loadImage = (file) => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('bad-image')); };
+  img.src = url;
+});
+function encode(img, maxSide, maxChars, startQ) {
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  let w = Math.round(img.naturalWidth * scale);
+  let h2 = Math.round(img.naturalHeight * scale);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h2;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h2); // PNG transparency → white
+    ctx.drawImage(img, 0, 0, w, h2);
+    for (let q = startQ; q >= 0.5; q -= 0.08) {
+      const data = c.toDataURL('image/jpeg', q);
+      if (data.length <= maxChars) return { data, w, h: h2 };
+    }
+    w = Math.round(w * 0.82); h2 = Math.round(h2 * 0.82); // still too big: shrink and retry
+  }
+  throw new Error('too-big');
+}
+
+async function loadGallery() {
+  try {
+    const snap = await fs.getDocs(fs.collection(db, 'gallery'));
+    gallery = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    renderGalleryAdmin();
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+function renderGalleryAdmin() {
+  $('gallery-empty').hidden = gallery.length > 0;
+  $('gallery-list').replaceChildren(...gallery.map((p, i) => {
+    const cap = h('input', { type: 'text', value: p.caption || '', maxlength: 140, placeholder: 'وصف قصير (اختياري)', 'aria-label': 'وصف الصورة' });
+    cap.addEventListener('change', async () => {
+      try { await fs.updateDoc(fs.doc(db, 'gallery', p.id), { caption: cap.value.trim(), updatedAt: fs.serverTimestamp() }); p.caption = cap.value.trim(); toast('انحفظ الوصف'); } catch (e) { toast(errMsg(e), true); }
+    });
+    return h('li', { class: p.published ? 'g-item' : 'g-item is-draft' },
+      h('img', { src: p.thumb, alt: p.caption || '' }),
+      h('span', { class: p.published ? 'badge badge-live' : 'badge badge-draft' }, p.published ? 'منشورة' : 'مسودة'),
+      h('div', { class: 'field' }, cap),
+      h('div', { class: 'g-actions' },
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) }, p.published ? 'إخفاء' : 'انشر'),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لقدام', title: 'لقدام', disabled: i === 0, onclick: () => movePhoto(i, -1) }, svgIcon(ICONS.up)),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لورا', title: 'لورا', disabled: i === gallery.length - 1, onclick: () => movePhoto(i, 1) }, svgIcon(ICONS.down)),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'حذف الصورة', title: 'حذف', onclick: () => deletePhoto(p) }, svgIcon(ICONS.trash))));
+  }));
+}
+
+async function uploadFiles(files) {
+  const list = [...files].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+  if (!list.length) { toast('اختار صور JPG أو PNG أو WebP', true); return; }
+  const progress = $('gallery-progress');
+  let done = 0; let failed = 0;
+  const minOrder = gallery.reduce((m, p) => Math.min(m, p.order ?? 0), 0);
+  for (const file of list) {
+    progress.textContent = `جاري رفع ${done + failed + 1} من ${list.length}…`;
+    try {
+      const img = await loadImage(file);
+      const full = encode(img, 1600, 900000, 0.82);
+      const thumb = encode(img, 520, 90000, 0.74);
+      const ref = fs.doc(fs.collection(db, 'gallery'));
+      const batch = fs.writeBatch(db);
+      batch.set(ref, {
+        thumb: thumb.data, caption: '', published: false, order: minOrder - list.length + done,
+        w: thumb.w, h: thumb.h, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp(),
+      });
+      batch.set(fs.doc(db, 'galleryFull', ref.id), { src: full.data });
+      await batch.commit();
+      done++;
+    } catch (e) { console.error(e); failed++; }
+  }
+  progress.textContent = failed ? `انرفعت ${done}، وفشلت ${failed}.` : `انرفعت ${done} صورة كمسودة. انشرها لما تكون جاهزة.`;
+  $('gallery-input').value = '';
+  await loadGallery();
+}
+
+$('gallery-input').addEventListener('change', (e) => uploadFiles(e.target.files));
+const dz = $('dropzone');
+['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add('is-over'); }));
+['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, () => dz.classList.remove('is-over')));
+dz.addEventListener('drop', (e) => { e.preventDefault(); uploadFiles(e.dataTransfer.files); });
+
+async function togglePhoto(p) {
+  try {
+    await fs.updateDoc(fs.doc(db, 'gallery', p.id), { published: !p.published, updatedAt: fs.serverTimestamp() });
+    toast(p.published ? 'انخفت من الموقع' : 'انشرت على الموقع');
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function movePhoto(i, d) {
+  const a = gallery[i]; const b = gallery[i + d];
+  if (!a || !b) return;
+  try {
+    const batch = fs.writeBatch(db);
+    // re-number everything so the order is always clean
+    const next = [...gallery]; [next[i], next[i + d]] = [next[i + d], next[i]];
+    next.forEach((p, k) => { if ((p.order ?? null) !== k) batch.update(fs.doc(db, 'gallery', p.id), { order: k, updatedAt: fs.serverTimestamp() }); });
+    await batch.commit();
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function deletePhoto(p) {
+  if (!confirm('حذف الصورة نهائياً؟')) return;
+  try {
+    const batch = fs.writeBatch(db);
+    batch.delete(fs.doc(db, 'gallery', p.id));
+    batch.delete(fs.doc(db, 'galleryFull', p.id));
+    await batch.commit();
+    toast('انحذفت الصورة');
+    await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }
 

@@ -75,6 +75,30 @@ service cloud.firestore {
         && (!('link' in d) || (isStr(d.link, 0, 500) && (d.link == '' || d.link.matches('^https?://.+'))));
     }
 
+    // ---------- معرض الصور ----------
+    // gallery: الصورة المصغّرة + الوصف (الزوار بيشوفوا المنشور بس)
+    match /gallery/{photoId} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
+        && isStr(request.resource.data.thumb, 30, 120000)
+        && request.resource.data.thumb.matches('^data:image/(jpeg|png|webp);base64,.*')
+        && isStr(request.resource.data.caption, 0, 140)
+        && request.resource.data.published is bool;
+      allow delete: if isAdmin();
+    }
+    // galleryFull: الصورة بحجمها الكامل، بتنقرأ بس إذا الصورة منشورة
+    match /galleryFull/{photoId} {
+      allow get: if isAdmin()
+        || get(/databases/$(database)/documents/gallery/$(photoId)).data.published == true;
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['src'])
+        && isStr(request.resource.data.src, 30, 950000)
+        && request.resource.data.src.matches('^data:image/(jpeg|png|webp);base64,.*');
+      allow delete: if isAdmin();
+    }
+
     // ---------- الأدمنز ----------
     // كل مستخدم بيقدر يتأكد إذا هو أدمن؛ الإضافة والحذف من الكونسول فقط.
     match /admins/{uid} {

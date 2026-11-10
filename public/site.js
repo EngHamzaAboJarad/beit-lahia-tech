@@ -211,12 +211,80 @@ function renderEvents(events) {
   if (nav) nav.hidden = false;
 }
 
+/* ---------- Gallery (hidden until the admin publishes photos) ---------- */
+let photos = [];
+let lbIndex = 0;
+let liteDb = null;
+
+function renderGallery(list) {
+  const section = document.getElementById('gallery');
+  const grid = document.getElementById('gallery-grid');
+  if (!section || !grid || !list.length) return;
+  photos = list;
+  grid.setAttribute('data-stagger', '');
+  grid.replaceChildren(...list.map((p, i) => h('button', {
+    type: 'button', class: 'gallery-item', 'aria-label': p.caption ? `عرض الصورة: ${p.caption}` : `عرض الصورة ${i + 1}`,
+  }, h('img', { src: p.thumb, alt: p.caption || '', loading: 'lazy', decoding: 'async', width: p.w || null, height: p.h || null }),
+  p.caption ? h('span', { class: 'gallery-cap' }, p.caption) : null)));
+  grid.querySelectorAll('.gallery-item').forEach((b, i) => b.addEventListener('click', () => openLightbox(i)));
+  section.hidden = false;
+  const nav = document.getElementById('nav-gallery');
+  if (nav) nav.hidden = false;
+}
+
+const lb = document.getElementById('lightbox');
+async function showPhoto(i) {
+  lbIndex = (i + photos.length) % photos.length;
+  const p = photos[lbIndex];
+  const img = document.getElementById('lb-img');
+  img.src = p.thumb; // instant preview, then swap in the full-size image
+  img.alt = p.caption || '';
+  document.getElementById('lb-caption').textContent = p.caption || '';
+  document.getElementById('lb-count').textContent = `${lbIndex + 1} / ${photos.length}`;
+  lb.classList.toggle('is-single', photos.length < 2);
+  try {
+    const snap = await liteDb.fs.getDoc(liteDb.fs.doc(liteDb.db, 'galleryFull', p.id));
+    if (snap.exists() && photos[lbIndex] === p) img.src = snap.data().src;
+  } catch { /* keep the preview */ }
+}
+function openLightbox(i) {
+  if (!lb || !photos.length) return;
+  showPhoto(i);
+  lb.showModal();
+}
+if (lb) {
+  lb.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-lb]')?.dataset.lb;
+    if (act === 'close' || e.target === lb) lb.close();
+    else if (act === 'next') showPhoto(lbIndex + 1);
+    else if (act === 'prev') showPhoto(lbIndex - 1);
+  });
+  lb.addEventListener('keydown', (e) => {
+    // RTL: the left arrow moves forward
+    if (e.key === 'ArrowLeft') { e.preventDefault(); showPhoto(lbIndex + 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); showPhoto(lbIndex - 1); }
+  });
+  let x0 = null;
+  lb.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  lb.addEventListener('touchend', (e) => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 50) showPhoto(lbIndex + (dx > 0 ? 1 : -1)); // RTL: swipe right = next
+  });
+}
+
 async function loadLive() {
   const { db, fs } = await getDbLite();
-  const [contentSnap, eventsSnap] = await Promise.all([
+  liteDb = { db, fs };
+  const [contentSnap, eventsSnap, gallerySnap] = await Promise.all([
     fs.getDoc(fs.doc(db, 'site', 'content')),
     fs.getDocs(fs.query(fs.collection(db, 'events'), fs.where('published', '==', true))).catch(() => null),
+    fs.getDocs(fs.query(fs.collection(db, 'gallery'), fs.where('published', '==', true))).catch(() => null),
   ]);
+  if (gallerySnap) {
+    renderGallery(gallerySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)));
+  }
   if (contentSnap.exists()) renderContent(withDefaults(contentSnap.data()));
   if (eventsSnap) {
     const events = eventsSnap.docs.map((d) => d.data())

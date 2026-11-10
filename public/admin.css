@@ -143,6 +143,30 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .badge-live { background: #ECFDF5; color: var(--emerald-deeper); }
 .badge-draft { background: #F1F5F9; color: var(--slate); }
 
+/* Gallery */
+.dropzone {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  padding: 28px 16px; border: 2px dashed #CBD5E1; border-radius: var(--radius-lg); cursor: pointer;
+  background: #FCFCFA; transition: border-color .2s ease, background-color .2s ease;
+}
+.dropzone:hover, .dropzone.is-over { border-color: var(--emerald-deep); background: #F0FDF7; }
+.dropzone:focus-within { outline: 3px solid var(--emerald); outline-offset: 2px; }
+.dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone svg { width: 34px; height: 34px; fill: none; stroke: var(--emerald-deep); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dropzone strong { font-family: var(--font-head); font-size: 17px; }
+#gallery-progress { margin-top: 10px; }
+.gallery-admin { list-style: none; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.g-item { position: relative; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; background: var(--white); }
+.g-item.is-draft { border-style: dashed; background: #FAFAF7; }
+.g-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: #E2E8F0; }
+.g-item.is-draft img { opacity: .75; }
+.g-item .badge { position: absolute; top: 18px; inset-inline-start: 18px; }
+.g-item .field input { min-height: 40px !important; padding: 8px 12px !important; font-size: 14px !important; }
+.g-actions { display: flex; align-items: center; gap: 4px; }
+.g-actions .btn { margin-inline-end: auto; }
+.g-actions .icon-btn:hover { background: #F1F5F9; color: var(--night); border-color: var(--line); }
+.g-actions .icon-btn:last-child:hover { background: #FFF1F2; color: #BE123C; border-color: #FECDD3; }
+
 /* Switch */
 .switch { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; min-height: 44px; font-family: var(--font-head); font-weight: 600; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }

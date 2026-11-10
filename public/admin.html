@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=5">
-  <link rel="stylesheet" href="/admin.css?v=5">
-  <script type="module" src="/admin.js?v=5"></script>
+  <link rel="stylesheet" href="/styles.css?v=6">
+  <link rel="stylesheet" href="/admin.css?v=6">
+  <script type="module" src="/admin.js?v=6"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -86,6 +86,7 @@
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
+        <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false">المعرض</button>
         <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
       </nav>
     </header>
@@ -225,6 +226,25 @@
             <ul class="event-list" id="event-list"></ul>
             <p class="empty" id="events-empty" hidden>ما في فعاليات لسا. أول وحدة بتضيفها وبتنشرها رح يظهر سكشن الفعاليات على الصفحة الرئيسية.</p>
           </div>
+        </div>
+      </section>
+
+      <!-- Gallery -->
+      <section id="tab-gallery" role="tabpanel" aria-labelledby="tab-btn-gallery" hidden>
+        <div class="tab-intro">
+          <h2>معرض الصور</h2>
+          <p class="muted">سكشن المعرض مخفي من الصفحة الرئيسية لحد ما تنشر أول صورة. الصور بتتصغّر تلقائياً قبل الرفع.</p>
+        </div>
+        <div class="panel">
+          <label class="dropzone" id="dropzone">
+            <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <strong>اختار صور أو اسحبها لهون</strong>
+            <span class="muted small">JPG أو PNG أو WebP — بتنرفع كمسودة، وبتنشرها لما تكون جاهزة</span>
+          </label>
+          <p class="muted small" id="gallery-progress" aria-live="polite"></p>
+          <ul class="gallery-admin" id="gallery-list"></ul>
+          <p class="empty" id="gallery-empty" hidden>ما في صور لسا.</p>
         </div>
       </section>
 
