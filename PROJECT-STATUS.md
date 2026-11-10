@@ -162,7 +162,7 @@ firebase deploy --only firestore:rules,hosting --project flutter-app-distributio
 
 ---
 
-## 7. بوست الفيسبوك (جاهز للنشر)
+## 7. بوست الفيسبوك (✅ انشر على الفيسبوك، 10 نوفمبر 2026)
 
 ```
 🍓💻 أطلقنا موقع مجتمع بيت لاهيا التقني!
