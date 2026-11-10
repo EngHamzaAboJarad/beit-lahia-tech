@@ -145,9 +145,10 @@ firebase deploy --only firestore:rules,hosting --project flutter-app-distributio
 
 ### إعدادات بالحسابات
 
-- [ ] **اسم المرسل بإيميلات Firebase** (عشان إيميل «نسيت كلمة السر» يطلع باسم المجتمع، مش باسم مشروع الفلاتر):
-  - Firebase › Project settings › **Public-facing name** = `Beit Lahia Tech`
-  - Authentication › Templates › Password reset › **Sender name** = `بيت لاهيا تك`
+- [ ] ⛔ **إيميل «نسيت كلمة السر» بهوية الموقع:** مقفول من Firebase («Email template updates are currently unavailable for this project»)، وهاد قيد على المشاريع المجانية، مش غلطة. الإيميل الافتراضي بالإنجليزي شغال عادي، وبيوصل للأدمنز بس.
+  - القالب المصمّم جاهز بـ [design/email-reset.html](design/email-reset.html) (معاينة: [design/email-reset-preview.png](design/email-reset-preview.png)).
+  - لما ينفتح التعديل (ترقية لخطة Blaze أو عن طريق دعم Firebase): Authentication › Templates › Password reset › Sender name = `مجتمع بيت لاهيا التقني`، وSubject = `تغيير كلمة السر | مجتمع بيت لاهيا التقني`، والصق القالب بـ Message.
+  - قسم Public settings (Public-facing name) مش موجود بواجهة المشروع.
 - [ ] **(اختياري) الرد من `info@`:** جيميل › Settings › Accounts › **Send mail as**
 
 ### لما تحتاجها
