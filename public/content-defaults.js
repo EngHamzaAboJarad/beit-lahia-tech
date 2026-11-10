@@ -9,6 +9,12 @@ export const DEFAULT_CONTENT = {
     titleAccent: 'من بيت لاهيا',
     lead: 'مجتمع تقني يجمع أبناء بيت لاهيا من المبرمجين وطلاب وخريجي التخصصات التقنية، لنبني شبكة تواصل قوية، نتبادل الخبرات، ونجهّز بعض لسوق العمل.',
   },
+  about: {
+    title: 'من نحن',
+    text: 'كميونتي تقني بيت لاهيا مبادرة من أبناء البلد اللي بيدرسوا وبيشتغلوا بالتقنية. بدأت من فكرة بسيطة: الطاقات التقنية من بيت لاهيا كثيرة، بس متفرقة، وكل واحد بيشق طريقه لحاله.',
+    text2: 'هدفنا نجمع هاي الطاقات بمكان واحد، وين ما كانوا اليوم: بالبلد، أو نازحين، أو برا. بنتعلم من بعض، وبنلاقي فرص لبعض، وبنشتغل على مشاريع بتحمل اسم بيت لاهيا.',
+    points: ['من أبناء بيت لاهيا ولأبنائها', 'لكل المستويات، من التوجيهي لسوق العمل', 'شغل جماعي على مشاريع حقيقية'],
+  },
   goalsHead: {
     title: 'أهدافنا',
     text: 'ستة محاور بنشتغل عليها مع بعض، من أول خطوة بالتوجيهي لحد أول شغل.',
@@ -39,6 +45,10 @@ export const DEFAULT_CONTENT = {
     title: 'معرض الصور',
     text: 'لحظات من لقاءات وأنشطة المجتمع.',
   },
+  membersHead: {
+    title: 'أعضاء المجتمع',
+    text: 'وجوه من مجتمعنا: ناس بيتعلموا، وبيشتغلوا، وبيساعدوا اللي بعدهم.',
+  },
   fieldsHead: {
     title: 'مجالات بنجمعها',
     text: 'لما تسجّل مجالك بنعرف شو الخبرات الموجودة، وعلى أساسها بنبني المجموعات والفرق.',
@@ -63,6 +73,7 @@ export const DEFAULT_CONTENT = {
 
 export const DEFAULT_SETTINGS = {
   registrationOpen: true,
+  showMembers: false, // the «أعضاء المجتمع» section stays hidden until /admin › الأعضاء turns it on
   closedMessage: 'التسجيل مسكّر حالياً. تابعنا، رح نفتحه قريباً.',
   whatsappGroup: '', // https://chat.whatsapp.com/… — shown after a successful registration
   contactWhatsapp: '+972599341871', // "contact us" in the footer and on /privacy (used whenever /admin leaves it empty)

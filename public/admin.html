@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=11">
-  <link rel="stylesheet" href="/admin.css?v=11">
-  <script type="module" src="/admin.js?v=11"></script>
+  <link rel="stylesheet" href="/styles.css?v=12">
+  <link rel="stylesheet" href="/admin.css?v=12">
+  <script type="module" src="/admin.js?v=12"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -90,6 +90,7 @@
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
         <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false">المعرض</button>
+        <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false">الأعضاء</button>
         <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false">التواصل</button>
         <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
       </nav>
@@ -290,6 +291,69 @@
           <p class="muted small" id="gallery-progress" aria-live="polite"></p>
           <ul class="gallery-admin" id="gallery-list"></ul>
           <p class="empty" id="gallery-empty" hidden>ما في صور لسا.</p>
+        </div>
+      </section>
+
+      <!-- Team / community members -->
+      <section id="tab-team" role="tabpanel" aria-labelledby="tab-btn-team" hidden>
+        <div class="tab-intro">
+          <h2>أعضاء المجتمع</h2>
+          <p class="muted">ناس بتختار تعرضهم بسكشن «أعضاء المجتمع» بالصفحة الرئيسية. هدول مش التسجيلات: بتضيفهم بإيدك، وبعد ما ياخدوا موافقتهم.</p>
+        </div>
+        <div class="panel team-toggle">
+          <label class="switch">
+            <input type="checkbox" id="team-show">
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span id="team-show-label">السكشن مخفي من الموقع</span>
+          </label>
+          <p class="muted small" id="team-show-note"></p>
+        </div>
+        <div class="events-layout">
+          <form class="panel" id="team-form" novalidate>
+            <h2 id="team-form-title">عضو جديد</h2>
+            <div class="team-photo-row">
+              <span class="member-photo" id="tm-photo-preview" aria-hidden="true">؟</span>
+              <div class="team-photo-actions">
+                <label class="btn btn-ghost-dark btn-sm file-btn">
+                  <input type="file" id="tm-photo" accept="image/jpeg,image/png,image/webp">
+                  <span>اختار صورة</span>
+                </label>
+                <button class="link-btn" type="button" id="tm-photo-remove" hidden>شيل الصورة</button>
+                <p class="muted small">الصورة اختيارية، وبتنقص لمربع وبتتصغّر تلقائياً. بدونها بيطلع أول حرف من الاسم.</p>
+              </div>
+            </div>
+            <div class="field">
+              <label for="tm-name">الاسم <span class="req" aria-hidden="true">*</span></label>
+              <input id="tm-name" type="text" maxlength="80" required>
+            </div>
+            <div class="field">
+              <label for="tm-role">الدور أو التخصص <span class="optional">(اختياري)</span></label>
+              <input id="tm-role" type="text" maxlength="80" placeholder="مثال: مطوّر Flutter، أو منسّق المجتمع">
+            </div>
+            <div class="field">
+              <label for="tm-bio">نبذة قصيرة <span class="optional">(اختياري، لحد 200 حرف)</span></label>
+              <textarea id="tm-bio" rows="3" maxlength="200"></textarea>
+            </div>
+            <div class="field">
+              <label for="tm-link">رابط <span class="optional">(اختياري: لينكدإن، GitHub، بورتفوليو…)</span></label>
+              <input id="tm-link" type="url" dir="ltr" maxlength="300" placeholder="linkedin.com/in/…">
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="tm-published" checked>
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span>منشور</span>
+            </label>
+            <p class="error" id="team-error" role="alert"></p>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit" id="team-save"><span class="btn-label">أضف</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark" type="button" id="team-cancel" hidden>إلغاء التعديل</button>
+            </div>
+          </form>
+          <div class="panel">
+            <h2>الأعضاء</h2>
+            <ul class="team-list" id="team-list"></ul>
+            <p class="empty" id="team-empty" hidden>ما في أعضاء لسا. أضف أول واحد من النموذج.</p>
+          </div>
         </div>
       </section>
 

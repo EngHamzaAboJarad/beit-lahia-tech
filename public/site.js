@@ -3,7 +3,8 @@
 // 2) start the motion, 3) only after the page has loaded and the browser is idle, fetch fresh content
 // from Firestore in the background and update what changed.
 import { getDbLite } from './firebase-init.js';
-import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES, renderFooterLinks } from './content-defaults.js';
+import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES, renderFooterLinks, socialInfo } from './content-defaults.js';
+import { iconSvg } from './icons.js';
 import { LINES } from './motivation.js';
 import { track } from './track.js';
 
@@ -278,6 +279,8 @@ function renderContent(c) {
       h('span', { class: 'jnode', 'aria-hidden': 'true' }, h('i')),
       h('span', { class: 'stage' }, pad(i + 1)), h('h3', {}, s.title), h('p', {}, s.text))));
   }
+  const points = document.getElementById('about-points');
+  if (points && c.about.points.length) points.replaceChildren(...c.about.points.filter(Boolean).map((t) => h('li', {}, t)));
   const fields = document.getElementById('fields-list');
   if (fields && c.fields.length) fields.replaceChildren(...c.fields.filter(Boolean).map((t) => h('li', {}, t)));
   const faq = document.getElementById('faq-list');
@@ -332,6 +335,36 @@ function renderSettings(s, content) {
     eyebrow.closest('.eyebrow')?.classList.toggle('is-closed', !open);
   }
   renderFooterLinks(document.getElementById('footer-social'), s);
+}
+
+/* ---------- Members (hidden until /admin › الأعضاء turns the section on) ---------- */
+const isPhoto = (s) => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(s);
+function renderMembers(list, show) {
+  const section = document.getElementById('members');
+  const grid = document.getElementById('members-grid');
+  const nav = document.getElementById('nav-members');
+  if (!section || !grid) return;
+  const on = !!show && list.length > 0;
+  section.hidden = !on;
+  if (nav) nav.hidden = !on;
+  if (!on) return;
+  grid.setAttribute('data-stagger', '');
+  grid.replaceChildren(...list.map((m) => {
+    const link = safeUrl(m.link);
+    const info = link ? socialInfo(link) : null;
+    const photo = isPhoto(m.photo)
+      ? h('img', { class: 'member-photo', src: m.photo, alt: '', width: 96, height: 96, loading: 'lazy', decoding: 'async' })
+      : h('span', { class: 'member-photo', 'aria-hidden': 'true' }, [...String(m.name).trim()][0] || '؟');
+    let linkEl = null;
+    if (link && info) {
+      linkEl = h('a', { class: 'member-link', href: link, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${m.name} على ${info.name}`, title: info.name });
+      linkEl.append(iconSvg(info.icon));
+    }
+    return h('article', { class: 'member-card' }, photo, h('h3', {}, m.name),
+      m.role ? h('p', { class: 'member-role' }, m.role) : null,
+      m.bio ? h('p', { class: 'member-bio' }, m.bio) : null,
+      linkEl);
+  }));
 }
 
 /* ---------- Gallery (hidden until the admin publishes photos) ---------- */
@@ -410,11 +443,12 @@ function applyLive(live) {
 
 async function fetchLive() {
   const { db, fs } = await getDbLite();
-  const [contentSnap, settingsSnap, eventsSnap, gallerySnap] = await Promise.all([
+  const [contentSnap, settingsSnap, eventsSnap, gallerySnap, teamSnap] = await Promise.all([
     fs.getDoc(fs.doc(db, 'site', 'content')).catch(() => null),
     fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null),
     fs.getDocs(fs.query(fs.collection(db, 'events'), fs.where('published', '==', true))).catch(() => null),
     fs.getDocs(fs.query(fs.collection(db, 'gallery'), fs.where('published', '==', true))).catch(() => null),
+    fs.getDocs(fs.query(fs.collection(db, 'team'), fs.where('published', '==', true))).catch(() => null),
   ]);
   const plain = (snap) => {
     if (!snap || !snap.exists()) return null;
@@ -431,7 +465,9 @@ async function fetchLive() {
   };
   const gallery = gallerySnap ? gallerySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)) : [];
-  return { live, gallery };
+  const team = teamSnap ? teamSnap.docs.map((d) => d.data())
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0)) : [];
+  return { live, gallery, team };
 }
 
 // 1) last-known content from this browser: shows instantly, no network
@@ -448,11 +484,12 @@ const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : w
 afterLoad(async () => {
   track('home');
   try {
-    const { live, gallery } = await fetchLive();
+    const { live, gallery, team } = await fetchLive();
     if (JSON.stringify(live) !== JSON.stringify(cached)) {
       applyLive(live);
       writeCache(live);
     }
+    renderMembers(team, live.settings?.showMembers === true);
     renderGallery(gallery);
     setupReveals();
     journey.refresh();

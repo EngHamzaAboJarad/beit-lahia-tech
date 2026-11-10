@@ -269,3 +269,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   .social-layout { grid-template-columns: 1fr; }
   .social-side { position: static; order: -1; }
 }
+
+/* Team (community members) tab */
+.team-toggle { display: grid; gap: 4px; margin-bottom: 18px; }
+.team-photo-row { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+.team-photo-row .member-photo { margin: 0; flex: none; }
+.team-photo-actions { display: grid; gap: 6px; justify-items: start; }
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-btn:focus-within { outline: 3px solid var(--emerald); outline-offset: 2px; }
+.team-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.team-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.team-row.is-draft { background: #FAFAF7; border-style: dashed; }
+.team-row .member-photo { margin: 0; box-shadow: none; }
+.team-row-info { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.team-row-info strong { font-family: var(--font-head); }
+.team-row-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }

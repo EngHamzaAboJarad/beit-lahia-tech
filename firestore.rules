@@ -99,6 +99,25 @@ service cloud.firestore {
         && (!('link' in d) || (isStr(d.link, 0, 500) && (d.link == '' || d.link.matches('^https?://.+'))));
     }
 
+    // ---------- أعضاء المجتمع (سكشن «الأعضاء» بالصفحة الرئيسية) ----------
+    // ناس بيضيفهم الأدمن يدوياً؛ الزوار بيشوفوا المنشورين بس. ظهور السكشن نفسه بيتحكم فيه site/settings.showMembers.
+    match /team/{memberId} {
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update: if isAdmin() && isValidTeamMember(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    function isValidTeamMember(d) {
+      return d.keys().hasOnly(['name', 'role', 'bio', 'link', 'photo', 'order', 'published', 'createdAt', 'updatedAt'])
+        && isStr(d.name, 1, 80)
+        && d.published is bool
+        && (!('role' in d) || isStr(d.role, 0, 80))
+        && (!('bio' in d) || isStr(d.bio, 0, 200))
+        && (!('link' in d) || (isStr(d.link, 0, 300) && (d.link == '' || d.link.matches('^https?://[^\\s]+$'))))
+        && (!('photo' in d) || d.photo == '' || (isStr(d.photo, 30, 90000) && d.photo.matches('^data:image/(jpeg|png|webp);base64,.*')))
+        && (!('order' in d) || d.order is int);
+    }
+
     // ---------- معرض الصور ----------
     // gallery: الصورة المصغّرة + الوصف (الزوار بيشوفوا المنشور بس)
     match /gallery/{photoId} {

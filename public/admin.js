@@ -135,7 +135,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'stats', 'content', 'events', 'gallery', 'social', 'settings'];
+const TABS = ['members', 'stats', 'content', 'events', 'gallery', 'team', 'social', 'settings'];
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -165,6 +165,7 @@ function boot() {
   loadContent();
   loadEvents();
   loadGallery();
+  loadTeam();
   loadSettings();
 }
 
@@ -499,11 +500,16 @@ const SCHEMA = [
     ['hero.eyebrow', 'السطر الصغير فوق العنوان'], ['hero.titleLead', 'العنوان'],
     ['hero.titleAccent', 'الجزء الملوّن من العنوان'], ['hero.lead', 'الوصف', 'textarea'],
   ] },
+  { title: 'من نحن', fields: [
+    ['about.title', 'العنوان'], ['about.text', 'الفقرة الأولى (بخط أكبر)', 'textarea'], ['about.text2', 'الفقرة الثانية', 'textarea'],
+    ['about.points', 'النقاط اللي جنب النص (كل نقطة بسطر)', 'lines'],
+  ] },
   { title: 'الأهداف', fields: [['goalsHead.title', 'عنوان السكشن'], ['goalsHead.text', 'وصف السكشن', 'textarea']],
     list: { path: 'goals', label: 'هدف', add: 'أضف هدف', min: 1, max: 12, item: [['title', 'العنوان'], ['text', 'النص', 'textarea']] } },
   { title: 'رحلة العضو (لمين المجتمع)', fields: [['journeyHead.title', 'عنوان السكشن'], ['journeyHead.text', 'وصف السكشن', 'textarea']],
     list: { path: 'journey', label: 'محطة', add: 'أضف محطة', min: 2, max: 6, item: [['title', 'العنوان'], ['text', 'النص', 'textarea']] } },
   { title: 'سكشن الفعاليات', note: 'الفعاليات نفسها بتضيفها من تبويب «الفعاليات».', fields: [['eventsHead.title', 'عنوان السكشن'], ['eventsHead.text', 'وصف السكشن']] },
+  { title: 'سكشن الأعضاء', note: 'الأعضاء نفسهم، وإظهار السكشن أو إخفاؤه، من تبويب «الأعضاء».', fields: [['membersHead.title', 'عنوان السكشن'], ['membersHead.text', 'وصف السكشن']] },
   { title: 'سكشن المعرض', note: 'الصور نفسها بترفعها من تبويب «المعرض».', fields: [['galleryHead.title', 'عنوان السكشن'], ['galleryHead.text', 'وصف السكشن']] },
   { title: 'المجالات', fields: [['fieldsHead.title', 'عنوان السكشن'], ['fieldsHead.text', 'وصف السكشن', 'textarea'], ['fields', 'المجالات (كل مجال بسطر)', 'lines']] },
   { title: 'الدعوة للتسجيل', fields: [['cta.title', 'العنوان'], ['cta.text', 'النص'], ['cta.button', 'نص الزر']] },
@@ -846,6 +852,187 @@ async function deletePhoto(p) {
   } catch (e) { toast(errMsg(e), true); }
 }
 
+/* =================== Team (community members on the home page) =================== */
+// team/{id} → name, role, bio, link, photo (small square data URL), order, published.
+// The section only shows when site/settings.showMembers is on AND at least one member is published.
+let team = [];
+let teamEditing = null;
+let teamPhoto = '';
+let showMembers = false;
+
+const firstLetter = (name) => [...String(name || '').trim()][0] || '؟';
+function teamAvatar(m, size) {
+  const style = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size / 3)}px;border-radius:${Math.round(size / 4)}px` : null;
+  return m.photo
+    ? h('img', { class: 'member-photo', src: m.photo, alt: '', style })
+    : h('span', { class: 'member-photo', 'aria-hidden': 'true', style }, firstLetter(m.name));
+}
+
+function syncTeamToggle() {
+  const published = team.filter((m) => m.published).length;
+  $('team-show').checked = showMembers;
+  $('team-show-label').textContent = showMembers ? 'السكشن ظاهر على الموقع' : 'السكشن مخفي من الموقع';
+  $('team-show-note').textContent = !showMembers
+    ? 'السكشن مخفي. جهّز الأعضاء براحتك، وفعّله لما تكون جاهز.'
+    : published
+      ? `ظاهر على الصفحة الرئيسية، وفيه ${published} ${published === 1 ? 'عضو منشور' : 'أعضاء منشورين'}.`
+      : 'مفعّل، بس ما رح يبيّن على الموقع لحد ما تنشر عضو واحد على الأقل.';
+}
+
+async function loadTeam() {
+  try {
+    const snap = await fs.getDocs(fs.collection(db, 'team'));
+    team = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+    renderTeam();
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+function renderTeam() {
+  $('team-empty').hidden = team.length > 0;
+  $('team-list').replaceChildren(...team.map((m, i) => h('li', { class: m.published ? 'team-row' : 'team-row is-draft' },
+    teamAvatar(m, 52),
+    h('div', { class: 'team-row-info' },
+      h('strong', {}, m.name),
+      m.role ? h('span', { class: 'muted small' }, m.role) : null,
+      h('span', { class: m.published ? 'badge badge-live' : 'badge badge-draft' }, m.published ? 'منشور' : 'مسودة')),
+    h('div', { class: 'team-row-actions' },
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => editTeam(m) }, 'تعديل'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => toggleTeam(m) }, m.published ? 'إخفاء' : 'انشر'),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${m.name} لفوق`, title: 'لفوق', disabled: i === 0, onclick: () => moveTeam(i, -1) }, svgIcon(ICONS.up)),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${m.name} لتحت`, title: 'لتحت', disabled: i === team.length - 1, onclick: () => moveTeam(i, 1) }, svgIcon(ICONS.down)),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': `حذف ${m.name}`, title: 'حذف', onclick: () => deleteTeam(m) }, svgIcon(ICONS.trash))))));
+  syncTeamToggle();
+}
+
+function setTeamPhoto(src) {
+  teamPhoto = src || '';
+  const prev = $('tm-photo-preview');
+  const next = teamAvatar({ name: $('tm-name').value, photo: teamPhoto });
+  next.id = 'tm-photo-preview';
+  prev.replaceWith(next);
+  $('tm-photo-remove').hidden = !teamPhoto;
+}
+$('tm-name').addEventListener('input', () => { if (!teamPhoto) $('tm-photo-preview').textContent = firstLetter($('tm-name').value); });
+
+// centre-crop to a square and shrink until it fits the rules' size limit
+function squarePhoto(img) {
+  const side = Math.min(img.naturalWidth, img.naturalHeight);
+  const sx = (img.naturalWidth - side) / 2;
+  const sy = (img.naturalHeight - side) / 2;
+  for (let size = 320; size >= 120; size -= 40) {
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+    for (let q = 0.85; q >= 0.5; q -= 0.07) {
+      const data = c.toDataURL('image/jpeg', q);
+      if (data.length <= 85000) return data;
+    }
+  }
+  throw new Error('too-big');
+}
+$('tm-photo').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { toast('اختار صورة JPG أو PNG أو WebP', true); return; }
+  try { setTeamPhoto(squarePhoto(await loadImage(file))); } catch { toast('ما قدرت أقرأ الصورة، جرّب وحدة ثانية', true); }
+});
+$('tm-photo-remove').addEventListener('click', () => setTeamPhoto(''));
+
+function resetTeamForm() {
+  teamEditing = null;
+  $('team-form').reset();
+  $('tm-published').checked = true;
+  $('team-error').textContent = '';
+  $('team-form-title').textContent = 'عضو جديد';
+  $('team-save').querySelector('.btn-label').textContent = 'أضف';
+  $('team-cancel').hidden = true;
+  setTeamPhoto('');
+}
+function editTeam(m) {
+  teamEditing = m.id;
+  $('tm-name').value = m.name || '';
+  $('tm-role').value = m.role || '';
+  $('tm-bio').value = m.bio || '';
+  $('tm-link').value = m.link || '';
+  $('tm-published').checked = !!m.published;
+  setTeamPhoto(m.photo || '');
+  $('team-form-title').textContent = `تعديل: ${m.name}`;
+  $('team-save').querySelector('.btn-label').textContent = 'احفظ التعديل';
+  $('team-cancel').hidden = false;
+  $('team-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('tm-name').focus({ preventScroll: true });
+}
+$('team-cancel').addEventListener('click', resetTeamForm);
+
+$('team-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = $('team-error');
+  err.textContent = '';
+  const name = $('tm-name').value.trim();
+  const link = withHttps($('tm-link').value);
+  if (!name) { err.textContent = 'اكتب الاسم.'; $('tm-name').focus(); return; }
+  if (link && !safeUrl(link)) { err.textContent = 'الرابط مش صحيح.'; $('tm-link').focus(); return; }
+  const data = {
+    name,
+    role: $('tm-role').value.trim(),
+    bio: $('tm-bio').value.trim().slice(0, 200),
+    link,
+    photo: teamPhoto,
+    published: $('tm-published').checked,
+    updatedAt: fs.serverTimestamp(),
+  };
+  const btn = $('team-save');
+  setBusy(btn, true);
+  try {
+    if (teamEditing) await fs.updateDoc(fs.doc(db, 'team', teamEditing), data);
+    else await fs.addDoc(fs.collection(db, 'team'), { ...data, order: team.reduce((m, x) => Math.max(m, x.order ?? 0), -1) + 1, createdAt: fs.serverTimestamp() });
+    toast(teamEditing ? 'انحفظ التعديل' : (data.published ? 'انضاف العضو' : 'انضاف كمسودة'));
+    resetTeamForm();
+    await loadTeam();
+  } catch (e2) { err.textContent = errMsg(e2); } finally { setBusy(btn, false); }
+});
+
+async function toggleTeam(m) {
+  try {
+    await fs.updateDoc(fs.doc(db, 'team', m.id), { published: !m.published, updatedAt: fs.serverTimestamp() });
+    toast(m.published ? 'انخفى' : 'انشر');
+    await loadTeam();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function moveTeam(i, d) {
+  if (!team[i] || !team[i + d]) return;
+  try {
+    const next = [...team]; [next[i], next[i + d]] = [next[i + d], next[i]];
+    const batch = fs.writeBatch(db);
+    next.forEach((m, k) => { if ((m.order ?? null) !== k) batch.update(fs.doc(db, 'team', m.id), { order: k, updatedAt: fs.serverTimestamp() }); });
+    await batch.commit();
+    await loadTeam();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function deleteTeam(m) {
+  if (!confirm(`حذف «${m.name}» من أعضاء المجتمع؟`)) return;
+  try {
+    await fs.deleteDoc(fs.doc(db, 'team', m.id));
+    if (teamEditing === m.id) resetTeamForm();
+    toast('انحذف');
+    await loadTeam();
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+$('team-show').addEventListener('change', async (e) => {
+  const on = e.target.checked;
+  e.target.disabled = true;
+  try {
+    await fs.setDoc(fs.doc(db, 'site', 'settings'), { showMembers: on, updatedAt: fs.serverTimestamp() }, { merge: true });
+    showMembers = on;
+    toast(on ? 'سكشن الأعضاء صار ظاهر' : 'سكشن الأعضاء صار مخفي');
+  } catch (e2) { e.target.checked = !on; toast(errMsg(e2), true); } finally { e.target.disabled = false; syncTeamToggle(); }
+});
+
 /* =================== Settings =================== */
 // same rules as the registration form: Arabic digits ok, local 05x → +970
 function normalizePhone(v) {
@@ -870,6 +1057,8 @@ async function loadSettings() {
   $('set-msg').value = s.closedMessage || '';
   $('set-group').value = s.whatsappGroup || '';
   syncOpenLabel();
+  showMembers = s.showMembers === true;
+  syncTeamToggle();
   fillSocial(s);
 }
 $('settings-form').addEventListener('submit', async (e) => {
@@ -1029,12 +1218,12 @@ $('backup-btn').addEventListener('click', async () => {
   try {
     const all = async (name) => (await fs.getDocs(fs.collection(db, name))).docs.map((d) => ({ id: d.id, ...plainData(d.data()) }));
     const one = async (name, id) => { const s = await fs.getDoc(fs.doc(db, name, id)); return s.exists() ? plainData(s.data()) : null; };
-    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings] = await Promise.all([
-      all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'),
+    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings, teamAll] = await Promise.all([
+      all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'), all('team'),
     ]);
     const backup = {
       app: 'beit-lahia-tech', version: 1, exportedAt: new Date().toISOString(),
-      members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll,
+      members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll, team: teamAll,
       site: { content: siteContent, settings: siteSettings },
     };
     if ($('backup-full').checked) backup.galleryFull = await all('galleryFull');
