@@ -2,7 +2,8 @@
 // The form works the moment the page paints; the (light) Firestore SDK loads afterwards, when the
 // browser is idle or as soon as someone starts typing — whichever comes first.
 import { getDbLite as getDb } from './firebase-init.js';
-import { DEFAULT_SETTINGS } from './content-defaults.js';
+import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
+import { track } from './track.js';
 
 const COLLECTION = 'members';
 
@@ -18,15 +19,18 @@ const notes = form.elements.notes;
 const notesCount = document.getElementById('notes-count');
 
 document.getElementById('year').textContent = new Date().getFullYear();
+renderFooterLinks(document.getElementById('footer-social'), null); // default contact right away
 
 // Registration can be closed from /admin → show the message instead of the form.
 const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
 const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
 afterLoad(async () => {
+  track('join');
   try {
     const { db, fs } = await getDb();
     const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
     const s = { ...DEFAULT_SETTINGS, ...(snap.exists() ? snap.data() : {}) };
+    renderFooterLinks(document.getElementById('footer-social'), s);
     // optional WhatsApp group link, shown on the success screen
     const group = typeof s.whatsappGroup === 'string' && /^https:\/\/\S+$/.test(s.whatsappGroup.trim()) ? s.whatsappGroup.trim() : '';
     if (group) {
@@ -46,7 +50,7 @@ afterLoad(async () => {
 });
 
 // someone started filling the form → fetch the SDK now so "send" is instant
-form.addEventListener('focusin', () => { getDb().catch(() => {}); }, { once: true });
+form.addEventListener('focusin', () => { getDb().catch(() => {}); track('start'); }, { once: true });
 
 // under-18: a gentle note about telling their parents
 const minorNote = document.getElementById('minor-note');
@@ -62,6 +66,18 @@ specialty.addEventListener('change', () => {
   if (isOther) otherInput.focus();
   else clearError('specialtyOther');
 });
+
+// residence: a fixed list keeps the data clean; «غير ذلك» opens a text box
+const residence = form.elements.residence;
+const residenceOther = form.elements.residenceOther;
+residence.addEventListener('change', () => {
+  const isOther = residence.value === '__other';
+  residenceOther.hidden = !isOther;
+  residenceOther.required = isOther;
+  if (isOther) residenceOther.focus();
+});
+residenceOther.addEventListener('input', () => { if (fieldOf('residence').classList.contains('has-error')) validateField('residence'); });
+residenceOther.addEventListener('blur', () => { if (residenceOther.value) validateField('residence'); });
 
 notes.addEventListener('input', () => { notesCount.textContent = notes.value.length; });
 
@@ -139,7 +155,11 @@ const rules = {
     return '';
   },
   experience: (v) => (isTawjihi() || ['none', 'lt1', '1-2', '3-5', '5+'].includes(v) ? '' : 'اختار سنوات خبرتك'),
-  residence: (v) => (clean(v).length >= 2 ? '' : 'اكتب وين مقيم حالياً'),
+  residence: (v) => {
+    if (!v) return 'اختار وين مقيم حالياً';
+    if (v === '__other' && clean(residenceOther.value).length < 2) return 'اكتب اسم المنطقة';
+    return '';
+  },
   portfolio: (v) => (!String(v).trim() || normalizeUrl(v) ? '' : 'الرابط مش صحيح. مثال: github.com/اسمك'),
   university: (v) => (isTawjihi() || clean(v).length >= 2 ? '' : 'اكتب اسم الجامعة أو الكلية'),
   consent: () => (form.elements.consent.checked ? '' : 'لازم توافق على سياسة الخصوصية عشان نكمّل'),
@@ -213,7 +233,7 @@ form.addEventListener('submit', async (e) => {
     status: f.status.value,
     specialty: specialty.value === '__other' ? clean(otherInput.value) : specialty.value,
     age: Number(f.age.value),
-    residence: clean(f.residence.value),
+    residence: residence.value === '__other' ? clean(residenceOther.value) : residence.value,
     notes: notes.value.trim().slice(0, 1000),
     consent: true,
     source: 'web',
@@ -257,6 +277,8 @@ document.getElementById('again-btn').addEventListener('click', () => {
   Object.keys(rules).forEach(clearError);
   otherWrap.hidden = true;
   otherInput.required = false;
+  residenceOther.hidden = true;
+  residenceOther.required = false;
   minorNote.hidden = true;
   applyStatus();
   notesCount.textContent = '0';

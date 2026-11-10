@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /admin
 
-Sitemap: https://beit-lahia-tech.web.app/sitemap.xml
+Sitemap: https://beitlahia.tech/sitemap.xml

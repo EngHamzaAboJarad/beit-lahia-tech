@@ -3,8 +3,9 @@
 // 2) start the motion, 3) only after the page has loaded and the browser is idle, fetch fresh content
 // from Firestore in the background and update what changed.
 import { getDbLite } from './firebase-init.js';
-import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES } from './content-defaults.js';
+import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES, renderFooterLinks } from './content-defaults.js';
 import { LINES } from './motivation.js';
+import { track } from './track.js';
 
 const root = document.documentElement;
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -12,6 +13,7 @@ root.classList.add('js');
 
 const year = document.getElementById('year');
 if (year) year.textContent = new Date().getFullYear();
+renderFooterLinks(document.getElementById('footer-social'), null); // default contact right away; live settings refine it
 
 /* ---------- tiny DOM helper (text only — never innerHTML with data) ---------- */
 function h(tag, attrs = {}, ...kids) {
@@ -137,15 +139,17 @@ function motivationCard(svg, pixels) {
   // the ghost cursor teaches "click a pixel" until the visitor tries it once
   const ghost = document.getElementById('ghost-cursor');
   const stage = svg.parentElement;
+  const touch = window.matchMedia('(hover: none)').matches;
   let learned = false;
   const retireGhost = () => { if (learned) return; learned = true; if (ghost) ghost.classList.add('is-gone'); };
 
   const ghostClick = (px) => {
     const s = stage.getBoundingClientRect();
     const r = px.getBoundingClientRect();
-    // the arrow's tip is ~ (5px, 2px) inside its 26px box
-    ghost.style.setProperty('--x', `${r.left + r.width / 2 - s.left - 5}px`);
-    ghost.style.setProperty('--y', `${r.top + r.height / 2 - s.top - 2}px`);
+    // the arrow's tip is ~ (5px, 2px) inside its box; on touch screens the fingertip is ~ (10px, 1px)
+    const [tx, ty] = touch ? [10, 1] : [5, 2];
+    ghost.style.setProperty('--x', `${r.left + r.width / 2 - s.left - tx}px`);
+    ghost.style.setProperty('--y', `${r.top + r.height / 2 - s.top - ty}px`);
     ghost.classList.add('is-on');
     setTimeout(() => {
       if (learned) return;
@@ -327,12 +331,7 @@ function renderSettings(s, content) {
     if (eyebrow.textContent !== text) eyebrow.textContent = text;
     eyebrow.closest('.eyebrow')?.classList.toggle('is-closed', !open);
   }
-  const contact = document.getElementById('footer-contact');
-  const wa = s && typeof s.contactWhatsapp === 'string' && /^\+\d{8,15}$/.test(s.contactWhatsapp) ? s.contactWhatsapp : '';
-  if (contact) {
-    contact.hidden = !wa;
-    if (wa) contact.href = `https://wa.me/${wa.slice(1)}`;
-  }
+  renderFooterLinks(document.getElementById('footer-social'), s);
 }
 
 /* ---------- Gallery (hidden until the admin publishes photos) ---------- */
@@ -447,6 +446,7 @@ journey.refresh();
 const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(fn, 200));
 const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
 afterLoad(async () => {
+  track('home');
   try {
     const { live, gallery } = await fetchLive();
     if (JSON.stringify(live) !== JSON.stringify(cached)) {

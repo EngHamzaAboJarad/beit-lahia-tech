@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=8">
-  <link rel="stylesheet" href="/admin.css?v=8">
-  <script type="module" src="/admin.js?v=8"></script>
+  <link rel="stylesheet" href="/styles.css?v=11">
+  <link rel="stylesheet" href="/admin.css?v=11">
+  <script type="module" src="/admin.js?v=11"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -48,6 +48,8 @@
         <button class="btn btn-primary btn-block" type="submit" id="login-btn">
           <span class="btn-label">دخول</span><span class="spinner" aria-hidden="true"></span>
         </button>
+        <button class="link-btn" type="button" id="forgot-btn">نسيت كلمة السر؟</button>
+        <p class="muted small" id="forgot-msg" role="status" hidden></p>
       </form>
       <a class="back-home" href="/">الرجوع للموقع</a>
     </div>
@@ -84,9 +86,11 @@
       </div>
       <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
+        <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
         <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false">المعرض</button>
+        <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false">التواصل</button>
         <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
       </nav>
     </header>
@@ -129,10 +133,20 @@
                 <option value="yes">تواصلنا معهم</option>
               </select>
             </div>
+            <div class="field">
+              <label for="f-residence" class="visually-hidden">الإقامة</label>
+              <select id="f-residence">
+                <option value="">كل المناطق</option>
+              </select>
+            </div>
             <button class="btn btn-ghost-dark btn-sm" type="button" id="refresh-members">تحديث</button>
             <button class="btn btn-primary btn-sm" type="button" id="export-csv">تصدير Excel</button>
           </div>
-          <p class="muted small" id="members-count"></p>
+          <div class="trash-bar">
+            <p class="muted small" id="members-count"></p>
+            <button class="link-btn" type="button" id="trash-toggle" aria-pressed="false">سلة المحذوفات</button>
+          </div>
+          <p class="trash-note" id="trash-note" hidden>هاي سلة المحذوفات. التسجيلات هون مش ظاهرة بالإحصائيات ولا بالتصدير العادي، وبتنحذف نهائياً لحالها بعد 30 يوم من حذفها.</p>
           <div class="table-wrap">
             <table class="data-table">
               <thead>
@@ -155,6 +169,36 @@
             </table>
           </div>
           <p class="empty" id="members-empty" hidden>ما في تسجيلات بهاد الفلتر.</p>
+        </div>
+      </section>
+
+      <!-- Traffic -->
+      <section id="tab-stats" role="tabpanel" aria-labelledby="tab-btn-stats" hidden>
+        <div class="tab-intro stats-head">
+          <div>
+            <h2>الزيارات والتسجيل</h2>
+            <p class="muted">كل متصفح بينحسب مرة وحدة باليوم لكل صفحة. ما بنجمع أي بيانات شخصية، وزياراتك إنت كأدمن ما بتنحسب.</p>
+          </div>
+          <div class="seg" role="group" aria-label="الفترة">
+            <button type="button" data-range="7" aria-pressed="true">آخر 7 أيام</button>
+            <button type="button" data-range="30" aria-pressed="false">آخر 30 يوم</button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>من الزيارة للتسجيل</h3>
+          <ol class="funnel" id="funnel"></ol>
+          <p class="muted small" id="funnel-note"></p>
+        </div>
+        <div class="panel">
+          <h3>زيارات الصفحة الرئيسية باليوم</h3>
+          <div class="daychart-wrap">
+            <div class="daychart" id="daychart" role="img"></div>
+            <div class="chart-tip" id="chart-tip" hidden></div>
+          </div>
+          <details class="chart-table">
+            <summary>عرض كجدول</summary>
+            <div class="table-wrap"><table class="data-table" id="daytable"></table></div>
+          </details>
         </div>
       </section>
 
@@ -249,6 +293,48 @@
         </div>
       </section>
 
+      <!-- Contact & social -->
+      <section id="tab-social" role="tabpanel" aria-labelledby="tab-btn-social" hidden>
+        <div class="tab-intro">
+          <h2>التواصل والسوشيال ميديا</h2>
+          <p class="muted">كل اللي بتحطه هون بيطلع كأيقونات بفوتر الموقع. الخانة الفاضية ما بتطلع.</p>
+        </div>
+        <form class="social-layout" id="social-form" novalidate>
+          <div class="panel">
+            <h3>التواصل المباشر</h3>
+            <div class="social-fields">
+              <div class="field social-field">
+                <label for="set-contact"><span class="sf-icon" data-icon="whatsapp"></span>رقم واتساب الإدارة</label>
+                <input id="set-contact" type="tel" dir="ltr" maxlength="20" placeholder="0591234567" autocomplete="off">
+                <p class="muted small">زر «تواصل معنا» بالفوتر، وبصفحة الخصوصية لطلبات تعديل أو حذف البيانات.</p>
+                <p class="error" id="set-contact-error"></p>
+              </div>
+              <div class="field social-field">
+                <label for="set-email"><span class="sf-icon" data-icon="email"></span>إيميل التواصل <span class="optional">(اختياري)</span></label>
+                <input id="set-email" type="email" dir="ltr" maxlength="120" placeholder="info@beitlahia.tech" autocomplete="off">
+                <p class="error" id="set-email-error"></p>
+              </div>
+            </div>
+            <h3>حسابات السوشيال</h3>
+            <p class="muted small">الصق رابط الصفحة أو الحساب. ما في داعي تكتب https://</p>
+            <div class="social-fields" id="social-fields"></div>
+          </div>
+          <aside class="panel social-side">
+            <h3>هيك رح تطلع بالفوتر</h3>
+            <div class="social-preview">
+              <p class="footer-title">تابعنا وتواصل معنا</p>
+              <div class="footer-social" id="social-preview"></div>
+              <p class="social-preview-empty" id="social-preview-empty" hidden>ما في ولا وسيلة تواصل.</p>
+            </div>
+            <p class="muted small">الأيقونات بترتيب الخانات. إذا الرابط مش لمنصة من القائمة، حطه بخانة «رابط آخر»، وبتطلعله أيقونة رابط.</p>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit" id="social-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+              <span class="muted small" id="social-status" aria-live="polite"></span>
+            </div>
+          </aside>
+        </form>
+      </section>
+
       <!-- Settings -->
       <section id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings" hidden>
         <form class="panel narrow-panel" id="settings-form">
@@ -267,15 +353,18 @@
             <input id="set-group" type="url" dir="ltr" maxlength="200" placeholder="https://chat.whatsapp.com/…">
             <p class="muted small">إذا حطيته، بيطلع زر «انضم لقروب الواتساب» للشخص مباشرة بعد ما يسجّل.</p>
           </div>
-          <div class="field">
-            <label for="set-contact">رقم واتساب الإدارة للتواصل <span class="optional">(اختياري)</span></label>
-            <input id="set-contact" type="tel" dir="ltr" maxlength="20" placeholder="0591234567">
-            <p class="muted small">بيطلع كزر «تواصل معنا» بالفوتر، وبصفحة الخصوصية لطلبات تعديل أو حذف البيانات.</p>
-          </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit" id="settings-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
           </div>
         </form>
+        <div class="panel narrow-panel">
+          <h2>نسخة احتياطية</h2>
+          <p class="muted small">بتنزّل ملف فيه كل التسجيلات (مع سلة المحذوفات)، والفعاليات، ونصوص الصفحة، والإعدادات، والزيارات، وصور المعرض المصغّرة. احفظه بمكان آمن، لأنه فيه أرقام وإيميلات الأعضاء.</p>
+          <label class="check-row"><input type="checkbox" id="backup-full"> مع صور المعرض بحجمها الكامل (الملف بيصير أكبر)</label>
+          <div class="form-actions">
+            <button class="btn btn-ghost-dark" type="button" id="backup-btn"><span class="btn-label">نزّل نسخة احتياطية</span><span class="spinner" aria-hidden="true"></span></button>
+          </div>
+        </div>
       </section>
     </main>
   </div>

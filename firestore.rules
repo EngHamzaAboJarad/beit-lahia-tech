@@ -20,13 +20,34 @@ service cloud.firestore {
 
     // ---------- التسجيلات ----------
     // الزوار: إضافة تسجيل صالح بس (ولما يكون التسجيل مفتوح).
-    // الأدمن: قراءة، حذف، وتعليم «تواصلنا» فقط.
+    // الأدمن: قراءة، حذف، تعليم «تواصلنا»، ونقل لسلة المحذوفات (deletedAt) أو استرجاع منها.
     match /members/{memberId} {
       allow create: if registrationOpen() && isValidMember(request.resource.data);
       allow read, delete: if isAdmin();
       allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contacted'])
-        && request.resource.data.contacted is bool;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contacted', 'deletedAt'])
+        && request.resource.data.get('contacted', false) is bool
+        && (!('deletedAt' in request.resource.data) || request.resource.data.deletedAt == request.time);
+    }
+
+    // ---------- عدّاد الزيارات ----------
+    // stats/{YYYY-MM-DD}: أرقام بس (home / join / start). الزائر بيقدر يزيد رقم واحد بـ 1 كل مرة، والأدمن بس بيقرأ.
+    match /stats/{day} {
+      allow read: if isAdmin();
+      allow create: if day.matches('^20[0-9]{2}-[01][0-9]-[0-3][0-9]$')
+        && request.resource.data.keys().hasOnly(['home', 'join', 'start'])
+        && request.resource.data.size() == 1
+        && request.resource.data.get('home', 1) == 1
+        && request.resource.data.get('join', 1) == 1
+        && request.resource.data.get('start', 1) == 1;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['home', 'join', 'start'])
+        && request.resource.data.diff(resource.data).affectedKeys().size() == 1
+        && bumped('home') && bumped('join') && bumped('start');
+    }
+
+    function bumped(k) {
+      return request.resource.data.get(k, 0) == resource.data.get(k, 0)
+        || request.resource.data.get(k, 0) == resource.data.get(k, 0) + 1;
     }
 
     function isValidMember(d) {

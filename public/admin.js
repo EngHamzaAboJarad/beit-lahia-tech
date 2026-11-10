@@ -1,6 +1,8 @@
 // Beit Lahia Tech — admin dashboard
 import { getDb, getAuth } from './firebase-init.js';
-import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl } from './content-defaults.js';
+import { gazaDay } from './track.js';
+import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, isEmail, SOCIAL_PLATFORMS, socialInfo, renderFooterLinks } from './content-defaults.js';
+import { iconSvg } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -69,6 +71,7 @@ au.onAuthStateChanged(auth, async (user) => {
     return;
   }
   $('admin-email').textContent = user.email || '';
+  try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
   show('view-app');
   if (!booted) { booted = true; boot(); }
 });
@@ -94,6 +97,33 @@ $('login-form').addEventListener('submit', async (e) => {
   } finally { setBusy(btn, false); }
 });
 
+$('forgot-btn').addEventListener('click', async () => {
+  const msg = $('forgot-msg');
+  const err = $('login-error');
+  err.textContent = '';
+  msg.hidden = true;
+  const email = $('login-email').value.trim();
+  if (!isEmail(email.toLowerCase())) { err.textContent = 'اكتب إيميلك فوق، وبعدين اضغط «نسيت كلمة السر».'; $('login-email').focus(); return; }
+  const btn = $('forgot-btn');
+  btn.disabled = true;
+  try {
+    await au.sendPasswordResetEmail(auth, email);
+    msg.textContent = 'إذا الإيميل مسجّل كأدمن، رح يوصلك رابط لتغيير كلمة السر خلال دقائق. شيّك كمان على الـ Spam.';
+    msg.hidden = false;
+  } catch (e2) {
+    const code = e2 && e2.code;
+    if (code === 'auth/user-not-found') { // don't reveal which emails exist
+      msg.textContent = 'إذا الإيميل مسجّل كأدمن، رح يوصلك رابط لتغيير كلمة السر خلال دقائق. شيّك كمان على الـ Spam.';
+      msg.hidden = false;
+    } else {
+      err.textContent = code === 'auth/too-many-requests' ? 'طلبات كثير. استنى شوي وجرّب.'
+        : code === 'auth/network-request-failed' ? 'ما في اتصال بالإنترنت.'
+        : code === 'auth/invalid-email' ? 'الإيميل مش صحيح.'
+        : 'ما قدرت أبعت الرابط. جرّب كمان مرة.';
+    }
+  } finally { btn.disabled = false; }
+});
+
 document.querySelectorAll('[data-signout]').forEach((b) => b.addEventListener('click', async () => {
   if (content.dirty && !confirm('في تعديلات على المحتوى مش محفوظة. بدك تطلع؟')) return;
   content.dirty = false;
@@ -105,7 +135,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'content', 'events', 'gallery', 'settings'];
+const TABS = ['members', 'stats', 'content', 'events', 'gallery', 'social', 'settings'];
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -131,6 +161,7 @@ function boot() {
   const hash = location.hash.slice(1);
   selectTab(TABS.includes(hash) ? hash : 'members');
   loadMembers();
+  loadTraffic();
   loadContent();
   loadEvents();
   loadGallery();
@@ -138,19 +169,59 @@ function boot() {
 }
 
 /* =================== Members =================== */
-let members = [];
+// Deleting moves a registration to the trash (deletedAt); it's purged for good 30 days later.
+let allMembers = [];
+let members = []; // active (not in the trash)
+let trash = [];
+let showTrash = false;
+const TRASH_DAYS = 30;
 
 async function loadMembers() {
   $('members-count').textContent = 'جاري التحميل…';
   try {
     const snap = await fs.getDocs(fs.query(fs.collection(db, 'members'), fs.orderBy('createdAt', 'desc')));
-    members = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    allMembers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    await purgeOldTrash();
+    splitMembers();
+    fillResidenceFilter();
     renderStats();
     renderMembers();
+    renderTraffic();
   } catch (e) {
     console.error(e);
     $('members-count').textContent = errMsg(e);
   }
+}
+
+function splitMembers() {
+  members = allMembers.filter((m) => !m.deletedAt);
+  trash = allMembers.filter((m) => m.deletedAt)
+    .sort((a, b) => (b.deletedAt?.toMillis?.() || 0) - (a.deletedAt?.toMillis?.() || 0));
+  $('trash-toggle').textContent = showTrash ? '← رجوع للتسجيلات' : `سلة المحذوفات (${trash.length})`;
+  $('trash-toggle').setAttribute('aria-pressed', String(showTrash));
+  $('trash-note').hidden = !showTrash;
+}
+
+async function purgeOldTrash() {
+  const cutoff = Date.now() - TRASH_DAYS * 864e5;
+  const old = allMembers.filter((m) => m.deletedAt?.toMillis?.() && m.deletedAt.toMillis() < cutoff);
+  if (!old.length) return;
+  try {
+    const batch = fs.writeBatch(db);
+    old.slice(0, 450).forEach((m) => batch.delete(fs.doc(db, 'members', m.id)));
+    await batch.commit();
+    const gone = new Set(old.slice(0, 450).map((m) => m.id));
+    allMembers = allMembers.filter((m) => !gone.has(m.id));
+  } catch (e) { console.warn('[trash purge]', e); }
+}
+
+function fillResidenceFilter() {
+  const sel = $('f-residence');
+  const current = sel.value;
+  const counts = members.reduce((acc, m) => { if (m.residence) acc[m.residence] = (acc[m.residence] || 0) + 1; return acc; }, {});
+  const places = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b, 'ar'));
+  sel.replaceChildren(h('option', { value: '' }, 'كل المناطق'), ...places.map((p) => h('option', { value: p }, `${p} (${counts[p]})`)));
+  sel.value = places.includes(current) ? current : '';
 }
 
 function renderStats() {
@@ -173,8 +244,10 @@ function filtered() {
   const st = $('f-status').value;
   const ex = $('f-exp').value;
   const ct = $('f-contacted').value;
-  return members.filter((m) => {
+  const rs = $('f-residence').value;
+  return (showTrash ? trash : members).filter((m) => {
     if (st && m.status !== st) return false;
+    if (rs && m.residence !== rs) return false;
     if (ex && m.experience !== ex) return false;
     if (ct === 'yes' && !m.contacted) return false;
     if (ct === 'no' && m.contacted) return false;
@@ -192,7 +265,9 @@ function renderMembers() {
   const rows = filtered();
   // same WhatsApp number registered more than once → flag it
   const seen = members.reduce((m, x) => { if (x.whatsapp) m[x.whatsapp] = (m[x.whatsapp] || 0) + 1; return m; }, {});
-  $('members-count').textContent = `${rows.length} من ${members.length} تسجيل`;
+  const pool = showTrash ? trash : members;
+  $('members-count').textContent = showTrash ? `${rows.length} من ${pool.length} بسلة المحذوفات` : `${rows.length} من ${pool.length} تسجيل`;
+  $('members-empty').textContent = showTrash ? 'سلة المحذوفات فاضية.' : 'ما في تسجيلات بهاد الفلتر.';
   $('members-empty').hidden = rows.length > 0;
   $('members-body').replaceChildren(...rows.map((m) => {
     const tr = h('tr', { class: m.contacted ? 'is-contacted' : '' },
@@ -218,13 +293,23 @@ function renderMembers() {
         type: 'checkbox', class: 'check', checked: !!m.contacted, 'aria-label': `تواصلنا مع ${m.name}`,
         onchange: (e) => setContacted(m, e.target.checked, tr, e.target),
       })),
-      h('td', {}, h('button', {
-        type: 'button', class: 'icon-btn', 'aria-label': `حذف تسجيل ${m.name}`, title: 'حذف',
-        onclick: () => deleteMember(m),
-      }, svgIcon(ICONS.trash))));
+      h('td', { class: 'cell-actions' }, showTrash
+        ? [
+          h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => restoreMember(m) }, 'استرجاع'),
+          h('button', {
+            type: 'button', class: 'icon-btn danger', 'aria-label': `حذف ${m.name} نهائياً`, title: 'حذف نهائي',
+            onclick: () => purgeMember(m),
+          }, svgIcon(ICONS.trash)),
+        ]
+        : h('button', {
+          type: 'button', class: 'icon-btn', 'aria-label': `نقل تسجيل ${m.name} لسلة المحذوفات`, title: 'حذف (لسلة المحذوفات)',
+          onclick: () => deleteMember(m),
+        }, svgIcon(ICONS.trash))));
     return tr;
   }));
 }
+
+const refreshMembers = () => { splitMembers(); fillResidenceFilter(); renderStats(); renderMembers(); renderTraffic(); };
 
 async function setContacted(m, value, tr, box) {
   box.disabled = true;
@@ -240,16 +325,39 @@ async function setContacted(m, value, tr, box) {
 }
 
 async function deleteMember(m) {
-  if (!confirm(`حذف تسجيل «${m.name}» نهائياً؟ ما بتقدر ترجّعه.`)) return;
+  if (!confirm(`نقل تسجيل «${m.name}» لسلة المحذوفات؟ بتقدر ترجّعه خلال ${TRASH_DAYS} يوم.`)) return;
+  try {
+    await fs.updateDoc(fs.doc(db, 'members', m.id), { deletedAt: fs.serverTimestamp() });
+    m.deletedAt = fs.Timestamp.now();
+    refreshMembers();
+    toast('انتقل لسلة المحذوفات');
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function restoreMember(m) {
+  try {
+    await fs.updateDoc(fs.doc(db, 'members', m.id), { deletedAt: fs.deleteField() });
+    delete m.deletedAt;
+    refreshMembers();
+    toast('رجع التسجيل');
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function purgeMember(m) {
+  if (!confirm(`حذف «${m.name}» نهائياً؟ هاي ما بترجع.`)) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'members', m.id));
-    members = members.filter((x) => x.id !== m.id);
-    renderStats(); renderMembers();
-    toast('انحذف التسجيل');
+    allMembers = allMembers.filter((x) => x.id !== m.id);
+    refreshMembers();
+    toast('انحذف نهائياً');
   } catch (e) { toast(errMsg(e), true); }
 }
 
-['f-search', 'f-status', 'f-exp', 'f-contacted'].forEach((id) => $(id).addEventListener('input', renderMembers));
+$('trash-toggle').addEventListener('click', () => {
+  showTrash = !showTrash;
+  splitMembers();
+  renderMembers();
+});
+
+['f-search', 'f-status', 'f-exp', 'f-contacted', 'f-residence'].forEach((id) => $(id).addEventListener('input', renderMembers));
 $('refresh-members').addEventListener('click', loadMembers);
 
 $('export-csv').addEventListener('click', () => {
@@ -270,6 +378,120 @@ $('export-csv').addEventListener('click', () => {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
+
+/* =================== Traffic =================== */
+// stats/{YYYY-MM-DD} = { home, join, start } (counted by track.js); registrations come from members.
+let traffic = {};
+let range = 7;
+const dayFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const num = (n) => new Intl.NumberFormat('en-US').format(n);
+
+function lastDays(n) {
+  const out = [];
+  const today = new Date(`${gazaDay()}T12:00:00Z`);
+  for (let i = n - 1; i >= 0; i--) out.push(new Date(today.getTime() - i * 864e5).toISOString().slice(0, 10));
+  return out;
+}
+
+async function loadTraffic() {
+  try {
+    const from = lastDays(30)[0];
+    const snap = await fs.getDocs(fs.query(fs.collection(db, 'stats'), fs.where(fs.documentId(), '>=', from)));
+    traffic = Object.fromEntries(snap.docs.map((d) => [d.id, d.data()]));
+  } catch (e) {
+    console.warn('[traffic]', e);
+    $('funnel-note').textContent = errMsg(e);
+  }
+  renderTraffic();
+}
+
+function renderTraffic() {
+  const days = lastDays(range);
+  const signupsByDay = {};
+  members.forEach((m) => {
+    if (!m.createdAt) return;
+    const d = gazaDay(m.createdAt.toDate());
+    signupsByDay[d] = (signupsByDay[d] || 0) + 1;
+  });
+  const rows = days.map((d) => ({
+    day: d,
+    home: traffic[d]?.home || 0,
+    join: traffic[d]?.join || 0,
+    start: traffic[d]?.start || 0,
+    signups: signupsByDay[d] || 0,
+  }));
+  const sum = (k) => rows.reduce((s, r) => s + r[k], 0);
+  // registrations only count from the first day the visit counter ran, so the funnel compares like with like
+  const firstTracked = Object.keys(traffic).sort()[0];
+  const trackedSignups = firstTracked ? rows.filter((r) => r.day >= firstTracked).reduce((s, r) => s + r.signups, 0) : 0;
+  const steps = [
+    ['زاروا الصفحة الرئيسية', sum('home')],
+    ['فتحوا صفحة التسجيل', sum('join')],
+    ['بلّشوا يعبّوا الفورم', sum('start')],
+    ['سجّلوا', trackedSignups],
+  ];
+  const max = Math.max(1, ...steps.map((s) => s[1]));
+  $('funnel').replaceChildren(...steps.map(([label, value], i) => {
+    const prev = i > 0 ? steps[i - 1][1] : 0;
+    // "% of the step before" only means something while it stays ≤ 100 (a direct link to /join skips the home page)
+    const pct = i > 0 && prev > 0 && value <= prev ? Math.round((value / prev) * 100) : null;
+    return h('li', { class: 'funnel-row' },
+      h('div', { class: 'funnel-label' }, h('span', {}, label),
+        h('span', { class: 'funnel-value' }, num(value), pct != null ? h('small', {}, ` · ${pct}% من اللي قبل`) : null)),
+      h('div', { class: 'funnel-track' }, h('i', { style: `width:${value ? Math.max(1.5, (value / max) * 100) : 0}%` })));
+  }));
+  const joined = sum('join');
+  $('funnel-note').textContent = !joined
+    ? 'لسا ما في زيارات بهاي الفترة. العدّاد بيشتغل من يوم ما ينرفع الموقع بالنسخة الجديدة.'
+    : trackedSignups <= joined
+      ? `من كل 100 شخص فتحوا صفحة التسجيل، سجّل ${Math.round((trackedSignups / joined) * 100)}.`
+      : 'التسجيلات أكثر من زيارات صفحة التسجيل، لأنه في تسجيلات صارت قبل ما يشتغل العدّاد. النسبة بتصير دقيقة بعد كم يوم.';
+
+  // daily bars: one series (home-page visits); the tooltip shows the rest of that day
+  const chart = $('daychart');
+  const peak = Math.max(1, ...rows.map((r) => r.home));
+  chart.setAttribute('aria-label', `زيارات الصفحة الرئيسية لآخر ${range} يوم، أعلى يوم ${num(peak)}`);
+  chart.style.setProperty('--n', rows.length);
+  chart.replaceChildren(
+    h('span', { class: 'daychart-max', 'aria-hidden': 'true' }, num(peak)),
+    ...rows.map((r, i) => {
+      const label = dayFmt.format(new Date(`${r.day}T12:00:00Z`));
+      const col = h('div', { class: 'daycol', tabindex: 0, 'data-i': i, 'aria-label': `${label}: ${r.home} زيارة، ${r.signups} تسجيل` },
+        h('i', { style: `height:${r.home ? Math.max(2, (r.home / peak) * 100) : 0}%` }));
+      const showAxis = i === 0 || i === rows.length - 1 || (rows.length > 7 && i === Math.floor(rows.length / 2));
+      if (showAxis) col.append(h('span', { class: 'daycol-x' }, label));
+      return col;
+    }));
+  const tip = $('chart-tip');
+  const showTip = (col) => {
+    const r = rows[Number(col.dataset.i)];
+    tip.replaceChildren(
+      h('strong', {}, dayFmt.format(new Date(`${r.day}T12:00:00Z`))),
+      h('span', {}, `الرئيسية: ${num(r.home)}`), h('span', {}, `صفحة التسجيل: ${num(r.join)}`),
+      h('span', {}, `بلّشوا يعبّوا: ${num(r.start)}`), h('span', {}, `سجّلوا: ${num(r.signups)}`));
+    tip.hidden = false;
+    const wrap = chart.parentElement.getBoundingClientRect();
+    const c = col.getBoundingClientRect();
+    const x = Math.min(Math.max(c.left + c.width / 2 - wrap.left, 70), wrap.width - 70);
+    tip.style.left = `${x}px`;
+  };
+  chart.onpointerover = (e) => { const col = e.target.closest('.daycol'); if (col) showTip(col); };
+  chart.onfocusin = (e) => { const col = e.target.closest('.daycol'); if (col) showTip(col); };
+  chart.onpointerleave = () => { tip.hidden = true; };
+  chart.onfocusout = () => { tip.hidden = true; };
+
+  $('daytable').replaceChildren(
+    h('thead', {}, h('tr', {}, ['اليوم', 'الرئيسية', 'صفحة التسجيل', 'بلّشوا يعبّوا', 'سجّلوا'].map((t) => h('th', { scope: 'col' }, t)))),
+    h('tbody', {}, [...rows].reverse().map((r) => h('tr', {},
+      h('td', {}, dayFmt.format(new Date(`${r.day}T12:00:00Z`))),
+      h('td', {}, num(r.home)), h('td', {}, num(r.join)), h('td', {}, num(r.start)), h('td', {}, num(r.signups))))));
+}
+
+document.querySelectorAll('[data-range]').forEach((b) => b.addEventListener('click', () => {
+  range = Number(b.dataset.range);
+  document.querySelectorAll('[data-range]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  renderTraffic();
+}));
 
 /* =================== Content editor =================== */
 const SCHEMA = [
@@ -637,6 +859,7 @@ function normalizePhone(v) {
 const syncOpenLabel = () => { $('set-open-label').textContent = $('set-open').checked ? 'التسجيل مفتوح' : 'التسجيل مسكّر'; };
 $('set-open').addEventListener('change', syncOpenLabel);
 
+// site/settings is shared by two tabs (التواصل / الإعدادات): each one saves only its own fields (merge).
 async function loadSettings() {
   let s = DEFAULT_SETTINGS;
   try {
@@ -646,16 +869,13 @@ async function loadSettings() {
   $('set-open').checked = s.registrationOpen !== false;
   $('set-msg').value = s.closedMessage || '';
   $('set-group').value = s.whatsappGroup || '';
-  $('set-contact').value = s.contactWhatsapp || '';
   syncOpenLabel();
+  fillSocial(s);
 }
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const group = $('set-group').value.trim();
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('set-group').focus(); return; }
-  const contactRaw = $('set-contact').value.trim();
-  const contact = normalizePhone(contactRaw);
-  if (contactRaw && !contact) { toast('رقم التواصل مش صحيح. مثال: 0591234567', true); $('set-contact').focus(); return; }
   const btn = $('settings-save');
   setBusy(btn, true);
   try {
@@ -663,9 +883,165 @@ $('settings-form').addEventListener('submit', async (e) => {
       registrationOpen: $('set-open').checked,
       closedMessage: $('set-msg').value.trim() || DEFAULT_SETTINGS.closedMessage,
       whatsappGroup: group,
-      contactWhatsapp: contact,
       updatedAt: fs.serverTimestamp(),
-    });
+    }, { merge: true });
     toast($('set-open').checked ? 'انحفظ: التسجيل مفتوح' : 'انحفظ: التسجيل مسكّر');
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
+});
+
+/* =================== Contact & social =================== */
+const SOCIAL_ROWS = [
+  ...SOCIAL_PLATFORMS.map((p) => ({ key: p.key, name: p.name, example: p.example, domain: p.domain, icon: p.key })),
+  { key: 'other1', name: 'رابط آخر', example: 'https://…', icon: 'link', other: true },
+  { key: 'other2', name: 'رابط آخر', example: 'https://…', icon: 'link', other: true },
+];
+const socialInputs = {};
+let socialDirty = false;
+
+const withHttps = (v) => { v = String(v ?? '').trim(); return !v || /^https?:\/\//i.test(v) ? v : `https://${v}`; };
+function socialError(row, raw) {
+  const url = withHttps(raw);
+  if (!url) return '';
+  let ok = false;
+  try { const u = new URL(url); ok = !!safeUrl(url) && u.hostname.includes('.'); } catch { ok = false; }
+  if (!ok) return 'الرابط مش صحيح.';
+  if (!row.other && socialInfo(url)?.icon !== row.key) return `هاد مش رابط ${row.name}. لازم يكون من ${row.domain}`;
+  return '';
+}
+function showFieldError(id, msg) {
+  const input = $(id);
+  input.closest('.field').classList.toggle('has-error', !!msg);
+  input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  $(`${id}-error`).textContent = msg;
+}
+
+function validateDirect(id) {
+  const v = $(id).value.trim();
+  const msg = id === 'set-contact'
+    ? (v && !normalizePhone(v) ? 'الرقم مش صحيح. مثال: 0591234567 أو +970591234567' : '')
+    : (v && !isEmail(v.toLowerCase()) ? 'الإيميل مش صحيح. مثال: info@beitlahia.tech' : '');
+  showFieldError(id, msg);
+  return !msg;
+}
+
+function buildSocialFields() {
+  document.querySelectorAll('.sf-icon[data-icon]').forEach((el) => el.replaceChildren(iconSvg(el.dataset.icon)));
+  $('social-fields').replaceChildren(...SOCIAL_ROWS.map((row) => {
+    const id = `soc-${row.key}`;
+    const input = h('input', { id, type: 'url', dir: 'ltr', maxlength: 300, placeholder: row.example, autocomplete: 'off' });
+    socialInputs[row.key] = input;
+    input.addEventListener('input', () => {
+      if (input.closest('.field').classList.contains('has-error')) showFieldError(id, socialError(row, input.value));
+      socialChanged();
+    });
+    input.addEventListener('blur', () => showFieldError(id, socialError(row, input.value)));
+    return h('div', { class: 'field social-field' },
+      h('label', { for: id }, h('span', { class: 'sf-icon' }, iconSvg(row.icon)), row.name),
+      input, h('p', { class: 'error', id: `${id}-error` }));
+  }));
+  ['set-contact', 'set-email'].forEach((id) => {
+    $(id).addEventListener('input', () => {
+      if ($(id).closest('.field').classList.contains('has-error')) validateDirect(id);
+      socialChanged();
+    });
+    $(id).addEventListener('blur', () => validateDirect(id));
+  });
+}
+
+function collectSocial() {
+  const email = $('set-email').value.trim().toLowerCase();
+  return {
+    contactWhatsapp: normalizePhone($('set-contact').value),
+    contactEmail: isEmail(email) ? email : '',
+    socialLinks: SOCIAL_ROWS.map((row) => withHttps(socialInputs[row.key].value))
+      .filter((u, i) => u && !socialError(SOCIAL_ROWS[i], u)),
+  };
+}
+
+function previewSocial() {
+  const preview = $('social-preview');
+  renderFooterLinks(preview, collectSocial());
+  const any = preview.children.length > 0;
+  $('social-preview-empty').hidden = any;
+  preview.closest('.social-preview').querySelector('.footer-title').hidden = !any;
+}
+
+function socialChanged() {
+  socialDirty = true;
+  $('social-status').textContent = 'في تعديلات مش محفوظة';
+  previewSocial();
+}
+
+function fillSocial(s) {
+  $('set-contact').value = s.contactWhatsapp || '';
+  $('set-email').value = s.contactEmail || '';
+  Object.values(socialInputs).forEach((i) => { i.value = ''; });
+  const links = Array.isArray(s.socialLinks) ? s.socialLinks : DEFAULT_SETTINGS.socialLinks;
+  const others = SOCIAL_ROWS.filter((r) => r.other).map((r) => socialInputs[r.key]);
+  links.forEach((url) => {
+    const key = socialInfo(url)?.icon;
+    const own = key && key !== 'link' ? socialInputs[key] : null;
+    const target = own && !own.value ? own : others.find((i) => !i.value);
+    if (target) target.value = url;
+  });
+  ['set-contact', 'set-email', ...SOCIAL_ROWS.map((r) => `soc-${r.key}`)].forEach((id) => showFieldError(id, ''));
+  socialDirty = false;
+  $('social-status').textContent = '';
+  previewSocial();
+}
+
+$('social-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const bad = [];
+  if (!validateDirect('set-contact')) bad.push('set-contact');
+  if (!validateDirect('set-email')) bad.push('set-email');
+  SOCIAL_ROWS.forEach((row) => {
+    const id = `soc-${row.key}`;
+    const msg = socialError(row, socialInputs[row.key].value);
+    showFieldError(id, msg);
+    if (msg) bad.push(id);
+  });
+  if (bad.length) { $(bad[0]).focus(); toast('في خانات بحاجة تعديل.', true); return; }
+  const btn = $('social-save');
+  setBusy(btn, true);
+  try {
+    await fs.setDoc(fs.doc(db, 'site', 'settings'), { ...collectSocial(), updatedAt: fs.serverTimestamp() }, { merge: true });
+    socialDirty = false;
+    $('social-status').textContent = 'انحفظ';
+    toast('انحفظ التواصل، وصار ظاهر بفوتر الموقع');
+  } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
+});
+window.addEventListener('beforeunload', (e) => { if (socialDirty) { e.preventDefault(); e.returnValue = ''; } });
+buildSocialFields();
+
+/* =================== Backup =================== */
+// Everything the admin can read, as one JSON file (Timestamps → ISO strings).
+const plainData = (v) => {
+  if (v && typeof v.toDate === 'function') return v.toDate().toISOString();
+  if (Array.isArray(v)) return v.map(plainData);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plainData(x)]));
+  return v;
+};
+
+$('backup-btn').addEventListener('click', async () => {
+  const btn = $('backup-btn');
+  setBusy(btn, true, 'جاري التجهيز…');
+  try {
+    const all = async (name) => (await fs.getDocs(fs.collection(db, name))).docs.map((d) => ({ id: d.id, ...plainData(d.data()) }));
+    const one = async (name, id) => { const s = await fs.getDoc(fs.doc(db, name, id)); return s.exists() ? plainData(s.data()) : null; };
+    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings] = await Promise.all([
+      all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'),
+    ]);
+    const backup = {
+      app: 'beit-lahia-tech', version: 1, exportedAt: new Date().toISOString(),
+      members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll,
+      site: { content: siteContent, settings: siteSettings },
+    };
+    if ($('backup-full').checked) backup.galleryFull = await all('galleryFull');
+    const blob = new Blob([JSON.stringify(backup, null, 1)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `beit-lahia-backup-${gazaDay()}.json` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`نزلت النسخة: ${membersAll.length} تسجيل، ${eventsAll.length} فعالية، ${galleryAll.length} صورة`);
+  } catch (e) { console.error(e); toast(errMsg(e), true); } finally { setBusy(btn, false, 'نزّل نسخة احتياطية'); }
 });

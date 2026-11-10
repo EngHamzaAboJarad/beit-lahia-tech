@@ -1,3 +1,5 @@
+import { iconSvg } from './icons.js';
+
 // النصوص الافتراضية للاندج بيج. لوحة الإدارة بتحفظ نسخة معدّلة منها في Firestore (site/content).
 // لازم تضل مطابقة للنص الموجود في index.html (اللي بيظهر قبل ما تحمّل البيانات أو بدون JavaScript).
 export const DEFAULT_CONTENT = {
@@ -63,8 +65,70 @@ export const DEFAULT_SETTINGS = {
   registrationOpen: true,
   closedMessage: 'التسجيل مسكّر حالياً. تابعنا، رح نفتحه قريباً.',
   whatsappGroup: '', // https://chat.whatsapp.com/… — shown after a successful registration
-  contactWhatsapp: '', // +970… — "contact us" in the footer and on /privacy
+  contactWhatsapp: '+972599341871', // "contact us" in the footer and on /privacy (used whenever /admin leaves it empty)
+  contactEmail: '', // shown in the footer and on /privacy
+  // https:// links (Facebook, Instagram…) shown in the footer (used whenever /admin leaves them empty)
+  socialLinks: ['https://www.facebook.com/profile.php?id=61596526973886'],
 };
+
+export const isEmail = (v) => typeof v === 'string' && v.length <= 120 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+
+/** Platforms the footer knows (order = order in /admin and in the footer). `example` is the input placeholder. */
+export const SOCIAL_PLATFORMS = [
+  { key: 'facebook', name: 'فيسبوك', domain: 'facebook.com', re: /(^|\.)(facebook|fb)\.com$/, example: 'https://facebook.com/…' },
+  { key: 'instagram', name: 'إنستغرام', domain: 'instagram.com', re: /(^|\.)instagram\.com$/, example: 'https://instagram.com/…' },
+  { key: 'linkedin', name: 'لينكدإن', domain: 'linkedin.com', re: /(^|\.)linkedin\.com$/, example: 'https://linkedin.com/company/…' },
+  { key: 'x', name: 'X (تويتر)', domain: 'x.com', re: /(^|\.)(x|twitter)\.com$/, example: 'https://x.com/…' },
+  { key: 'telegram', name: 'تيليغرام', domain: 't.me', re: /(^|\.)(t\.me|telegram\.me)$/, example: 'https://t.me/…' },
+  { key: 'youtube', name: 'يوتيوب', domain: 'youtube.com', re: /(^|\.)(youtube\.com|youtu\.be)$/, example: 'https://youtube.com/@…' },
+  { key: 'tiktok', name: 'تيك توك', domain: 'tiktok.com', re: /(^|\.)tiktok\.com$/, example: 'https://tiktok.com/@…' },
+  { key: 'github', name: 'GitHub', domain: 'github.com', re: /(^|\.)github\.com$/, example: 'https://github.com/…' },
+  { key: 'whatsapp', name: 'قناة الواتساب', domain: 'whatsapp.com', re: /(^|\.)(whatsapp\.com|wa\.me)$/, example: 'https://whatsapp.com/channel/…' },
+];
+export function socialInfo(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    const hit = SOCIAL_PLATFORMS.find((p) => p.re.test(host));
+    return hit ? { name: hit.name, icon: hit.key } : { name: host, icon: 'link' };
+  } catch { return null; }
+}
+export const socialName = (url) => socialInfo(url)?.name || '';
+
+/** The public ways to reach the community, from /admin › الإعدادات (only well-formed values). */
+export function contactLinks(s) {
+  const out = [];
+  s = s || {};
+  const wa = typeof s.contactWhatsapp === 'string' ? s.contactWhatsapp : DEFAULT_SETTINGS.contactWhatsapp; // never saved → default
+  if (/^\+\d{8,15}$/.test(wa)) {
+    out.push({ kind: 'whatsapp', icon: 'whatsapp', href: `https://wa.me/${wa.slice(1)}`, label: 'تواصل معنا على الواتساب' });
+  }
+  if (isEmail(s.contactEmail)) out.push({ kind: 'email', icon: 'email', href: `mailto:${s.contactEmail}`, label: `راسلنا: ${s.contactEmail}` });
+  const social = Array.isArray(s.socialLinks) ? s.socialLinks : DEFAULT_SETTINGS.socialLinks; // never saved → default
+  social.slice(0, 12).forEach((u) => {
+    const href = safeUrl(u);
+    const info = href && socialInfo(href);
+    if (info) out.push({ kind: 'social', icon: info.icon, href, label: info.name });
+  });
+  return out;
+}
+
+/** Fill the footer's icon row (#footer-social) with the contact and social links. */
+export function renderFooterLinks(row, s) {
+  if (!row) return;
+  const links = contactLinks(s);
+  row.replaceChildren(...links.map((l) => {
+    const a = document.createElement('a');
+    a.className = `social-btn social-${l.icon}`;
+    a.href = l.href;
+    a.setAttribute('aria-label', l.label);
+    a.title = l.label;
+    if (l.kind !== 'email') { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+    a.append(iconSvg(l.icon));
+    return a;
+  }));
+  const box = row.closest('.footer-connect');
+  if (box) box.hidden = !links.length;
+}
 
 export const EVENT_TYPES = { event: 'فعالية', course: 'دورة', announcement: 'إعلان' };
 
