@@ -25,8 +25,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap"></noscript>  <link rel="stylesheet" href="/styles.css?v=12">
-  <script type="module" src="/site.js?v=12"></script>
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap"></noscript>  <link rel="stylesheet" href="/styles.css?v=13">
+  <script type="module" src="/site.js?v=13"></script>
   <link rel="modulepreload" href="/firebase-init.js">
   <link rel="modulepreload" href="/firebase-config.js">
   <link rel="modulepreload" href="/content-defaults.js">
@@ -126,16 +126,21 @@
     <section class="section about" id="about">
       <div class="container about-grid">
         <div class="about-copy reveal">
-          <p class="about-kicker"><span class="pixels" aria-hidden="true"><i></i><i></i><i class="r"></i></span>قصتنا</p>
+          <p class="about-kicker"><span class="pixels" aria-hidden="true"><i></i><i></i><i class="r"></i></span><bdi data-c="about.kicker">Beit Lahia Tech Community</bdi></p>
           <h2 data-c="about.title">من نحن</h2>
-          <p class="about-lead" data-c="about.text">كميونتي تقني بيت لاهيا مبادرة من أبناء البلد اللي بيدرسوا وبيشتغلوا بالتقنية. بدأت من فكرة بسيطة: الطاقات التقنية من بيت لاهيا كثيرة، بس متفرقة، وكل واحد بيشق طريقه لحاله.</p>
-          <p data-c="about.text2">هدفنا نجمع هاي الطاقات بمكان واحد، وين ما كانوا اليوم: بالبلد، أو نازحين، أو برا. بنتعلم من بعض، وبنلاقي فرص لبعض، وبنشتغل على مشاريع بتحمل اسم بيت لاهيا.</p>
+          <p class="about-lead" data-c="about.text">نحن مجتمع بيت لاهيا التقني، مبادرة شبابية من قلب بيت لاهيا، هدفها سد الفجوة التقنية في المدينة وبناء جيل تقني قادر على التعلم والعمل والإنتاج.</p>
+          <p data-c="about.text2">بدأنا بـ 16 عضو مؤسس، ونعمل على توسيع المجتمع ليشمل كل تقني في بيت لاهيا، من المبتدئ للمحترف، في مجالات البرمجة، الذكاء الاصطناعي، الشبكات، الأمن السيبراني، والتصميم.</p>
         </div>
-        <ul class="about-points" id="about-points" role="list" data-stagger>
-          <li>من أبناء بيت لاهيا ولأبنائها</li>
-          <li>لكل المستويات، من التوجيهي لسوق العمل</li>
-          <li>شغل جماعي على مشاريع حقيقية</li>
-        </ul>
+        <div class="about-side" data-stagger>
+          <div class="about-stat">
+            <span class="about-stat-num" data-c="about.statNumber">16</span>
+            <span class="about-stat-label" data-c="about.statLabel">عضو مؤسس</span>
+          </div>
+          <div class="about-vision">
+            <p class="about-vision-title"><span class="pixels" aria-hidden="true"><i></i><i class="r"></i></span><span data-c="about.visionTitle">رؤيتنا</span></p>
+            <p class="about-vision-text" data-c="about.vision">أن تصبح بيت لاهيا مرجعاً تقنياً في غزة، وأن لا يضطر أي طالب فيها أن يبدأ طريقه التقني وحده.</p>
+          </div>
+        </div>
       </div>
     </section>
 

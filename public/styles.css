@@ -705,14 +705,26 @@ img.brand-mark { display: block; }
 .about-kicker { display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-head); font-weight: 600; font-size: 15px; color: var(--emerald-deep); margin-bottom: 12px; }
 .about-copy h2 { font-size: clamp(28px, 3.4vw, 38px); font-weight: 700; margin-bottom: 16px; }
 .about-copy p { color: var(--slate); font-size: 17px; line-height: 1.9; }
+.about-copy .about-kicker { color: var(--emerald-deep); font-size: 15px; line-height: 1.4; }
 .about-copy p + p { margin-top: 14px; }
 .about-copy .about-lead { color: var(--night); font-size: 19px; }
-.about-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.about-points li {
-  display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: var(--radius);
-  background: var(--sand); border: 1px solid #ECE7DC; font-family: var(--font-head); font-weight: 600; font-size: 17px; color: var(--night);
+.about-side { display: grid; gap: 14px; }
+.about-stat {
+  display: flex; align-items: center; gap: 18px; padding: 22px 24px; border-radius: var(--radius-lg);
+  background: var(--sand); border: 1px solid #ECE7DC;
 }
-.about-points li::before { content: ""; flex: none; width: 14px; height: 14px; border-radius: 3px; background: var(--emerald-500); box-shadow: -18px 0 0 -3px var(--strawberry); margin-inline-end: 12px; }
+.about-stat-num { font-family: var(--font-head); font-weight: 700; font-size: 60px; line-height: 1; color: var(--emerald-deep); }
+.about-stat-label { font-family: var(--font-head); font-weight: 600; font-size: 20px; color: var(--night); }
+.about-vision {
+  position: relative; overflow: hidden; padding: 26px 24px; border-radius: var(--radius-lg);
+  background: var(--night); color: var(--white);
+}
+.about-vision::after {
+  content: ""; position: absolute; inset-inline-start: -40px; bottom: -60px; width: 180px; height: 180px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(52, 211, 153, .22), transparent 70%); pointer-events: none;
+}
+.about-vision-title { display: flex; align-items: center; gap: 10px; font-family: var(--font-head); font-weight: 600; font-size: 15px; color: var(--emerald); margin-bottom: 10px; }
+.about-vision-text { position: relative; font-family: var(--font-head); font-weight: 600; font-size: 19px; line-height: 1.75; }
 @media (max-width: 860px) { .about-grid { grid-template-columns: 1fr; gap: 28px; } }
 
 /* ========== Members ========== */

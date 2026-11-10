@@ -501,8 +501,10 @@ const SCHEMA = [
     ['hero.titleAccent', 'الجزء الملوّن من العنوان'], ['hero.lead', 'الوصف', 'textarea'],
   ] },
   { title: 'من نحن', fields: [
-    ['about.title', 'العنوان'], ['about.text', 'الفقرة الأولى (بخط أكبر)', 'textarea'], ['about.text2', 'الفقرة الثانية', 'textarea'],
-    ['about.points', 'النقاط اللي جنب النص (كل نقطة بسطر)', 'lines'],
+    ['about.kicker', 'السطر الصغير فوق العنوان'], ['about.title', 'العنوان'],
+    ['about.text', 'الفقرة الأولى (بخط أكبر)', 'textarea'], ['about.text2', 'الفقرة الثانية', 'textarea'],
+    ['about.statNumber', 'الرقم بالكرت (مثلاً عدد المؤسسين)'], ['about.statLabel', 'النص تحت الرقم'],
+    ['about.visionTitle', 'عنوان كرت الرؤية'], ['about.vision', 'نص الرؤية', 'textarea'],
   ] },
   { title: 'الأهداف', fields: [['goalsHead.title', 'عنوان السكشن'], ['goalsHead.text', 'وصف السكشن', 'textarea']],
     list: { path: 'goals', label: 'هدف', add: 'أضف هدف', min: 1, max: 12, item: [['title', 'العنوان'], ['text', 'النص', 'textarea']] } },

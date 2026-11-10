@@ -279,8 +279,6 @@ function renderContent(c) {
       h('span', { class: 'jnode', 'aria-hidden': 'true' }, h('i')),
       h('span', { class: 'stage' }, pad(i + 1)), h('h3', {}, s.title), h('p', {}, s.text))));
   }
-  const points = document.getElementById('about-points');
-  if (points && c.about.points.length) points.replaceChildren(...c.about.points.filter(Boolean).map((t) => h('li', {}, t)));
   const fields = document.getElementById('fields-list');
   if (fields && c.fields.length) fields.replaceChildren(...c.fields.filter(Boolean).map((t) => h('li', {}, t)));
   const faq = document.getElementById('faq-list');
