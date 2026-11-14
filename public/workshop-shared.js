@@ -88,8 +88,15 @@ export function mergeWorkshop(saved) {
     topics: (Array.isArray(s.topics) ? s.topics : d.topics).map(normalizeTopic).filter((t) => t.title),
     whatsappGroup: str(s.whatsappGroup, ''),
     closedMessage: str(s.closedMessage, d.closedMessage) || d.closedMessage,
+    // optional Firestore Timestamp: a «منشورة» workshop stays hidden (rules too) until this moment
+    publishAt: s.publishAt && typeof s.publishAt.toMillis === 'function' ? s.publishAt : null,
     cert,
   };
+}
+
+/** «منشورة» with a publish time still in the future */
+export function isScheduled(w, now = Date.now()) {
+  return !!(w && w.status === 'live' && w.publishAt && w.publishAt.toMillis() > now);
 }
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];

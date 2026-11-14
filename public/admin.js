@@ -3,7 +3,7 @@ import { getDb, getAuth } from './firebase-init.js';
 import { gazaDay } from './track.js';
 import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, isEmail, SOCIAL_PLATFORMS, socialInfo, renderFooterLinks } from './content-defaults.js';
 import { iconSvg } from './icons.js';
-import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS } from './workshop-shared.js';
+import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -1054,6 +1054,7 @@ $('team-show').addEventListener('change', async (e) => {
 // Everything below the history panel (and the «الشهادة» tab) works on the selected workshop (selId).
 let workshops = [];  // [{ id, ...saved data }]
 let currentId = '';  // site/settings.currentWorkshop
+let nextId = '';     // site/settings.nextWorkshop: a scheduled workshop, /workshop switches to it at its publish time
 let selId = '';
 let allRegs = [];
 let allCerts = [];
@@ -1074,6 +1075,16 @@ const todayYmd = () => gazaDay();
 const issueDateText = () => arDate(ws.date || todayYmd());
 const wsTime = (w) => (w.createdAt && typeof w.createdAt.toMillis === 'function' ? w.createdAt.toMillis() : w._t || 0);
 const wsName = (w) => { const m = mergeWorkshop(w); return m.titleAr || m.title; };
+const publishFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' });
+/** visitors can see it right now (rules agree: done, or live with its publish time reached) */
+const isPublic = (m) => m.status === 'done' || (m.status === 'live' && !isScheduled(m));
+/** badge text + class: draft / scheduled (with time) / live / done */
+function stateBadge(m) {
+  if (isScheduled(m)) return { cls: 'badge-scheduled', text: `مجدولة: ${publishFmt.format(m.publishAt.toDate())}` };
+  return { cls: `badge-${m.status}`, text: WS_STATES[m.status] };
+}
+// <input type="datetime-local"> works in the admin's local time
+const toLocalInput = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 async function copyText(text, okMsg) {
   try { await navigator.clipboard.writeText(text); toast(okMsg); } catch { toast('ما قدرت أنسخ', true); }
 }
@@ -1094,7 +1105,9 @@ async function loadWorkshopAll() {
     ]);
     workshops = wSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     currentId = setSnap.exists() ? String(setSnap.data().currentWorkshop || '') : '';
+    nextId = setSnap.exists() ? String(setSnap.data().nextWorkshop || '') : '';
     await migrateWorkshops();
+    await promoteScheduled();
   } catch (e) { console.error(e); toast(errMsg(e), true); }
   let saved = '';
   try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
@@ -1102,13 +1115,13 @@ async function loadWorkshopAll() {
   selectWorkshop(pick, { force: true });
 }
 
-// First run after the move to workshops/: make the first workshop from the defaults (live, current),
+// First run after the move to workshops/: make the first workshop from the defaults (a draft, set as current),
 // and link every registration/certificate that has no workshopId yet to the current workshop.
 async function migrateWorkshops() {
   const now = fs.serverTimestamp();
   if (!workshops.length) {
     const ref = fs.doc(fs.collection(db, 'workshops'));
-    const data = { ...structuredClone(DEFAULT_WORKSHOP), status: 'live' };
+    const data = { ...structuredClone(DEFAULT_WORKSHOP), status: 'draft', publishAt: null };
     const batch = fs.writeBatch(db);
     batch.set(ref, { ...data, createdAt: now, updatedAt: now });
     batch.set(fs.doc(db, 'site', 'settings'), { currentWorkshop: ref.id, updatedAt: now }, { merge: true });
@@ -1132,6 +1145,19 @@ async function migrateWorkshops() {
     ops.slice(i, i + 400).forEach(([, x]) => { x.workshopId = currentId; });
   }
   if (ops.length) toast(`انربط ${ops.length} تسجيل وشهادة قديمة بورشة «${wsName(workshops.find((w) => w.id === currentId))}»`);
+}
+
+// a scheduled workshop whose time came: make it the current one for good (the page already shows it)
+async function promoteScheduled() {
+  const w = workshops.find((x) => x.id === nextId);
+  if (!nextId) return;
+  const m = w ? mergeWorkshop(w) : null;
+  if (m && m.status === 'live' && isScheduled(m)) return; // still waiting
+  const patch = { nextWorkshop: '', updatedAt: fs.serverTimestamp() };
+  if (m && m.status === 'live') patch.currentWorkshop = nextId;
+  await fs.setDoc(fs.doc(db, 'site', 'settings'), patch, { merge: true });
+  if (patch.currentWorkshop) currentId = nextId;
+  nextId = '';
 }
 
 function applySelection() {
@@ -1165,8 +1191,9 @@ function syncSelectedUi() {
   $('wsa-heading').textContent = ws.title;
   $('cert-heading').textContent = ws.title;
   const badge = $('wsa-state-badge');
-  badge.className = `badge badge-${ws.status}`;
-  badge.textContent = selId === currentId ? `${WS_STATES[ws.status]} · الظاهرة على الموقع` : WS_STATES[ws.status];
+  const st = stateBadge(ws);
+  badge.className = `badge ${st.cls}`;
+  badge.textContent = selId === currentId && isPublic(ws) ? `${st.text} · الظاهرة على الموقع` : st.text;
   $('wsa-open-page').href = selId ? `/workshop?w=${encodeURIComponent(selId)}` : '/workshop';
   $('cert-blank-link').href = selId ? `/certificate?w=${encodeURIComponent(selId)}` : '/certificate';
 }
@@ -1191,8 +1218,8 @@ function renderWorkshopList() {
       h('div', { class: 'wl-info' },
         h('div', { class: 'wl-title' },
           h('strong', {}, m.titleAr || m.title),
-          h('span', { class: `badge badge-${m.status}` }, WS_STATES[m.status]),
-          w.id === currentId ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
+          h('span', { class: `badge ${stateBadge(m).cls}` }, stateBadge(m).text),
+          w.id === currentId && isPublic(m) ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
         h('span', { class: 'muted small' }, sub),
         h('div', { class: 'wl-counts' },
           h('span', {}, `${n.regs} مسجّل`), h('span', {}, `${n.attended} حضروا`), h('span', {}, `${n.certs} شهادة`))),
@@ -1209,10 +1236,18 @@ function renderWorkshopList() {
 async function deleteWorkshop(w) {
   const n = wsCounts(w.id);
   if (n.regs || n.certs) { toast('ما بتنحذف ورشة إلها تسجيلات أو شهادات. خلّي حالتها «انتهت» بدل الحذف.', true); return; }
-  if (w.id === currentId) { toast('هاي الورشة الظاهرة على الموقع. انشر ورشة ثانية أول، وبعدين احذفها.', true); return; }
+  if (w.id === currentId && isPublic(mergeWorkshop(w))) { toast('هاي الورشة الظاهرة على الموقع. انشر ورشة ثانية أول، وبعدين احذفها.', true); return; }
   if (!confirm(`حذف ورشة «${wsName(w)}» نهائياً؟`)) return;
   try {
-    await fs.deleteDoc(fs.doc(db, 'workshops', w.id));
+    const batch = fs.writeBatch(db);
+    batch.delete(fs.doc(db, 'workshops', w.id));
+    const patch = {};
+    if (w.id === currentId) patch.currentWorkshop = '';
+    if (w.id === nextId) patch.nextWorkshop = '';
+    if (Object.keys(patch).length) batch.set(fs.doc(db, 'site', 'settings'), { ...patch, updatedAt: fs.serverTimestamp() }, { merge: true });
+    await batch.commit();
+    if (w.id === currentId) currentId = '';
+    if (w.id === nextId) nextId = '';
     workshops = workshops.filter((x) => x.id !== w.id);
     if (selId === w.id) selectWorkshop(currentId || (sortedWorkshops()[0] || {}).id || '', { force: true });
     else renderWorkshopList();
@@ -1224,7 +1259,7 @@ $('ws-new').addEventListener('click', async () => {
   if ((certDirty || wsaDirty) && !confirm('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟')) return;
   // copy the selected workshop's texts, topics and certificate template; a new workshop starts as a draft
   const base = mergeWorkshop(workshops.find((w) => w.id === selId) || null);
-  const data = { ...structuredClone(base), status: 'draft', open: true, date: '', time: '', place: '', whatsappGroup: '' };
+  const data = { ...structuredClone({ ...base, publishAt: null }), status: 'draft', publishAt: null, open: true, date: '', time: '', place: '', whatsappGroup: '' };
   const btn = $('ws-new');
   setBusy(btn, true);
   try {
@@ -1244,14 +1279,18 @@ $('wsa-open').addEventListener('change', syncWsOpen);
 
 const STATE_HINTS = {
   draft: 'المسودة مخفية عن الزوار، وما بتقبل تسجيلات.',
-  live: 'بتطلع على الموقع، وبتقبل تسجيلات لما يكون التسجيل مفتوح. لما تحفظها «منشورة» بتصير هي الظاهرة على /workshop.',
+  live: 'بتطلع على /workshop وبتقبل تسجيلات لما يكون التسجيل مفتوح: فوراً لما تحفظ، أو بموعد النشر إذا حطيته.',
   done: 'بتنعرض بـ «ورشاتنا السابقة»، وصفحتها بتقول «الورشة انتهت». تسجيلاتها وشهاداتها بيضلوا زي ما هم.',
 };
-const syncStateHint = () => { $('wsa-state-hint').textContent = STATE_HINTS[$('wsa-state').value] || ''; };
+const syncStateHint = () => {
+  $('wsa-state-hint').textContent = STATE_HINTS[$('wsa-state').value] || '';
+  $('wsa-publish').disabled = $('wsa-state').value !== 'live';
+};
 $('wsa-state').addEventListener('change', syncStateHint);
 
 function fillWorkshopForm() {
   $('wsa-state').value = ws.status;
+  $('wsa-publish').value = ws.publishAt ? toLocalInput(ws.publishAt.toDate()) : '';
   syncStateHint();
   $('wsa-open').checked = ws.open;
   syncWsOpen();
@@ -1346,8 +1385,12 @@ $('wsa-form').addEventListener('submit', async (e) => {
   if (!title) { toast('اكتب اسم الورشة', true); $('wsa-title').focus(); return; }
   if (!(hours >= 1 && hours <= 100)) { toast('عدد الساعات لازم يكون بين 1 و 100', true); $('wsa-hours').focus(); return; }
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('wsa-group').focus(); return; }
+  const publishRaw = status === 'live' ? $('wsa-publish').value : '';
+  const publishDate = publishRaw ? new Date(publishRaw) : null;
+  if (publishDate && Number.isNaN(publishDate.getTime())) { toast('موعد النشر مش صحيح', true); $('wsa-publish').focus(); return; }
   const data = {
     status,
+    publishAt: publishDate ? fs.Timestamp.fromDate(publishDate) : null,
     open: $('wsa-open').checked,
     title,
     titleAr: $('wsa-title-ar').value.trim(),
@@ -1363,15 +1406,22 @@ $('wsa-form').addEventListener('submit', async (e) => {
   const btn = $('wsa-save');
   setBusy(btn, true);
   try {
-    // going «منشورة» makes it the workshop /workshop shows
-    const makeCurrent = status === 'live' && currentId !== selId;
+    // «منشورة» now → it becomes the workshop /workshop shows.
+    // «منشورة» with a future time → nextWorkshop: the page switches to it by itself once the rules let visitors read it.
+    const scheduled = status === 'live' && !!publishDate && publishDate.getTime() > Date.now();
+    const makeCurrent = status === 'live' && !scheduled && currentId !== selId;
+    const patch = {};
+    if (makeCurrent) patch.currentWorkshop = selId;
+    if (scheduled && nextId !== selId) patch.nextWorkshop = selId;
+    if (!scheduled && nextId === selId) patch.nextWorkshop = '';
     const batch = fs.writeBatch(db);
     batch.set(fs.doc(db, 'workshops', selId), { ...data, updatedAt: fs.serverTimestamp() }, { merge: true });
-    if (makeCurrent) batch.set(fs.doc(db, 'site', 'settings'), { currentWorkshop: selId, updatedAt: fs.serverTimestamp() }, { merge: true });
+    if (Object.keys(patch).length) batch.set(fs.doc(db, 'site', 'settings'), { ...patch, updatedAt: fs.serverTimestamp() }, { merge: true });
     await batch.commit();
     const raw = workshops.find((w) => w.id === selId);
     if (raw) Object.assign(raw, data);
-    if (makeCurrent) currentId = selId;
+    if ('currentWorkshop' in patch) currentId = patch.currentWorkshop;
+    if ('nextWorkshop' in patch) nextId = patch.nextWorkshop;
     ws = mergeWorkshop({ ...ws, ...data, cert: ws.cert });
     wsaDirty = false;
     $('wsa-status').textContent = 'انحفظ';
@@ -1379,7 +1429,8 @@ $('wsa-form').addEventListener('submit', async (e) => {
     syncSelectedUi();
     renderWorkshopList();
     refreshPreview();
-    toast(makeCurrent ? 'انحفظت، وصارت هي الورشة الظاهرة على /workshop'
+    toast(scheduled ? `انحفظت ومجدولة: بتطلع على /workshop ويفتح التسجيل ${publishFmt.format(publishDate)}`
+      : makeCurrent ? 'انحفظت، وصارت هي الورشة الظاهرة على /workshop'
       : status === 'live' ? (data.open ? 'انحفظت معلومات الورشة (التسجيل مفتوح)' : 'انحفظت معلومات الورشة (التسجيل مسكّر)')
       : `انحفظت الورشة (${WS_STATES[status]})`);
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }

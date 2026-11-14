@@ -107,11 +107,14 @@ function renderPast(list) {
     const setSnap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
     const settings = setSnap && setSnap.exists() ? setSnap.data() : {};
     if (setSnap && setSnap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...settings });
-    const id = validId(askedId) ? askedId : validId(settings.currentWorkshop) ? settings.currentWorkshop : '';
-    // a draft (or a wrong id) isn't readable by visitors → "not found"
-    const snap = id ? await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null) : null;
-    if (snap && snap.exists()) { wid = id; ws = mergeWorkshop(snap.data()); }
-    else ws = { ...mergeWorkshop(null), topics: askedId ? [] : DEFAULT_WORKSHOP.topics };
+    // ?w=<id>, else the scheduled next workshop (readable only once its publish time came), else the current one.
+    // A draft, a not-yet-published or a wrong id isn't readable by visitors → "not found".
+    const ids = validId(askedId) ? [askedId] : [...new Set([settings.nextWorkshop, settings.currentWorkshop].filter(validId))];
+    for (const id of ids) {
+      const snap = await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null);
+      if (snap && snap.exists()) { wid = id; ws = mergeWorkshop(snap.data()); break; }
+    }
+    if (!wid) ws = { ...mergeWorkshop(null), topics: askedId ? [] : DEFAULT_WORKSHOP.topics };
   } catch (e) {
     console.warn('[workshop]', e); // defaults keep the page readable; the form stays closed
   }

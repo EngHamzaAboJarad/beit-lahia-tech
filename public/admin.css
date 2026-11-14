@@ -364,3 +364,4 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .badge-done { background: #FFF1F2; color: #9F1239; }
 .badge-current { background: var(--night); color: var(--emerald); }
 .ws-selected-head h2 .badge { vertical-align: middle; }
+.badge-scheduled { background: #EFF6FF; color: #1E40AF; }

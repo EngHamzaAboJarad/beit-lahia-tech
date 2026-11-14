@@ -82,20 +82,31 @@ service cloud.firestore {
 
     // ---------- الورشات ----------
     // كل ورشة doc لحالها: المعلومات + المحاور + قالب الشهادة. status: draft (للأدمن بس) / live (منشورة) / done (انتهت، بالأرشيف).
+    // publishAt (اختياري): ورشة «منشورة» بتضل مخفية وما بتقبل تسجيل لحد هاد الوقت (نشر مجدول).
     match /workshops/{wid} {
-      allow read: if resource.data.status in ['live', 'done'] || isAdmin();
+      allow read: if isAdmin() || resource.data.status == 'done'
+        || (resource.data.status == 'live' && published(resource.data));
       allow create, update: if isAdmin()
         && request.resource.data.status in ['draft', 'live', 'done']
         && request.resource.data.open is bool
         && isStr(request.resource.data.title, 1, 60)
+        && (request.resource.data.get('publishAt', null) == null || request.resource.data.publishAt is timestamp)
         && request.resource.size() < 400 * 1024;
       allow delete: if isAdmin();
     }
 
-    // الورشة موجودة ومنشورة والتسجيل فيها مفتوح
+    // وصل موعد نشرها (أو ما إلها موعد)
+    function published(w) {
+      return w.get('publishAt', null) == null || request.time >= w.publishAt;
+    }
+
+    // الورشة موجودة ومنشورة (ووصل موعدها) والتسجيل فيها مفتوح
     function workshopOpenFor(wid) {
       let path = /databases/$(database)/documents/workshops/$(wid);
-      return exists(path) && get(path).data.status == 'live' && get(path).data.open == true;
+      return exists(path) && isOpenWorkshop(get(path).data);
+    }
+    function isOpenWorkshop(w) {
+      return w.status == 'live' && w.open == true && published(w);
     }
 
     // ---------- تسجيلات الورشات ----------
