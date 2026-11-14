@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ورشة AI-Powered Development | بيت لاهيا تيك</title>
+  <meta name="description" content="ورشة عملية لمدة 3 ساعات عن التطوير البرمجي المدعوم بالذكاء الاصطناعي، من بيت لاهيا تيك. سجّل واحجز مقعدك، وخذ شهادة إنجاز.">
+  <meta name="theme-color" content="#0B1220">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ar_PS">
+  <meta property="og:title" content="ورشة AI-Powered Development — بيت لاهيا تيك">
+  <meta property="og:description" content="3 ساعات عملية عن البرمجة مع الذكاء الاصطناعي. احجز مقعدك وخذ شهادة إنجاز.">
+  <link rel="canonical" href="https://beitlahia.tech/workshop">
+  <meta property="og:url" content="https://beitlahia.tech/workshop">
+  <meta property="og:image" content="https://beitlahia.tech/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="بيت لاهيا تيك">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://beitlahia.tech/og.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+  <link rel="stylesheet" href="/styles.css?v=13">
+  <link rel="stylesheet" href="/workshop.css?v=1">
+  <script type="module" src="/workshop.js?v=1"></script>
+  <link rel="modulepreload" href="/firebase-init.js">
+  <link rel="modulepreload" href="/workshop-shared.js">
+  <link rel="dns-prefetch" href="https://www.gstatic.com">
+  <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+</head>
+<body class="page-workshop">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="logo" viewBox="0 0 236 266">
+      <g fill="#34D399"><rect x="60" y="0" width="26" height="26" rx="5"/><rect x="150" y="0" width="26" height="26" rx="5"/><rect x="30" y="30" width="26" height="26" rx="5"/><rect x="60" y="30" width="26" height="26" rx="5"/><rect x="90" y="30" width="26" height="26" rx="5"/><rect x="120" y="30" width="26" height="26" rx="5"/><rect x="150" y="30" width="26" height="26" rx="5"/><rect x="180" y="30" width="26" height="26" rx="5"/></g>
+      <g fill="#F43F5E"><rect x="0" y="60" width="26" height="26" rx="5"/><rect x="30" y="60" width="26" height="26" rx="5"/><rect x="60" y="60" width="26" height="26" rx="5"/><rect x="90" y="60" width="26" height="26" rx="5"/><rect x="120" y="60" width="26" height="26" rx="5"/><rect x="150" y="60" width="26" height="26" rx="5"/><rect x="180" y="60" width="26" height="26" rx="5"/><rect x="210" y="60" width="26" height="26" rx="5"/><rect x="0" y="90" width="26" height="26" rx="5"/><rect x="30" y="90" width="26" height="26" rx="5"/><rect x="90" y="90" width="26" height="26" rx="5"/><rect x="120" y="90" width="26" height="26" rx="5"/><rect x="180" y="90" width="26" height="26" rx="5"/><rect x="210" y="90" width="26" height="26" rx="5"/><rect x="0" y="120" width="26" height="26" rx="5"/><rect x="30" y="120" width="26" height="26" rx="5"/><rect x="60" y="120" width="26" height="26" rx="5"/><rect x="90" y="120" width="26" height="26" rx="5"/><rect x="120" y="120" width="26" height="26" rx="5"/><rect x="150" y="120" width="26" height="26" rx="5"/><rect x="180" y="120" width="26" height="26" rx="5"/><rect x="210" y="120" width="26" height="26" rx="5"/><rect x="30" y="150" width="26" height="26" rx="5"/><rect x="60" y="150" width="26" height="26" rx="5"/><rect x="120" y="150" width="26" height="26" rx="5"/><rect x="150" y="150" width="26" height="26" rx="5"/><rect x="180" y="150" width="26" height="26" rx="5"/><rect x="30" y="180" width="26" height="26" rx="5"/><rect x="60" y="180" width="26" height="26" rx="5"/><rect x="90" y="180" width="26" height="26" rx="5"/><rect x="120" y="180" width="26" height="26" rx="5"/><rect x="180" y="180" width="26" height="26" rx="5"/><rect x="60" y="210" width="26" height="26" rx="5"/><rect x="90" y="210" width="26" height="26" rx="5"/><rect x="120" y="210" width="26" height="26" rx="5"/><rect x="150" y="210" width="26" height="26" rx="5"/><rect x="90" y="240" width="26" height="26" rx="5"/><rect x="120" y="240" width="26" height="26" rx="5"/></g>
+      <g fill="#FDA4AF"><rect x="60" y="90" width="26" height="26" rx="5"/><rect x="150" y="90" width="26" height="26" rx="5"/><rect x="90" y="150" width="26" height="26" rx="5"/><rect x="150" y="180" width="26" height="26" rx="5"/></g>
+    </symbol>
+    <symbol id="spark" viewBox="0 0 24 24"><path d="M12 1.5l2.2 6.4c.4 1.1 1.2 1.9 2.3 2.3l6 2.3-6 2.1c-1.1.4-1.9 1.2-2.3 2.3L12 23l-2.2-6.1c-.4-1.1-1.2-1.9-2.3-2.3L1.5 12.5l6-2.3c1.1-.4 1.9-1.2 2.3-2.3z"/></symbol>
+  </svg>
+
+  <a class="skip" href="#register">تخطَّ إلى نموذج التسجيل</a>
+
+  <header class="site-header">
+    <div class="container header-row">
+      <a class="brand" href="/" aria-label="بيت لاهيا تيك — الصفحة الرئيسية">
+        <svg class="brand-mark" width="34" height="38" aria-hidden="true"><use href="#logo"/></svg>
+        <span class="brand-text">
+          <span class="brand-kicker">كميونتي تقني</span>
+          <span class="brand-name">بيت لاهيا</span>
+        </span>
+      </a>
+      <a class="back-btn" href="/">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        <span>الرجوع للرئيسية</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="ws-hero">
+      <svg class="ws-net" id="ws-net" aria-hidden="true"></svg>
+      <div class="container ws-hero-grid">
+        <div class="ws-hero-copy">
+          <p class="ws-eyebrow" id="ws-eyebrow"><span class="pixels" aria-hidden="true"><i></i><i></i><i class="r"></i></span><span id="ws-eyebrow-text">ورشة عمل · التسجيل مفتوح</span></p>
+          <div><span class="ws-tag"><svg class="spark" aria-hidden="true"><use href="#spark"/></svg><span id="ws-title">AI-Powered Development</span></span></div>
+          <h1 id="ws-title-ar">التطوير البرمجي المدعوم <span class="ai-grad">بالذكاء الاصطناعي</span></h1>
+          <p class="lead" id="ws-desc">ورشة عملية بنتعلم فيها كيف نخلّي أدوات الذكاء الاصطناعي شريك حقيقي بالبرمجة.</p>
+          <ul class="ws-meta" id="ws-meta">
+            <li id="m-hours"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><b id="m-hours-v">3 ساعات</b> تدريب عملي</li>
+            <li id="m-date" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><b id="m-date-v"></b></li>
+            <li id="m-place" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><b id="m-place-v"></b></li>
+            <li class="cert"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14l-1.5 7 5-2.5 5 2.5-1.5-7"/></svg>شهادة إنجاز</li>
+          </ul>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#register" id="cta-book">احجز مقعدك</a>
+            <a class="btn btn-ghost" href="#topics">شو رح نتعلم؟</a>
+          </div>
+        </div>
+
+        <div class="ws-hero-art" aria-hidden="true">
+          <div class="ai-card" id="ai-card">
+            <div class="ai-card-in">
+              <div class="ai-bar">
+                <span class="ai-dots"><i></i><i></i><i></i></span>
+                <span class="ai-bar-title"><svg class="spark" aria-hidden="true"><use href="#spark"/></svg>beitlahia · ai</span>
+              </div>
+              <div class="ai-prompt"><span class="ai-you">›</span><span><span id="ai-typed"></span><span class="caret"></span></span></div>
+              <div class="ai-canvas">
+                <svg class="ai-logo" id="ai-logo" viewBox="0 0 236 266"></svg>
+                <div class="ai-scan"></div>
+              </div>
+              <div class="ai-status"><svg class="spark" aria-hidden="true"><use href="#spark"/></svg><span class="ai-status-text" id="ai-status">جاهز</span><span class="ai-prog"><i id="ai-prog"></i></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <nav class="ws-flow" aria-label="مراحل التطوير مع الذكاء الاصطناعي">
+      <ol>
+        <li><i>✦</i>Prompt</li><li class="arrow" aria-hidden="true"></li>
+        <li><i>&lt;/&gt;</i>Code</li><li class="arrow" aria-hidden="true"></li>
+        <li><i>✓</i>Review</li><li class="arrow" aria-hidden="true"></li>
+        <li><i>↗</i>Ship</li>
+      </ol>
+    </nav>
+
+    <section class="section" id="topics">
+      <div class="container">
+        <div class="section-head">
+          <p class="stage">// شو رح نتعلم</p>
+          <h2 id="topics-title">3 ساعات عملية، من الفكرة للكود الشغّال</h2>
+          <p>مش محاضرة نظرية: كل نقطة بنطبقها سوا على لابتوباتنا خطوة بخطوة.</p>
+        </div>
+        <ul class="ws-topics" id="ws-topics"></ul>
+      </div>
+    </section>
+
+    <section class="section section-sand join-section" id="register">
+      <div class="container register-grid">
+        <aside class="register-intro">
+          <div class="ws-info">
+            <h2><svg class="spark" aria-hidden="true"><use href="#spark"/></svg>تفاصيل الورشة</h2>
+            <dl>
+              <div><dt>الورشة</dt><dd dir="ltr" style="text-align:right" id="i-title">AI-Powered Development</dd></div>
+              <div><dt>المدة</dt><dd id="i-hours">3 ساعات</dd></div>
+              <div id="i-date-row" hidden><dt>الموعد</dt><dd id="i-date"></dd></div>
+              <div id="i-place-row" hidden><dt>المكان</dt><dd id="i-place"></dd></div>
+            </dl>
+            <p class="ws-cert-note">بآخر الورشة بتاخد <b>شهادة إنجاز</b> باسمك من بيت لاهيا تيك، وبيوصلك رابطها على الواتساب.</p>
+          </div>
+          <ul class="checks">
+            <li>اكتب اسمك زي ما بدك يطلع على الشهادة</li>
+            <li>جيب لابتوبك إذا عندك، عشان تطبّق معنا</li>
+            <li>الحقول اللي عليها <span class="req" aria-hidden="true">*</span> مطلوبة</li>
+          </ul>
+        </aside>
+
+        <div class="form-card ws-form-card">
+          <form id="ws-form" novalidate>
+            <div class="field">
+              <label for="name">الاسم الكامل <span class="req" aria-hidden="true">*</span></label>
+              <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="80" placeholder="مثال: محمد أحمد سالم">
+              <p class="hint-rtl">هيك بالضبط رح ينكتب على شهادتك.</p>
+              <p class="error" id="name-error" aria-live="polite"></p>
+            </div>
+
+            <div class="row-2">
+              <div class="field">
+                <label for="whatsapp">رقم الواتساب <span class="req" aria-hidden="true">*</span></label>
+                <input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" dir="ltr" autocomplete="tel" required maxlength="20" placeholder="059xxxxxxx">
+                <p class="hint-rtl">عليه بنبعتلك تأكيد الموعد ورابط الشهادة.</p>
+                <p class="error" id="whatsapp-error" aria-live="polite"></p>
+              </div>
+              <div class="field">
+                <label for="email">الإيميل <span class="optional">(اختياري)</span></label>
+                <input id="email" name="email" type="email" inputmode="email" dir="ltr" autocomplete="email" maxlength="120" placeholder="name@example.com">
+                <p class="error" id="email-error" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <fieldset class="field">
+              <legend>الحالة <span class="req" aria-hidden="true">*</span></legend>
+              <div class="segmented segmented-4">
+                <label class="seg"><input type="radio" name="status" value="tawjihi" required><span>توجيهي</span></label>
+                <label class="seg"><input type="radio" name="status" value="student"><span>طالب جامعة</span></label>
+                <label class="seg"><input type="radio" name="status" value="graduate"><span>خريج</span></label>
+                <label class="seg"><input type="radio" name="status" value="other"><span>غير ذلك</span></label>
+              </div>
+              <p class="error" id="status-error" aria-live="polite"></p>
+            </fieldset>
+
+            <fieldset class="field">
+              <legend>مستواك بالبرمجة <span class="req" aria-hidden="true">*</span></legend>
+              <div class="segmented segmented-3">
+                <label class="seg seg-col"><input type="radio" name="level" value="beginner" required><span>مبتدئ<small>لسا ببدأ</small></span></label>
+                <label class="seg seg-col"><input type="radio" name="level" value="intermediate"><span>متوسط<small>عملت مشاريع صغيرة</small></span></label>
+                <label class="seg seg-col"><input type="radio" name="level" value="advanced"><span>متقدم<small>بشتغل بالبرمجة</small></span></label>
+              </div>
+              <p class="error" id="level-error" aria-live="polite"></p>
+            </fieldset>
+
+            <fieldset class="field">
+              <legend>عندك لابتوب تجيبه معك؟ <span class="req" aria-hidden="true">*</span></legend>
+              <div class="segmented segmented-2">
+                <label class="seg"><input type="radio" name="laptop" value="yes" required><span>آه، بجيبه</span></label>
+                <label class="seg"><input type="radio" name="laptop" value="no"><span>لا، ما عندي</span></label>
+              </div>
+              <p class="error" id="laptop-error" aria-live="polite"></p>
+            </fieldset>
+
+            <fieldset class="field">
+              <legend>أدوات ذكاء اصطناعي استخدمتها قبل <span class="optional">(اختار كل اللي ينطبق)</span></legend>
+              <div class="tool-chips" id="tool-chips"></div>
+            </fieldset>
+
+            <div class="field">
+              <label for="expectations">شو حابب تطلع فيه من الورشة؟ <span class="optional">(اختياري)</span></label>
+              <textarea id="expectations" name="expectations" rows="3" maxlength="500" placeholder="مثلاً: بدي أتعلم كيف أخلّي الـ AI يساعدني بمشروع التخرج"></textarea>
+              <p class="hint"><span id="exp-count">0</span> / 500</p>
+            </div>
+
+            <div class="field consent-field">
+              <label class="consent">
+                <input type="checkbox" id="consent" name="consent" required>
+                <span>قرأت <a href="/privacy" target="_blank" rel="noopener">سياسة الخصوصية</a>، وبوافق إنه بياناتي تنحفظ لتنظيم الورشة والتواصل معي، وإنه اسمي ينكتب على الشهادة. <span class="req" aria-hidden="true">*</span></span>
+              </label>
+              <p class="error" id="consent-error" aria-live="polite"></p>
+            </div>
+
+            <!-- مصيدة للبوتات: لا تُملأ من البشر -->
+            <div class="hp" aria-hidden="true">
+              <label for="website">Website</label>
+              <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+            </div>
+
+            <button class="btn btn-ai btn-block" type="submit" id="submit-btn">
+              <svg class="spark" aria-hidden="true"><use href="#spark"/></svg>
+              <span class="btn-label">احجز مقعدي</span>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+            <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div class="success" id="closed" hidden>
+            <span class="ai-badge"><svg aria-hidden="true"><use href="#logo"/></svg></span>
+            <h2>التسجيل بالورشة مسكّر</h2>
+            <p id="closed-msg">التسجيل بالورشة مسكّر حالياً. تابعنا عشان توصلك الورشات الجاية.</p>
+            <div class="success-actions"><a class="btn btn-primary" href="/">ارجع للرئيسية</a></div>
+          </div>
+
+          <div class="success" id="success" hidden tabindex="-1">
+            <span class="ai-badge"><svg aria-hidden="true"><use href="#logo"/></svg></span>
+            <h2>انحجز مقعدك! ✦</h2>
+            <p id="success-text">وصل تسجيلك. رح نتواصل معك على الواتساب قبل الورشة بتأكيد الموعد والتفاصيل.</p>
+            <div class="ws-success-meta" id="success-meta"></div>
+            <a class="btn btn-whatsapp" id="group-btn" href="#" target="_blank" rel="noopener noreferrer" hidden>
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M8.8 8.6c.2-.5.5-.5.8-.5h.5c.2 0 .4 0 .5.4l.7 1.6c.1.2 0 .4-.1.6l-.4.5c-.1.1-.2.3 0 .5.6 1 1.4 1.8 2.4 2.3.2.1.4.1.5 0l.6-.7c.1-.2.4-.2.6-.1l1.5.7c.2.1.4.2.4.4 0 .5-.2 1.2-.7 1.5-.5.3-1.4.5-2.8-.1a8.6 8.6 0 0 1-4-3.6c-.6-1-.8-2.2-.5-3z"/></svg>
+              انضم لقروب الورشة
+            </a>
+            <div class="success-actions">
+              <a class="btn btn-ghost-dark" href="/">ارجع للرئيسية</a>
+              <button type="button" class="btn btn-ghost-dark" id="again-btn">سجّل شخص آخر</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-about">
+          <a class="brand" href="/" aria-label="بيت لاهيا تيك — الرئيسية">
+            <svg class="brand-mark" width="30" height="34" aria-hidden="true"><use href="#logo"/></svg>
+            <span class="brand-text"><span class="brand-kicker">كميونتي تقني</span><span class="brand-name">بيت لاهيا</span></span>
+          </a>
+          <p class="footer-tagline">مجتمع تقني لأبناء بيت لاهيا: طلاب توجيهي، وطلاب جامعة، وخريجين. بنتعلّم سوا، وبنشتغل سوا، وبنكبر سوا.</p>
+        </div>
+        <div class="footer-connect" id="footer-connect">
+          <p class="footer-title">تابعنا وتواصل معنا</p>
+          <div class="footer-social" id="footer-social"></div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <nav class="footer-links" aria-label="روابط إضافية">
+          <a href="/">الرئيسية</a>
+          <a href="/join">سجّل بالمجتمع</a>
+          <a href="/privacy">سياسة الخصوصية</a>
+        </nav>
+        <p class="footer-meta">بيت لاهيا — غزة، فلسطين · <span dir="ltr">© <span id="year">2026</span> Beit Lahia Tech</span></p>
+      </div>
+    </div>
+  </footer>
+
+  <noscript><p class="noscript">النموذج بحتاج JavaScript يكون مفعّل بالمتصفح.</p></noscript>
+</body>
+</html>

@@ -9,10 +9,11 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=13">
-  <script type="module" src="/admin.js?v=13"></script>
+  <link rel="stylesheet" href="/admin.css?v=14">
+  <link rel="stylesheet" href="/certificate.css?v=1">
+  <script type="module" src="/admin.js?v=14"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -86,6 +87,8 @@
       </div>
       <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
+        <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false">الورشة</button>
+        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false">الشهادة</button>
         <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
@@ -170,6 +173,229 @@
             </table>
           </div>
           <p class="empty" id="members-empty" hidden>ما في تسجيلات بهاد الفلتر.</p>
+        </div>
+      </section>
+
+      <!-- Workshop -->
+      <section id="tab-workshop" role="tabpanel" aria-labelledby="tab-btn-workshop" hidden>
+        <div class="tab-intro stats-head">
+          <div>
+            <h2>الورشة: <bdi id="wsa-heading" dir="ltr">AI-Powered Development</bdi></h2>
+            <p class="muted">التسجيلات بتوصل من صفحة الورشة. علّم مين حضر، وأصدرله شهادته بضغطة، وابعتله رابطها على الواتساب.</p>
+          </div>
+          <div class="form-actions">
+            <a class="btn btn-ghost-dark btn-sm" href="/workshop" target="_blank" rel="noopener">افتح صفحة الورشة ↗</a>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="wsa-copy-link">انسخ رابط التسجيل</button>
+          </div>
+        </div>
+        <div class="stats" id="wsa-stats"></div>
+
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field grow">
+              <label for="wr-search" class="visually-hidden">بحث</label>
+              <input id="wr-search" type="search" placeholder="بحث بالاسم، الرقم، الإيميل…">
+            </div>
+            <div class="field">
+              <label for="wr-filter" class="visually-hidden">الحضور</label>
+              <select id="wr-filter">
+                <option value="">الكل</option>
+                <option value="attended">حضروا</option>
+                <option value="absent">لسا ما تعلّم حضورهم</option>
+                <option value="cert">إلهم شهادة</option>
+                <option value="nocert">حضروا وما إلهم شهادة</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="wr-level" class="visually-hidden">المستوى</label>
+              <select id="wr-level">
+                <option value="">كل المستويات</option>
+                <option value="beginner">مبتدئ</option>
+                <option value="intermediate">متوسط</option>
+                <option value="advanced">متقدم</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="wr-refresh">تحديث</button>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="wr-export">تصدير Excel</button>
+            <button class="btn btn-primary btn-sm" type="button" id="wr-bulk"><span class="btn-label">أصدر شهادات للحاضرين</span><span class="spinner" aria-hidden="true"></span></button>
+          </div>
+          <p class="muted small" id="wr-count"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">الاسم</th>
+                  <th scope="col">التواصل</th>
+                  <th scope="col">الحالة</th>
+                  <th scope="col">المستوى</th>
+                  <th scope="col">لابتوب</th>
+                  <th scope="col">أدوات AI</th>
+                  <th scope="col">التاريخ</th>
+                  <th scope="col">حضر</th>
+                  <th scope="col">الشهادة</th>
+                  <th scope="col"><span class="visually-hidden">إجراءات</span></th>
+                </tr>
+              </thead>
+              <tbody id="wr-body"></tbody>
+            </table>
+          </div>
+          <p class="empty" id="wr-empty" hidden>ما في تسجيلات لسا.</p>
+        </div>
+
+        <form class="panel wsa-form" id="wsa-form" novalidate>
+          <h2>معلومات الورشة</h2>
+          <p class="muted small">هاي النصوص بتطلع على صفحة الورشة، والعنوان وعدد الساعات بيطلعوا كمان على الشهادة.</p>
+          <label class="switch">
+            <input type="checkbox" id="wsa-open">
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span id="wsa-open-label">التسجيل بالورشة مفتوح</span>
+          </label>
+          <div class="row-2">
+            <div class="field">
+              <label for="wsa-title">اسم الورشة (إنجليزي) <span class="req" aria-hidden="true">*</span></label>
+              <input id="wsa-title" type="text" dir="ltr" maxlength="60" required>
+            </div>
+            <div class="field">
+              <label for="wsa-title-ar">اسم الورشة بالعربي</label>
+              <input id="wsa-title-ar" type="text" maxlength="90">
+            </div>
+          </div>
+          <div class="field">
+            <label for="wsa-desc">وصف قصير</label>
+            <textarea id="wsa-desc" rows="3" maxlength="400"></textarea>
+          </div>
+          <div class="row-4">
+            <div class="field">
+              <label for="wsa-date">التاريخ</label>
+              <input id="wsa-date" type="date">
+            </div>
+            <div class="field">
+              <label for="wsa-time">الوقت <span class="optional">(اختياري)</span></label>
+              <input id="wsa-time" type="text" maxlength="40" placeholder="10 ص – 1 م">
+            </div>
+            <div class="field">
+              <label for="wsa-hours">عدد الساعات <span class="req" aria-hidden="true">*</span></label>
+              <input id="wsa-hours" type="number" min="1" max="100" step="1" required>
+            </div>
+            <div class="field">
+              <label for="wsa-place">المكان <span class="optional">(اختياري)</span></label>
+              <input id="wsa-place" type="text" maxlength="100" placeholder="اسم المكان أو أونلاين">
+            </div>
+          </div>
+          <fieldset class="field topics-edit">
+            <legend>محتوى الورشة (شو رح نغطي)</legend>
+            <p class="muted small">كل محور بيطلع ككرت بصفحة الورشة، بنفس الترتيب. المدة اختيارية. <span id="wsa-topics-total"></span></p>
+            <ol class="topic-rows" id="wsa-topics"></ol>
+            <div><button class="btn btn-ghost-dark btn-sm" type="button" id="wsa-topic-add">+ أضف محور</button></div>
+          </fieldset>
+          <div class="row-2">
+            <div class="field">
+              <label for="wsa-group">رابط قروب واتساب الورشة <span class="optional">(اختياري)</span></label>
+              <input id="wsa-group" type="url" dir="ltr" maxlength="200" placeholder="https://chat.whatsapp.com/…">
+            </div>
+            <div class="field">
+              <label for="wsa-closed">رسالة لما يكون التسجيل مسكّر</label>
+              <input id="wsa-closed" type="text" maxlength="200">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit" id="wsa-save"><span class="btn-label">احفظ معلومات الورشة</span><span class="spinner" aria-hidden="true"></span></button>
+            <span class="muted small" id="wsa-status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- Certificate -->
+      <section id="tab-cert" role="tabpanel" aria-labelledby="tab-btn-cert" hidden>
+        <div class="tab-intro">
+          <h2>شهادة الورشة</h2>
+          <p class="muted">عدّل نصوص الشهادة والتواقيع، والمعاينة بتتحدّث وانت بتكتب. أي تعديل بتحفظه بيطلع على كل الشهادات، حتى اللي انبعتت روابطها.</p>
+        </div>
+        <div class="cert-layout">
+          <form class="panel cert-form" id="cert-form" novalidate>
+            <h3>العنوان</h3>
+            <div class="row-2">
+              <div class="field"><label for="cf-title">الكلمة الأولى</label><input id="cf-title" type="text" maxlength="20"></div>
+              <div class="field"><label for="cf-titleAccent">الكلمة الملوّنة</label><input id="cf-titleAccent" type="text" maxlength="20"></div>
+            </div>
+            <div class="field"><label for="cf-titleEn">العنوان بالإنجليزي</label><input id="cf-titleEn" type="text" dir="ltr" maxlength="40"></div>
+            <div class="field"><label for="cf-intro">جملة قبل الاسم</label><input id="cf-intro" type="text" maxlength="80"></div>
+            <div class="field"><label for="cf-reason">جملة بعد الاسم</label><input id="cf-reason" type="text" maxlength="90"></div>
+
+            <h3>الترقيم والمكان</h3>
+            <div class="row-2">
+              <div class="field"><label for="cf-numberPrefix">بداية رقم الشهادة</label><input id="cf-numberPrefix" type="text" dir="ltr" maxlength="24"><p class="muted small">الرقم بيكمل لحاله: 001، 002…</p></div>
+              <div class="field"><label for="cf-place">تحت التاريخ</label><input id="cf-place" type="text" maxlength="40"></div>
+            </div>
+
+            <h3>التواقيع</h3>
+            <div class="sig-edit">
+              <p class="sig-edit-title">التوقيع الأول (يمين)</p>
+              <div class="row-2">
+                <div class="field"><label for="cf-s0-role">الصفة</label><input id="cf-s0-role" type="text" maxlength="40"></div>
+                <div class="field"><label for="cf-s0-name">الاسم <span class="optional">(اختياري)</span></label><input id="cf-s0-name" type="text" maxlength="50"></div>
+              </div>
+              <div class="field"><label for="cf-s0-en">سطر إنجليزي صغير</label><input id="cf-s0-en" type="text" dir="ltr" maxlength="40"></div>
+              <div class="sig-upload">
+                <span class="sig-thumb" id="cf-s0-thumb"></span>
+                <label class="btn btn-ghost-dark btn-sm file-btn"><input type="file" id="cf-s0-file" accept="image/png,image/jpeg,image/webp"><span>ارفع صورة التوقيع</span></label>
+                <button class="link-btn" type="button" id="cf-s0-remove" hidden>شيل التوقيع</button>
+              </div>
+            </div>
+            <div class="sig-edit">
+              <p class="sig-edit-title">التوقيع الثاني (وسط)</p>
+              <div class="row-2">
+                <div class="field"><label for="cf-s1-role">الصفة</label><input id="cf-s1-role" type="text" maxlength="40"></div>
+                <div class="field"><label for="cf-s1-name">الاسم <span class="optional">(اختياري)</span></label><input id="cf-s1-name" type="text" maxlength="50"></div>
+              </div>
+              <div class="field"><label for="cf-s1-en">سطر إنجليزي صغير</label><input id="cf-s1-en" type="text" dir="ltr" maxlength="40"></div>
+              <div class="sig-upload">
+                <span class="sig-thumb" id="cf-s1-thumb"></span>
+                <label class="btn btn-ghost-dark btn-sm file-btn"><input type="file" id="cf-s1-file" accept="image/png,image/jpeg,image/webp"><span>ارفع صورة التوقيع</span></label>
+                <button class="link-btn" type="button" id="cf-s1-remove" hidden>شيل التوقيع</button>
+              </div>
+            </div>
+            <p class="muted small">صوّر توقيعك على ورقة بيضاء: الخلفية البيضاء بتنشال لحالها. بدون صورة، بيضل مكان فاضي للتوقيع باليد بعد الطباعة.</p>
+
+            <h3>اللوحة الجانبية</h3>
+            <div class="row-2">
+              <div class="field"><label for="cf-tagline1">السطر الأول</label><input id="cf-tagline1" type="text" maxlength="40"></div>
+              <div class="field"><label for="cf-tagline2">السطر الملوّن</label><input id="cf-tagline2" type="text" maxlength="40"></div>
+            </div>
+
+            <div class="form-actions cert-save">
+              <button class="btn btn-primary" type="submit" id="cf-save"><span class="btn-label">احفظ الشهادة</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark" type="button" id="cf-reset">رجّع النصوص الأصلية</button>
+              <span class="muted small" id="cf-status" aria-live="polite"></span>
+            </div>
+          </form>
+
+          <div class="cert-side">
+            <div class="panel cert-preview-panel">
+              <div class="cert-preview-head">
+                <h3>المعاينة</h3>
+                <div class="field"><label for="cf-sample" class="visually-hidden">اسم للمعاينة</label><input id="cf-sample" type="text" maxlength="80" value="محمد أحمد سالم" placeholder="اسم للمعاينة"></div>
+              </div>
+              <div class="cert-shadow"><div class="cert-fit" id="cert-preview"></div></div>
+              <p class="muted small"><a href="/certificate" target="_blank" rel="noopener">نسخة فارغة للطباعة ↗</a> (بالقالب المحفوظ)</p>
+            </div>
+
+            <form class="panel" id="ci-form" novalidate>
+              <h3>إصدار شهادة لشخص مش مسجّل</h3>
+              <div class="row-2">
+                <div class="field"><label for="ci-name">الاسم على الشهادة</label><input id="ci-name" type="text" maxlength="80" required></div>
+                <div class="field"><label for="ci-date">تاريخ الإصدار</label><input id="ci-date" type="date"></div>
+              </div>
+              <div class="form-actions"><button class="btn btn-primary btn-sm" type="submit" id="ci-save"><span class="btn-label">أصدر الشهادة</span><span class="spinner" aria-hidden="true"></span></button></div>
+              <p class="muted small">للمسجّلين بالورشة: أصدر من تبويب «الورشة» عشان تنربط بتسجيلهم.</p>
+            </form>
+
+            <div class="panel">
+              <h3 id="cl-title">الشهادات الصادرة</h3>
+              <ul class="cert-list" id="cert-list"></ul>
+              <p class="empty" id="cert-empty" hidden>ما في شهادات صادرة لسا.</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -423,7 +649,7 @@
         </form>
         <div class="panel narrow-panel">
           <h2>نسخة احتياطية</h2>
-          <p class="muted small">بتنزّل ملف فيه كل التسجيلات (مع سلة المحذوفات)، والفعاليات، ونصوص الصفحة، والإعدادات، والزيارات، وصور المعرض المصغّرة. احفظه بمكان آمن، لأنه فيه أرقام وإيميلات الأعضاء.</p>
+          <p class="muted small">بتنزّل ملف فيه كل التسجيلات (مع سلة المحذوفات)، وتسجيلات الورشة والشهادات، والفعاليات، ونصوص الصفحة، والإعدادات، والزيارات، وصور المعرض المصغّرة. احفظه بمكان آمن، لأنه فيه أرقام وإيميلات الأعضاء.</p>
           <label class="check-row"><input type="checkbox" id="backup-full"> مع صور المعرض بحجمها الكامل (الملف بيصير أكبر)</label>
           <div class="form-actions">
             <button class="btn btn-ghost-dark" type="button" id="backup-btn"><span class="btn-label">نزّل نسخة احتياطية</span><span class="spinner" aria-hidden="true"></span></button>

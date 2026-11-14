@@ -5,8 +5,8 @@ import { iconSvg } from './icons.js';
 export const DEFAULT_CONTENT = {
   hero: {
     eyebrow: 'مبادرة جديدة — التسجيل مفتوح',
-    titleLead: 'معاً نبني جيلاً تقنياً',
-    titleAccent: 'من بيت لاهيا',
+    titleLead: 'معاً نبني جيلاً',
+    titleAccent: 'تقنياً',
     lead: 'مجتمع تقني يجمع أبناء بيت لاهيا من المبرمجين وطلاب وخريجي التخصصات التقنية، لنبني شبكة تواصل قوية، نتبادل الخبرات، ونجهّز بعض لسوق العمل.',
   },
   about: {

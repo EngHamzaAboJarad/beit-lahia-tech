@@ -1,0 +1,308 @@
+<!doctype html>
+<!--
+  شهادة إنجاز — ورشة AI-Powered Development (3 ساعات) — بيت لاهيا تيك
+  بهوية المنصة (ليل + زمردي + فراولة + بكسل). مقاس A4 أفقي.
+
+  التعديل بطريقتين:
+  1) افتح الملف بالمتصفح واضغط على أي نص (الاسم، الرقم، التاريخ، أسماء الموقّعين) وعدّله، ثم Ctrl+P
+     (أفقي، الهوامش: بلا، وفعّل «رسومات الخلفية»).
+  2) أو مرّر القيم بالرابط:
+     certificate-ai-workshop.html?name=محمد خالد&no=BLT-AI-2026-001&date=14 نوفمبر 2026&trainer=اسم المدرب&signer=اسم المسؤول
+  للتصدير PNG / PDF شوف README › شهادة الورشة.
+-->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شهادة إنجاز — AI-Powered Development</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=block">
+<style>
+  :root {
+    --night: #0B1220;
+    --night-2: #111a2e;
+    --emerald: #34D399;
+    --emerald-500: #10B981;
+    --emerald-deep: #047857;
+    --strawberry: #F43F5E;
+    --strawberry-soft: #FDA4AF;
+    --sand: #F5F3EE;
+    --slate: #475569;
+    --slate-300: #CBD5E1;
+    --slate-400: #94A3B8;
+    --line: #E2E8F0;
+  }
+  @page { size: 297mm 210mm; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; display: grid; place-items: center;
+    background: #D9DDE4; color: var(--night);
+    font-family: 'IBM Plex Sans Arabic', Tahoma, sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  @media print { body { background: none; min-height: 0; display: block; } }
+  [contenteditable] { outline: none; border-radius: 4px; }
+  @media screen { [contenteditable]:hover { background: rgba(52,211,153,.12); } }
+
+  .sheet {
+    position: relative; width: 297mm; height: 210mm; overflow: hidden;
+    display: grid; grid-template-columns: 1fr 318px;
+    background: #fff;
+  }
+
+  /* ================= المساحة الرئيسية ================= */
+  .main { position: relative; padding: 52px 58px 46px 64px; display: flex; flex-direction: column; }
+  .main::before { /* شبكة خفيفة مثل هوية الموقع */
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(11,18,32,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(11,18,32,.045) 1px, transparent 1px);
+    background-size: 30px 30px; background-position: -1px -1px;
+    -webkit-mask-image: linear-gradient(115deg, transparent 35%, #000 100%);
+            mask-image: linear-gradient(115deg, transparent 35%, #000 100%);
+  }
+  .main > * { position: relative; }
+  /* زوايا «عدسة» */
+  .corner { position: absolute; width: 22px; height: 22px; border: 0 solid var(--emerald-500); }
+  .corner.tr { top: 22px; right: 22px; border-top-width: 2px; border-right-width: 2px; }
+  .corner.br { bottom: 22px; right: 22px; border-bottom-width: 2px; border-right-width: 2px; }
+  .corner.tl { top: 22px; left: 66px; border-top-width: 2px; border-left-width: 2px; border-color: var(--strawberry); }
+  .corner.bl { bottom: 22px; left: 66px; border-bottom-width: 2px; border-left-width: 2px; border-color: var(--strawberry); }
+
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  .kicker { display: flex; align-items: center; gap: 10px; }
+  .kicker i { width: 11px; height: 11px; border-radius: 3px; background: var(--emerald); display: inline-block; }
+  .kicker i + i { margin-inline-start: -5px; }
+  .kicker i:nth-child(3) { background: var(--strawberry); }
+  .kicker span { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11.5px; letter-spacing: .32em; color: var(--slate); direction: ltr; }
+  .cert-no { direction: ltr; text-align: left; line-height: 1.25; }
+  .cert-no small { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 9px; letter-spacing: .28em; color: var(--slate-400); font-weight: 500; }
+  .cert-no b { font-family: 'Space Grotesk', sans-serif; font-size: 13.5px; color: var(--night); letter-spacing: .04em; }
+
+  h1 { margin: 14px 0 0; font-family: 'Readex Pro', sans-serif; font-weight: 700; font-size: 66px; line-height: 1.1; color: var(--night); }
+  h1 span { color: var(--emerald-500); }
+
+  .intro { margin: 22px 0 0; font-size: 17px; color: var(--slate); }
+  .name {
+    margin-top: 2px; align-self: flex-start; max-width: 100%;
+    font-family: 'Readex Pro', sans-serif; font-weight: 700; font-size: 46px; line-height: 1.3; color: var(--night);
+    white-space: nowrap;
+  }
+  .name.empty { color: #B9C0CB; font-weight: 600; }
+  @media print { .name.empty { color: transparent; } } /* نسخة فارغة للكتابة باليد */
+  .pixels { display: flex; gap: 4px; margin-top: 8px; height: 8px; }
+  .pixels b { width: 8px; height: 8px; border-radius: 2px; background: var(--emerald); flex: none; }
+
+  .reason { margin: 26px 0 14px; font-size: 17px; color: var(--night-2); }
+
+  /* بطاقة الورشة */
+  .workshop {
+    align-self: flex-start; display: flex; align-items: stretch; overflow: hidden;
+    border-radius: 16px; background: var(--night); color: #fff; position: relative;
+    box-shadow: 0 14px 34px rgba(11,18,32,.18);
+  }
+  .workshop::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .workshop::after { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; width: 5px; background: linear-gradient(var(--emerald), var(--emerald-500)); }
+  .ws-title { position: relative; padding: 16px 28px 17px 30px; display: flex; flex-direction: column; gap: 3px; }
+  .ws-tag { font-family: 'Space Grotesk', sans-serif; font-size: 10.5px; letter-spacing: .26em; color: var(--emerald); direction: ltr; text-align: right; font-weight: 700; }
+  .ws-name { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 31px; line-height: 1.15; direction: ltr; text-align: right; letter-spacing: -.005em; }
+  .ws-name em { font-style: normal; color: var(--emerald); }
+  .ws-ar { font-size: 14px; color: var(--slate-300); }
+  .ws-hours {
+    position: relative; padding: 0 26px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-inline-start: 1px solid rgba(255,255,255,.12); background: rgba(52,211,153,.08);
+  }
+  .ws-hours b { font-family: 'Space Grotesk', sans-serif; font-size: 46px; line-height: 1; color: var(--emerald); }
+  .ws-hours span { font-size: 12.5px; color: #fff; margin-top: 4px; white-space: nowrap; }
+
+  /* التواقيع */
+  .sign-row { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr .8fr; gap: 34px; }
+  .sig { display: flex; flex-direction: column; }
+  .sig-label { font-size: 10.5px; color: var(--slate-400); }
+  .sig-space { height: 66px; display: flex; align-items: flex-end; padding-bottom: 4px; }
+  .sig-space.val { font-family: 'Readex Pro', sans-serif; font-weight: 600; font-size: 16px; color: var(--night); }
+  .sig-line { height: 2px; background: var(--night); position: relative; }
+  .sig-line::after { content: ""; position: absolute; top: -2px; inset-inline-end: 0; width: 6px; height: 6px; border-radius: 1.5px; background: var(--emerald); }
+  .sig:nth-child(2) .sig-line::after { background: var(--strawberry); }
+  .sig-role { margin-top: 7px; font-family: 'Readex Pro', sans-serif; font-weight: 600; font-size: 14px; color: var(--night); }
+  .sig-name { font-size: 12.5px; color: var(--slate); min-height: 19px; }
+  .sig-en { font-family: 'Space Grotesk', sans-serif; font-size: 9.5px; letter-spacing: .08em; color: var(--slate-400); direction: ltr; text-align: right; }
+
+  /* ================= لوحة الهوية ================= */
+  .panel {
+    position: relative; overflow: hidden; background: var(--night); color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center;
+    padding: 54px 30px 44px;
+  }
+  .panel::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+  .panel::after {
+    content: ""; position: absolute; width: 380px; height: 380px; left: 50%; top: 50%; transform: translate(-50%, -54%);
+    border-radius: 50%; background: radial-gradient(circle, rgba(52,211,153,.20), transparent 64%);
+  }
+  .panel > * { position: relative; z-index: 1; }
+  .p-brand .k { font-family: 'Readex Pro', sans-serif; font-size: 19px; color: var(--emerald); font-weight: 400; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .p-brand .n { font-family: 'Readex Pro', sans-serif; font-size: 36px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+  .p-brand .n span { color: var(--emerald); }
+  .p-brand .e { font-family: 'Space Grotesk', sans-serif; font-size: 10px; letter-spacing: .4em; color: var(--slate-400); direction: ltr; margin-top: 2px; padding-left: .4em; }
+  .p-logo { width: 168px; height: auto; filter: drop-shadow(0 18px 34px rgba(244,63,94,.35)); }
+  .p-tag { font-family: 'Readex Pro', sans-serif; font-size: 17px; line-height: 1.55; color: var(--slate-300); }
+  .p-tag b { color: var(--emerald); font-weight: 600; }
+  .p-url { font-family: 'Space Grotesk', sans-serif; font-size: 13px; letter-spacing: .08em; color: var(--slate-400); direction: ltr; display: flex; align-items: center; gap: 8px; }
+  .p-url i { width: 7px; height: 7px; border-radius: 2px; background: var(--emerald); display: inline-block; }
+
+  /* حافة بكسلات بين اللوحة والمساحة البيضاء */
+  .dissolve { position: absolute; top: 0; bottom: 0; left: 318px; width: 60px; pointer-events: none; z-index: 2; }
+  .dissolve b { position: absolute; width: 11px; height: 11px; border-radius: 2.5px; }
+</style>
+</head>
+<body>
+<div class="sheet" id="sheet">
+
+  <!-- ===== المساحة الرئيسية (يمين) ===== -->
+  <section class="main">
+    <i class="corner tr"></i><i class="corner br"></i><i class="corner tl"></i><i class="corner bl"></i>
+
+    <div class="top">
+      <div class="kicker"><i></i><i></i><i></i><span>CERTIFICATE OF COMPLETION</span></div>
+      <div class="cert-no">
+        <small>CERTIFICATE NO.</small>
+        <b contenteditable spellcheck="false" data-field="no">BLT-AI-2026-001</b>
+      </div>
+    </div>
+
+    <h1>شهادة <span>إنجاز</span></h1>
+
+    <p class="intro">تُمنح هذه الشهادة بكل فخر إلى</p>
+    <div class="name" id="name" contenteditable spellcheck="false" data-field="name">اسم المشارك</div>
+    <div class="pixels" id="pixels"></div>
+
+    <p class="reason">تقديرًا لإتمام ورشة العمل التدريبية بنجاح</p>
+
+    <div class="workshop">
+      <div class="ws-title">
+        <span class="ws-tag">WORKSHOP</span>
+        <span class="ws-name"><em>AI</em>-Powered Development</span>
+        <span class="ws-ar">التطوير البرمجي المدعوم بالذكاء الاصطناعي</span>
+      </div>
+      <div class="ws-hours"><b>3</b><span>ساعات تدريبية</span></div>
+    </div>
+
+    <div class="sign-row">
+      <div class="sig">
+        <span class="sig-label">التوقيع</span>
+        <div class="sig-space"></div>
+        <div class="sig-line"></div>
+        <div class="sig-role">إدارة بيت لاهيا تيك</div>
+        <div class="sig-name" contenteditable spellcheck="false" data-field="signer"></div>
+        <div class="sig-en">Beit Lahia Tech</div>
+      </div>
+      <div class="sig">
+        <span class="sig-label">التوقيع</span>
+        <div class="sig-space"></div>
+        <div class="sig-line"></div>
+        <div class="sig-role">مدرّب الورشة</div>
+        <div class="sig-name" contenteditable spellcheck="false" data-field="trainer"></div>
+        <div class="sig-en">Workshop Instructor</div>
+      </div>
+      <div class="sig">
+        <span class="sig-label">تاريخ الإصدار</span>
+        <div class="sig-space val" contenteditable spellcheck="false" data-field="date" id="date"></div>
+        <div class="sig-line"></div>
+        <div class="sig-role">بيت لاهيا — فلسطين</div>
+        <div class="sig-name"></div>
+        <div class="sig-en">Date of Issue</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== لوحة الهوية (يسار) ===== -->
+  <aside class="panel">
+    <div class="p-brand">
+      <div class="n">بيت لاهيا <span>تيك</span></div>
+      <div class="e">BEIT LAHIA TECH</div>
+    </div>
+
+    <svg class="p-logo" viewBox="0 0 236 266" aria-hidden="true">
+      <g fill="#34D399"><rect x="60" y="0" width="26" height="26" rx="5"/><rect x="150" y="0" width="26" height="26" rx="5"/><rect x="30" y="30" width="26" height="26" rx="5"/><rect x="60" y="30" width="26" height="26" rx="5"/><rect x="90" y="30" width="26" height="26" rx="5"/><rect x="120" y="30" width="26" height="26" rx="5"/><rect x="150" y="30" width="26" height="26" rx="5"/><rect x="180" y="30" width="26" height="26" rx="5"/></g>
+      <g fill="#F43F5E"><rect x="0" y="60" width="26" height="26" rx="5"/><rect x="30" y="60" width="26" height="26" rx="5"/><rect x="60" y="60" width="26" height="26" rx="5"/><rect x="90" y="60" width="26" height="26" rx="5"/><rect x="120" y="60" width="26" height="26" rx="5"/><rect x="150" y="60" width="26" height="26" rx="5"/><rect x="180" y="60" width="26" height="26" rx="5"/><rect x="210" y="60" width="26" height="26" rx="5"/><rect x="0" y="90" width="26" height="26" rx="5"/><rect x="30" y="90" width="26" height="26" rx="5"/><rect x="90" y="90" width="26" height="26" rx="5"/><rect x="120" y="90" width="26" height="26" rx="5"/><rect x="180" y="90" width="26" height="26" rx="5"/><rect x="210" y="90" width="26" height="26" rx="5"/><rect x="0" y="120" width="26" height="26" rx="5"/><rect x="30" y="120" width="26" height="26" rx="5"/><rect x="60" y="120" width="26" height="26" rx="5"/><rect x="90" y="120" width="26" height="26" rx="5"/><rect x="120" y="120" width="26" height="26" rx="5"/><rect x="150" y="120" width="26" height="26" rx="5"/><rect x="180" y="120" width="26" height="26" rx="5"/><rect x="210" y="120" width="26" height="26" rx="5"/><rect x="30" y="150" width="26" height="26" rx="5"/><rect x="60" y="150" width="26" height="26" rx="5"/><rect x="120" y="150" width="26" height="26" rx="5"/><rect x="150" y="150" width="26" height="26" rx="5"/><rect x="180" y="150" width="26" height="26" rx="5"/><rect x="30" y="180" width="26" height="26" rx="5"/><rect x="60" y="180" width="26" height="26" rx="5"/><rect x="90" y="180" width="26" height="26" rx="5"/><rect x="120" y="180" width="26" height="26" rx="5"/><rect x="180" y="180" width="26" height="26" rx="5"/><rect x="60" y="210" width="26" height="26" rx="5"/><rect x="90" y="210" width="26" height="26" rx="5"/><rect x="120" y="210" width="26" height="26" rx="5"/><rect x="150" y="210" width="26" height="26" rx="5"/><rect x="90" y="240" width="26" height="26" rx="5"/><rect x="120" y="240" width="26" height="26" rx="5"/></g>
+      <g fill="#FDA4AF"><rect x="60" y="90" width="26" height="26" rx="5"/><rect x="150" y="90" width="26" height="26" rx="5"/><rect x="90" y="150" width="26" height="26" rx="5"/><rect x="150" y="180" width="26" height="26" rx="5"/></g>
+    </svg>
+
+    <p class="p-tag">معاً نبني جيلاً<br><b>تقنياً</b></p>
+
+    <div class="p-url"><i></i>beitlahia.tech</div>
+  </aside>
+
+  <div class="dissolve" id="dissolve" aria-hidden="true"></div>
+</div>
+
+<script>
+(function () {
+  /* ---------- القيم من الرابط ---------- */
+  const q = new URLSearchParams(location.search);
+  const months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const d = new Date();
+  document.getElementById('date').textContent = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  document.querySelectorAll('[data-field]').forEach(n => { const v = q.get(n.dataset.field); if (v) n.textContent = v; });
+
+  const nameEl = document.getElementById('name');
+  if (!q.get('name')) nameEl.classList.add('empty');
+
+  /* ---------- خط البكسلات تحت الاسم ---------- */
+  const pixels = document.getElementById('pixels');
+  function drawPixels() {
+    pixels.innerHTML = '';
+    const count = Math.max(14, Math.round(nameEl.getBoundingClientRect().width / 12));
+    for (let i = 0; i < count; i++) {
+      const b = document.createElement('b');
+      if (i === 1 || i === 3) b.style.background = 'var(--strawberry)';
+      b.style.opacity = Math.max(.12, 1 - (i / count) * .95).toFixed(2);
+      pixels.appendChild(b);
+    }
+  }
+  /* تصغير الاسم تلقائيًا لو كان طويلًا */
+  function fitName() {
+    let size = 46;
+    nameEl.style.fontSize = size + 'px';
+    const max = nameEl.parentElement.clientWidth - 122;
+    while (nameEl.scrollWidth > max && size > 26) { size -= 1; nameEl.style.fontSize = size + 'px'; }
+    drawPixels();
+  }
+  nameEl.addEventListener('input', () => { nameEl.classList.remove('empty'); fitName(); });
+
+  /* ---------- حافة البكسلات (ثابتة: نفس النتيجة كل مرة) ---------- */
+  function drawDissolve() {
+    const host = document.getElementById('dissolve');
+    host.innerHTML = '';
+    const H = host.clientHeight, cell = 15, rows = Math.ceil(H / cell);
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < 4; c++) {
+        const p = [.8, .42, .16, 0][c];
+        if (rnd() > p) continue;
+        const b = document.createElement('b');
+        b.style.top = (r * cell + 2) + 'px';
+        b.style.left = (c * cell + 2) + 'px';
+        const t = rnd();
+        b.style.background = t < .08 ? 'var(--strawberry)' : t < .2 ? 'var(--emerald)' : 'var(--night)';
+        host.appendChild(b);
+      }
+    }
+  }
+
+  const go = () => { fitName(); drawDissolve(); };
+  go();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(go);
+})();
+</script>
+</body>
+</html>

@@ -168,6 +168,24 @@ Firebase Console › Firestore Database › `members`. للتصدير لملف E
 "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --hide-scrollbars --window-size=1200,630 --virtual-time-budget=8000 --screenshot="public\og.png" "file:///D:/bitlahia/design/og.html"
 ```
 
+## الورشة والشهادات
+
+- **`/workshop`**: صفحة الورشة ونموذج التسجيل (`workshop.html/js/css`). التسجيلات بتنحفظ بـ `workshopRegs`.
+- **`/certificate?id=…`**: شهادة شخص واحد، بتنفتح لأي حدا معه الرابط، وفيها زر «اطبع أو احفظ PDF». بدون `id` بتطلع نسخة فارغة للطباعة.
+- **`site/workshop`**: معلومات الورشة (فتح/سكّر التسجيل، العناوين، التاريخ، المكان، الساعات، محاور الورشة) وقالب الشهادة (النصوص، التواقيع وصورها). بيتعدّل من تبويبي «الورشة» و«الشهادة» بلوحة الإدارة.
+- **`certificates/{id}`**: الشهادات الصادرة `{ name, no, date, regId? }`. الإصدار والإلغاء من لوحة الإدارة؛ الرقم بيكمل لحاله من «بداية رقم الشهادة».
+- الشهادة بترسمها `workshop-shared.js` + `certificate.css`، نفس الكود للصفحة ولمعاينة لوحة الإدارة.
+
+## شهادة الورشة (certificate-ai-workshop)
+
+مصدرها `design/certificate-ai-workshop.html` (A4 أفقي). الاسم والرقم والتاريخ وأسماء الموقّعين تنعدّل بالضغط عليها في المتصفح، أو بالرابط: `?name=...&no=...&date=...&trainer=...&signer=...`. بدون `name` بتطلع نسخة فارغة للكتابة باليد.
+
+```bash
+"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --no-pdf-header-footer --virtual-time-budget=10000 --print-to-pdf="design\certificate.pdf" "file:///D:/bitlahia/design/certificate-ai-workshop.html?name=الاسم"
+```
+
+صورة PNG: نفس الأمر مع `--hide-scrollbars --force-device-scale-factor=2 --window-size=1123,794 --screenshot="design\certificate.png"` بدل خيارات الـ PDF.
+
 ## حماية إضافية (مستحسن قبل النشر الواسع)
 
 - فعّل **App Check** مع reCAPTCHA Enterprise عشان تمنع البوتات تضيف تسجيلات من برا الموقع.
