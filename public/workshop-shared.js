@@ -14,6 +14,19 @@ export const AI_TOOLS = [
 ];
 export const WS_STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج', other: 'غير ذلك' };
 export const WS_LEVEL = { beginner: 'مبتدئ', intermediate: 'متوسط', advanced: 'متقدم' };
+/** meeting type, picked per workshop */
+export const WS_MODES = { onsite: 'وجاهي', online: 'أونلاين' };
+/** "وجاهي · <place>" / "أونلاين" — the line shown wherever the place goes */
+export const placeText = (w) => [WS_MODES[w.mode], w.place].filter(Boolean).join(' · ');
+/** optional registration fields; each workshop turns them on/off (name, WhatsApp and consent are always asked) */
+export const FORM_FIELDS = [
+  { key: 'email', label: 'الإيميل' },
+  { key: 'status', label: 'الحالة (توجيهي / جامعة / خريج)' },
+  { key: 'level', label: 'مستواه بالبرمجة' },
+  { key: 'laptop', label: 'عنده لابتوب؟' },
+  { key: 'aiTools', label: 'أدوات AI اللي جربها' },
+  { key: 'expectations', label: 'شو بيتوقع من الورشة' },
+];
 /** workshop lifecycle: draft (admins only) → live (on the site, can take registrations) → done (archive) */
 export const WS_STATES = { draft: 'مسودة', live: 'منشورة', done: 'انتهت' };
 
@@ -84,12 +97,14 @@ export function mergeWorkshop(saved) {
     date: /^\d{4}-\d{2}-\d{2}$/.test(s.date || '') ? s.date : '',
     time: str(s.time, ''),
     place: str(s.place, ''),
+    mode: s.mode === 'online' ? 'online' : 'onsite',
     hours,
     topics: (Array.isArray(s.topics) ? s.topics : d.topics).map(normalizeTopic).filter((t) => t.title),
     whatsappGroup: str(s.whatsappGroup, ''),
     closedMessage: str(s.closedMessage, d.closedMessage) || d.closedMessage,
     // optional Firestore Timestamp: a «منشورة» workshop stays hidden (rules too) until this moment
     publishAt: s.publishAt && typeof s.publishAt.toMillis === 'function' ? s.publishAt : null,
+    form: Object.fromEntries(FORM_FIELDS.map((f) => [f.key, !(s.form && s.form[f.key] === false)])),
     cert,
   };
 }

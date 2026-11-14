@@ -4,7 +4,7 @@
 // (status 'done') shows «الورشة انتهت» instead of the form; past workshops are listed at the bottom.
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
-import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP } from './workshop-shared.js';
+import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP, placeText } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const COLLECTION = 'workshopRegs';
@@ -40,8 +40,9 @@ function renderContent() {
   const when = [ws.date ? arDate(ws.date) : '', ws.time].filter(Boolean).join(' · ');
   $('m-date').hidden = !when; $('m-date-v').textContent = when;
   $('i-date-row').hidden = !when; $('i-date').textContent = when;
-  $('m-place').hidden = !ws.place; $('m-place-v').textContent = ws.place;
-  $('i-place-row').hidden = !ws.place; $('i-place').textContent = ws.place;
+  const where = wid ? placeText(ws) : ws.place;
+  $('m-place').hidden = !where; $('m-place-v').textContent = where;
+  $('i-place-row').hidden = !where; $('i-place').textContent = where;
   $('topics-title').textContent = `${hoursText(ws.hours)} عملية، من الفكرة للكود الشغّال`;
   $('ws-topics').replaceChildren(...ws.topics.map((t, i) => {
     const li = document.createElement('li'); li.className = 'ws-topic';
@@ -56,6 +57,7 @@ function renderContent() {
     return li;
   }));
   $('topics').hidden = ws.topics.length === 0;
+  applyFormFields();
   const done = ws.status === 'done';
   if (!wid || done || !ws.open) {
     $('ws-eyebrow').classList.add(done ? 'is-done' : 'is-closed');
@@ -74,7 +76,7 @@ function renderContent() {
   const group = /^https:\/\/\S+$/.test(ws.whatsappGroup.trim()) ? ws.whatsappGroup.trim() : '';
   $('group-btn').hidden = !group;
   if (group) $('group-btn').href = group;
-  $('success-meta').replaceChildren(...[ws.title, when, ws.place].filter(Boolean).map((t) => Object.assign(document.createElement('span'), { textContent: t })));
+  $('success-meta').replaceChildren(...[ws.title, when, where].filter(Boolean).map((t) => Object.assign(document.createElement('span'), { textContent: t })));
 }
 
 function renderPast(list) {
@@ -92,7 +94,7 @@ function renderPast(list) {
       const en = document.createElement('bdi'); en.className = 'ws-past-en'; en.dir = 'ltr'; en.textContent = x.title; a.append(en);
     }
     const meta = document.createElement('div'); meta.className = 'ws-past-meta';
-    [hoursText(x.hours), topicsText(x.topics.length), x.place].filter(Boolean)
+    [hoursText(x.hours), topicsText(x.topics.length), placeText(x)].filter(Boolean)
       .forEach((t) => meta.append(Object.assign(document.createElement('span'), { textContent: t })));
     a.append(meta);
     li.append(a);
@@ -237,6 +239,17 @@ form.addEventListener('change', (e) => {
   else boxes.find((b) => b.value === 'none').checked = false;
 });
 
+// fields this workshop doesn't ask for: hidden + disabled (so they're skipped and never sent)
+const fieldBox = (key) => (key === 'aiTools' ? $('tool-chips').closest('.field') : fieldOf(key));
+const isOff = (key) => ws.form && ws.form[key] === false;
+function applyFormFields() {
+  ['email', 'status', 'level', 'laptop', 'aiTools', 'expectations'].forEach((key) => {
+    const box = fieldBox(key);
+    box.hidden = isOff(key);
+    box.querySelectorAll('input, textarea').forEach((i) => { i.disabled = isOff(key); });
+  });
+}
+
 const exp = form.elements.expectations;
 exp.addEventListener('input', () => { $('exp-count').textContent = exp.value.length; });
 
@@ -314,7 +327,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   statusEl.textContent = '';
   statusEl.className = 'form-status';
-  const invalid = Object.keys(rules).filter((n) => !validateField(n));
+  const invalid = Object.keys(rules).filter((n) => !isOff(n) && !validateField(n));
   if (invalid.length) {
     const first = form.elements[invalid[0]];
     (first instanceof RadioNodeList ? first[0] : first).focus();
@@ -330,16 +343,16 @@ form.addEventListener('submit', async (e) => {
     workshopId: wid,
     name: clean(f.name.value),
     whatsapp: normalizePhone(f.whatsapp.value),
-    status: f.status.value,
-    level: f.level.value,
-    laptop: f.laptop.value === 'yes',
-    aiTools: [...form.querySelectorAll('input[name="aiTools"]:checked')].map((b) => b.value),
     consent: true,
     source: 'web',
   };
-  const email = normalizeEmail(f.email.value);
+  if (!isOff('status')) data.status = f.status.value;
+  if (!isOff('level')) data.level = f.level.value;
+  if (!isOff('laptop')) data.laptop = f.laptop.value === 'yes';
+  if (!isOff('aiTools')) data.aiTools = [...form.querySelectorAll('input[name="aiTools"]:checked')].map((b) => b.value);
+  const email = isOff('email') ? '' : normalizeEmail(f.email.value);
   if (email) data.email = email;
-  const expectations = exp.value.trim().slice(0, 500);
+  const expectations = isOff('expectations') ? '' : exp.value.trim().slice(0, 500);
   if (expectations) data.expectations = expectations;
 
   setLoading(true);

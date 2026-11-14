@@ -3,7 +3,7 @@ import { getDb, getAuth } from './firebase-init.js';
 import { gazaDay } from './track.js';
 import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, isEmail, SOCIAL_PLATFORMS, socialInfo, renderFooterLinks } from './content-defaults.js';
 import { iconSvg } from './icons.js';
-import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled } from './workshop-shared.js';
+import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -1212,7 +1212,7 @@ function renderWorkshopList() {
     const m = mergeWorkshop(w);
     const n = wsCounts(w.id);
     const sel = w.id === selId;
-    const sub = [m.titleAr ? h('bdi', { dir: 'ltr' }, m.title) : null, m.date ? arDate(m.date) : 'بدون تاريخ', m.place || null]
+    const sub = [m.titleAr ? h('bdi', { dir: 'ltr' }, m.title) : null, m.date ? arDate(m.date) : 'بدون تاريخ', placeText(m)]
       .filter(Boolean).flatMap((x, i) => (i ? [' · ', x] : [x]));
     return h('li', { class: sel ? 'is-selected' : '' },
       h('div', { class: 'wl-info' },
@@ -1288,7 +1288,11 @@ const syncStateHint = () => {
 };
 $('wsa-state').addEventListener('change', syncStateHint);
 
+$('wsa-fields').replaceChildren(...FORM_FIELDS.map((f) => h('label', {},
+  h('input', { type: 'checkbox', class: 'check', id: `wsa-f-${f.key}` }), f.label)));
+
 function fillWorkshopForm() {
+  FORM_FIELDS.forEach((f) => { $(`wsa-f-${f.key}`).checked = ws.form[f.key]; });
   $('wsa-state').value = ws.status;
   $('wsa-publish').value = ws.publishAt ? toLocalInput(ws.publishAt.toDate()) : '';
   syncStateHint();
@@ -1301,6 +1305,7 @@ function fillWorkshopForm() {
   $('wsa-time').value = ws.time;
   $('wsa-hours').value = ws.hours;
   $('wsa-place').value = ws.place;
+  $('wsa-mode').value = ws.mode;
   renderTopicRows(ws.topics);
   $('wsa-group').value = ws.whatsappGroup;
   $('wsa-closed').value = ws.closedMessage;
@@ -1391,6 +1396,7 @@ $('wsa-form').addEventListener('submit', async (e) => {
   const data = {
     status,
     publishAt: publishDate ? fs.Timestamp.fromDate(publishDate) : null,
+    form: Object.fromEntries(FORM_FIELDS.map((f) => [f.key, $(`wsa-f-${f.key}`).checked])),
     open: $('wsa-open').checked,
     title,
     titleAr: $('wsa-title-ar').value.trim(),
@@ -1399,6 +1405,7 @@ $('wsa-form').addEventListener('submit', async (e) => {
     time: $('wsa-time').value.trim(),
     hours,
     place: $('wsa-place').value.trim(),
+    mode: $('wsa-mode').value === 'online' ? 'online' : 'onsite',
     topics: readTopicRows(),
     whatsappGroup: group,
     closedMessage: $('wsa-closed').value.trim() || DEFAULT_WORKSHOP.closedMessage,
@@ -1516,9 +1523,9 @@ function renderRegs() {
           ? h('a', { class: 'wa-btn', href: waLink(r.whatsapp), target: '_blank', rel: 'noopener noreferrer' }, h('bdi', { dir: 'ltr' }, r.whatsapp))
           : h('span', { class: 'muted' }, '—'),
         r.email ? h('a', { class: 'mail-link', href: `mailto:${r.email}`, dir: 'ltr' }, r.email) : null),
-      h('td', {}, h('span', { class: `pill pill-${r.status}` }, WS_STATUS[r.status] || r.status)),
-      h('td', {}, h('span', { class: `pill pill-${r.level}` }, WS_LEVEL[r.level] || r.level)),
-      h('td', {}, r.laptop ? 'آه' : 'لا'),
+      h('td', {}, r.status ? h('span', { class: `pill pill-${r.status}` }, WS_STATUS[r.status] || r.status) : '—'),
+      h('td', {}, r.level ? h('span', { class: `pill pill-${r.level}` }, WS_LEVEL[r.level] || r.level) : '—'),
+      h('td', {}, r.laptop == null ? '—' : r.laptop ? 'آه' : 'لا'),
       h('td', {}, Array.isArray(r.aiTools) && r.aiTools.length ? h('div', { class: 'tool-tags' }, r.aiTools.map((k) => h('span', {}, toolName(k)))) : '—'),
       h('td', { class: 'cell-date' }, r.createdAt ? dateFmt.format(r.createdAt.toDate()) : '—'),
       h('td', {}, h('input', {
@@ -1579,7 +1586,7 @@ $('wr-export').addEventListener('click', () => {
   };
   const lines = [head, ...rows.map((r) => {
     const c = r.certId ? certById(r.certId) : null;
-    return [r.name, r.whatsapp || '', r.email || '', WS_STATUS[r.status] || r.status, WS_LEVEL[r.level] || r.level, r.laptop ? 'نعم' : 'لا',
+    return [r.name, r.whatsapp || '', r.email || '', WS_STATUS[r.status] || r.status || '', WS_LEVEL[r.level] || r.level || '', r.laptop == null ? '' : r.laptop ? 'نعم' : 'لا',
       (r.aiTools || []).map(toolName).join(' / '), r.expectations || '', r.attended ? 'نعم' : 'لا', c ? c.no : '', c ? certUrl(c.id) : '',
       r.createdAt ? dateTimeFmt.format(r.createdAt.toDate()) : ''];
   })].map((row) => row.map(esc).join(','));

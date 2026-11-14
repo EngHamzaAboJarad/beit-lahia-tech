@@ -123,7 +123,8 @@ service cloud.firestore {
     }
 
     function isValidWorkshopReg(d) {
-      return d.keys().hasAll(['workshopId', 'name', 'whatsapp', 'status', 'level', 'laptop', 'consent', 'createdAt'])
+      // الاسم والواتساب والموافقة دايماً؛ باقي الحقول حسب فورم الورشة (بتنفحص إذا انبعتت)
+      return d.keys().hasAll(['workshopId', 'name', 'whatsapp', 'consent', 'createdAt'])
         && d.keys().hasOnly(['workshopId', 'name', 'whatsapp', 'email', 'status', 'level', 'laptop', 'aiTools',
                              'expectations', 'consent', 'source', 'createdAt'])
         && isStr(d.workshopId, 1, 40) && d.workshopId.matches('^[A-Za-z0-9_-]+$')
@@ -131,9 +132,9 @@ service cloud.firestore {
         && isStr(d.name, 2, 80)
         && d.whatsapp is string && d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$')
         && (!('email' in d) || (isStr(d.email, 6, 120) && d.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$')))
-        && d.status in ['tawjihi', 'student', 'graduate', 'other']
-        && d.level in ['beginner', 'intermediate', 'advanced']
-        && d.laptop is bool
+        && (!('status' in d) || d.status in ['tawjihi', 'student', 'graduate', 'other'])
+        && (!('level' in d) || d.level in ['beginner', 'intermediate', 'advanced'])
+        && (!('laptop' in d) || d.laptop is bool)
         && (!('aiTools' in d) || (d.aiTools is list && d.aiTools.size() <= 6
             && d.aiTools.hasOnly(['chatgpt', 'claude', 'gemini', 'copilot', 'cursor', 'none'])))
         && (!('expectations' in d) || isStr(d.expectations, 0, 500))

@@ -365,3 +365,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .badge-current { background: var(--night); color: var(--emerald); }
 .ws-selected-head h2 .badge { vertical-align: middle; }
 .badge-scheduled { background: #EFF6FF; color: #1E40AF; }
+.form-fields-toggles { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.form-fields-toggles label { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+@media (min-width: 901px) { .row-4:has(> :nth-child(5)) { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
