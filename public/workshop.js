@@ -1,7 +1,10 @@
-// Beit Lahia Tech — workshop page: content from site/workshop + registration → workshopRegs.
+// Beit Lahia Tech — workshop page.
+// /workshop → the workshop in site/settings.currentWorkshop; /workshop?w=<id> → that workshop.
+// Content from workshops/{id}; registration → workshopRegs (with workshopId). A finished workshop
+// (status 'done') shows «الورشة انتهت» instead of the form; past workshops are listed at the bottom.
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
-import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS } from './workshop-shared.js';
+import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const COLLECTION = 'workshopRegs';
@@ -12,7 +15,11 @@ renderFooterLinks($('footer-social'), null);
 
 /* =================== Content =================== */
 let ws = mergeWorkshop(null);
+let wid = ''; // the workshop shown here ('' → none found, the form stays closed)
+const askedId = (new URLSearchParams(location.search).get('w') || '').trim();
+const validId = (v) => /^[A-Za-z0-9_-]{1,40}$/.test(v || '');
 
+const topicsText = (n) => (!n ? '' : n === 1 ? 'محور واحد' : n === 2 ? 'محورين' : n <= 10 ? `${n} محاور` : `${n} محور`);
 function hoursText(n) { return n === 1 ? 'ساعة' : n === 2 ? 'ساعتين' : n <= 10 ? `${n} ساعات` : `${n} ساعة`; }
 
 function renderContent() {
@@ -49,34 +56,71 @@ function renderContent() {
     return li;
   }));
   $('topics').hidden = ws.topics.length === 0;
-  if (!ws.open) {
-    $('ws-eyebrow').classList.add('is-closed');
-    $('ws-eyebrow-text').textContent = 'ورشة عمل · التسجيل مسكّر';
+  const done = ws.status === 'done';
+  if (!wid || done || !ws.open) {
+    $('ws-eyebrow').classList.add(done ? 'is-done' : 'is-closed');
+    $('ws-eyebrow-text').textContent = !wid ? 'ورشة عمل' : done ? `ورشة عمل · انتهت${ws.date ? ` (${arDate(ws.date)})` : ''}` : 'ورشة عمل · التسجيل مسكّر';
     $('cta-book').hidden = true;
-    $('closed-msg').textContent = ws.closedMessage;
+    $('closed-title').textContent = !wid ? 'الورشة مش موجودة' : done ? 'الورشة انتهت' : 'التسجيل بالورشة مسكّر';
+    $('closed-msg').textContent = !wid
+      ? 'ما لقينا هاي الورشة. ممكن الرابط غلط أو الورشة لسا ما انفتحت. تابعنا عشان توصلك الورشات الجاية.'
+      : done ? 'شكراً لكل اللي حضروا ✦ تابعنا عشان توصلك الورشات الجاية.' : ws.closedMessage;
     form.hidden = true;
     $('success').hidden = true;
     $('closed').hidden = false;
   }
+  if (done) $('topics-title').textContent = `${hoursText(ws.hours)} عملية، هاد اللي غطيناه`;
+  if (wid) document.title = `${ws.titleAr || ws.title} | ورشات بيت لاهيا تيك`;
   const group = /^https:\/\/\S+$/.test(ws.whatsappGroup.trim()) ? ws.whatsappGroup.trim() : '';
   $('group-btn').hidden = !group;
   if (group) $('group-btn').href = group;
   $('success-meta').replaceChildren(...[ws.title, when, ws.place].filter(Boolean).map((t) => Object.assign(document.createElement('span'), { textContent: t })));
 }
 
+function renderPast(list) {
+  const items = list.filter((x) => x.id !== wid)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  $('past').hidden = items.length === 0;
+  $('ws-past').replaceChildren(...items.map((x) => {
+    const li = document.createElement('li');
+    const a = Object.assign(document.createElement('a'), { className: 'ws-past-card', href: `/workshop?w=${encodeURIComponent(x.id)}` });
+    const date = document.createElement('span'); date.className = 'ws-past-date';
+    date.append(document.createElement('i'), x.date ? arDate(x.date) : 'ورشة سابقة');
+    const h3 = document.createElement('h3'); h3.textContent = x.titleAr || x.title;
+    a.append(date, h3);
+    if (x.titleAr && x.title) {
+      const en = document.createElement('bdi'); en.className = 'ws-past-en'; en.dir = 'ltr'; en.textContent = x.title; a.append(en);
+    }
+    const meta = document.createElement('div'); meta.className = 'ws-past-meta';
+    [hoursText(x.hours), topicsText(x.topics.length), x.place].filter(Boolean)
+      .forEach((t) => meta.append(Object.assign(document.createElement('span'), { textContent: t })));
+    a.append(meta);
+    li.append(a);
+    return li;
+  }));
+}
+
 (async () => {
+  let fs, db;
   try {
-    const { db, fs } = await getDb();
-    const [wsSnap, setSnap] = await Promise.all([
-      fs.getDoc(fs.doc(db, 'site', 'workshop')),
-      fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null),
-    ]);
-    ws = mergeWorkshop(wsSnap.exists() ? wsSnap.data() : null);
-    if (setSnap && setSnap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...setSnap.data() });
+    ({ db, fs } = await getDb());
+    const setSnap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
+    const settings = setSnap && setSnap.exists() ? setSnap.data() : {};
+    if (setSnap && setSnap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...settings });
+    const id = validId(askedId) ? askedId : validId(settings.currentWorkshop) ? settings.currentWorkshop : '';
+    // a draft (or a wrong id) isn't readable by visitors → "not found"
+    const snap = id ? await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null) : null;
+    if (snap && snap.exists()) { wid = id; ws = mergeWorkshop(snap.data()); }
+    else ws = { ...mergeWorkshop(null), topics: askedId ? [] : DEFAULT_WORKSHOP.topics };
   } catch (e) {
-    console.warn('[workshop]', e); // defaults keep the page usable
+    console.warn('[workshop]', e); // defaults keep the page readable; the form stays closed
   }
   renderContent();
+  if (!db) return;
+  try {
+    const past = await fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done')));
+    renderPast(past.docs.map((d) => ({ id: d.id, ...mergeWorkshop(d.data()) })));
+  } catch (e) { console.warn('[workshop past]', e); }
 })();
 
 /* =================== Hero: neural pixel network =================== */
@@ -277,8 +321,10 @@ form.addEventListener('submit', async (e) => {
   }
   if (form.elements.website.value) { showSuccess(); return; } // honeypot
 
+  if (!wid) { statusEl.textContent = 'ما في ورشة مفتوحة للتسجيل هلأ.'; statusEl.classList.add('err'); return; }
   const f = form.elements;
   const data = {
+    workshopId: wid,
     name: clean(f.name.value),
     whatsapp: normalizePhone(f.whatsapp.value),
     status: f.status.value,

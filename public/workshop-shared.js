@@ -1,7 +1,8 @@
 // Beit Lahia Tech — workshop + certificate: defaults and the certificate renderer.
-// site/workshop (public read, admin write) holds the workshop info and the certificate template;
-// certificates/{id} holds one issued certificate ({ name, no, date }). The same renderer draws the
-// certificate on /certificate and the live preview in /admin, so both always look the same.
+// workshops/{wid} (public read when live/done, admin write) holds one workshop's info and its certificate
+// template; site/settings.currentWorkshop says which one /workshop shows. certificates/{id} holds one
+// issued certificate ({ name, no, date, workshopId }). The same renderer draws the certificate on
+// /certificate and the live preview in /admin, so both always look the same.
 
 export const AI_TOOLS = [
   { key: 'chatgpt', name: 'ChatGPT' },
@@ -13,8 +14,11 @@ export const AI_TOOLS = [
 ];
 export const WS_STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج', other: 'غير ذلك' };
 export const WS_LEVEL = { beginner: 'مبتدئ', intermediate: 'متوسط', advanced: 'متقدم' };
+/** workshop lifecycle: draft (admins only) → live (on the site, can take registrations) → done (archive) */
+export const WS_STATES = { draft: 'مسودة', live: 'منشورة', done: 'انتهت' };
 
 export const DEFAULT_WORKSHOP = {
+  status: 'live',
   open: true,
   title: 'AI-Powered Development',
   titleAr: 'التطوير البرمجي المدعوم بالذكاء الاصطناعي',
@@ -23,7 +27,7 @@ export const DEFAULT_WORKSHOP = {
   time: '',
   place: '',
   hours: 3,
-  // محاور الورشة: عنوان + وصف قصير + مدة (اختيارية). بتتعدّل من تبويب «الورشة».
+  // محاور الورشة: عنوان + وصف قصير + مدة (اختيارية). بتتعدّل من تبويب «الورشات».
   topics: [
     { title: 'كتابة Prompts بتطلّع كود صح', desc: 'كيف توصف المطلوب للـ AI بدقة، مع أمثلة جيدة وسيئة، عشان يطلع الكود صح من أول مرة.', time: '30 دقيقة' },
     { title: 'نبني مشروع من الصفر مع الـ AI', desc: 'تطبيق عملي: من الفكرة لمشروع صغير شغّال، خطوة بخطوة مع مساعد ذكاء اصطناعي.', time: '75 دقيقة' },
@@ -72,6 +76,7 @@ export function mergeWorkshop(saved) {
   cert.signers = signers;
   const hours = Number.isFinite(Number(s.hours)) && Number(s.hours) > 0 ? Number(s.hours) : d.hours;
   return {
+    status: s.status in WS_STATES ? s.status : d.status,
     open: s.open !== false,
     title: str(s.title, d.title) || d.title,
     titleAr: str(s.titleAr, d.titleAr),

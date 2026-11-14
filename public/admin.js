@@ -3,7 +3,7 @@ import { getDb, getAuth } from './firebase-init.js';
 import { gazaDay } from './track.js';
 import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, isEmail, SOCIAL_PLATFORMS, socialInfo, renderFooterLinks } from './content-defaults.js';
 import { iconSvg } from './icons.js';
-import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, AI_TOOLS } from './workshop-shared.js';
+import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -1046,52 +1046,213 @@ $('team-show').addEventListener('change', async (e) => {
   } catch (e2) { e.target.checked = !on; toast(errMsg(e2), true); } finally { e.target.disabled = false; syncTeamToggle(); }
 });
 
-/* =================== Workshop: info, registrations, certificates =================== */
-// site/workshop → workshop info (tab «الورشة») + certificate template (tab «الشهادة»), saved with merge.
-// workshopRegs/{id} → registrations from /workshop (admin: attended, certId).
-// certificates/{id} → { name, no, date, regId? }; anyone with the link /certificate?id=… can open it.
-let ws = mergeWorkshop(null);
-let regs = [];
-let certs = [];
+/* =================== Workshops: history, info, registrations, certificates =================== */
+// workshops/{wid} → one workshop: info (tab «الورشات») + certificate template (tab «الشهادة»), saved with merge.
+// site/settings.currentWorkshop → the workshop /workshop shows (set automatically when one goes «منشورة»).
+// workshopRegs/{id} → registrations from /workshop, each with workshopId (admin: attended, certId).
+// certificates/{id} → { name, no, date, regId?, workshopId }; anyone with the link /certificate?id=… can open it.
+// Everything below the history panel (and the «الشهادة» tab) works on the selected workshop (selId).
+let workshops = [];  // [{ id, ...saved data }]
+let currentId = '';  // site/settings.currentWorkshop
+let selId = '';
+let allRegs = [];
+let allCerts = [];
+let ws = mergeWorkshop(null); // the selected workshop
+let regs = [];  // the selected workshop's registrations
+let certs = []; // the selected workshop's certificates
 let certDraft = structuredClone(ws.cert);
 let certDirty = false;
+let wsaDirty = false;
 let previewRefresh = () => {};
 let refitPreview = () => {};
+const SEL_KEY = 'blt-admin-ws';
 
 const certUrl = (id) => `${location.origin}/certificate?id=${id}`;
-const certById = (id) => certs.find((c) => c.id === id);
+const wsUrl = (id) => `${location.origin}/workshop?w=${encodeURIComponent(id)}`;
+const certById = (id) => allCerts.find((c) => c.id === id);
 const todayYmd = () => gazaDay();
 const issueDateText = () => arDate(ws.date || todayYmd());
+const wsTime = (w) => (w.createdAt && typeof w.createdAt.toMillis === 'function' ? w.createdAt.toMillis() : w._t || 0);
+const wsName = (w) => { const m = mergeWorkshop(w); return m.titleAr || m.title; };
+async function copyText(text, okMsg) {
+  try { await navigator.clipboard.writeText(text); toast(okMsg); } catch { toast('ما قدرت أنسخ', true); }
+}
+
+/** newest first; a workshop without a date yet (a new draft) goes on top */
+function sortedWorkshops() {
+  return [...workshops].sort((a, b) => String(b.date || '9999').localeCompare(String(a.date || '9999')) || wsTime(b) - wsTime(a));
+}
 
 async function loadWorkshopAll() {
-  await loadWorkshop();
-  await reloadLists();
-}
-async function reloadLists() {
-  await Promise.all([loadCerts(), loadRegs()]);
-  renderCerts();
-  renderRegs();
+  $('ws-list-empty').hidden = false;
+  $('ws-list-empty').textContent = 'جاري التحميل…';
+  try {
+    const [wSnap, setSnap] = await Promise.all([
+      fs.getDocs(fs.collection(db, 'workshops')),
+      fs.getDoc(fs.doc(db, 'site', 'settings')),
+      loadRegs(), loadCerts(),
+    ]);
+    workshops = wSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    currentId = setSnap.exists() ? String(setSnap.data().currentWorkshop || '') : '';
+    await migrateWorkshops();
+  } catch (e) { console.error(e); toast(errMsg(e), true); }
+  let saved = '';
+  try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
+  const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
+  selectWorkshop(pick, { force: true });
 }
 
-async function loadWorkshop() {
-  try {
-    const snap = await fs.getDoc(fs.doc(db, 'site', 'workshop'));
-    ws = mergeWorkshop(snap.exists() ? snap.data() : null);
-  } catch (e) { toast(errMsg(e), true); }
+// First run after the move to workshops/: make the first workshop from the defaults (live, current),
+// and link every registration/certificate that has no workshopId yet to the current workshop.
+async function migrateWorkshops() {
+  const now = fs.serverTimestamp();
+  if (!workshops.length) {
+    const ref = fs.doc(fs.collection(db, 'workshops'));
+    const data = { ...structuredClone(DEFAULT_WORKSHOP), status: 'live' };
+    const batch = fs.writeBatch(db);
+    batch.set(ref, { ...data, createdAt: now, updatedAt: now });
+    batch.set(fs.doc(db, 'site', 'settings'), { currentWorkshop: ref.id, updatedAt: now }, { merge: true });
+    await batch.commit();
+    workshops = [{ id: ref.id, ...data, _t: Date.now() }];
+    currentId = ref.id;
+  } else if (!workshops.some((w) => w.id === currentId)) {
+    // no (valid) current workshop: use the newest live one, else the newest
+    const pick = sortedWorkshops().find((w) => w.status === 'live') || sortedWorkshops()[0];
+    await fs.setDoc(fs.doc(db, 'site', 'settings'), { currentWorkshop: pick.id, updatedAt: now }, { merge: true });
+    currentId = pick.id;
+  }
+  const ops = [
+    ...allRegs.filter((r) => !r.workshopId).map((r) => ['workshopRegs', r]),
+    ...allCerts.filter((c) => !c.workshopId).map((c) => ['certificates', c]),
+  ];
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = fs.writeBatch(db);
+    ops.slice(i, i + 400).forEach(([col, x]) => batch.update(fs.doc(db, col, x.id), { workshopId: currentId }));
+    await batch.commit();
+    ops.slice(i, i + 400).forEach(([, x]) => { x.workshopId = currentId; });
+  }
+  if (ops.length) toast(`انربط ${ops.length} تسجيل وشهادة قديمة بورشة «${wsName(workshops.find((w) => w.id === currentId))}»`);
+}
+
+function applySelection() {
+  regs = allRegs.filter((r) => r.workshopId === selId);
+  certs = allCerts.filter((c) => c.workshopId === selId);
+}
+
+function selectWorkshop(id, { force = false } = {}) {
+  if (!force && id === selId) return;
+  if (!force && (certDirty || wsaDirty) && !confirm('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟')) return;
+  selId = id;
+  try { if (id) localStorage.setItem(SEL_KEY, id); } catch { /* ignore */ }
+  ws = mergeWorkshop(workshops.find((w) => w.id === id) || null);
+  applySelection();
   fillWorkshopForm();
   certDraft = structuredClone(ws.cert);
   fillCertForm();
   certDirty = false;
+  wsaDirty = false;
   $('cf-status').textContent = '';
+  $('wsa-status').textContent = '';
   $('ci-date').value = ws.date || todayYmd();
+  syncSelectedUi();
   initPreview();
+  renderWorkshopList();
+  renderCerts();
+  renderRegs();
 }
+
+function syncSelectedUi() {
+  $('wsa-heading').textContent = ws.title;
+  $('cert-heading').textContent = ws.title;
+  const badge = $('wsa-state-badge');
+  badge.className = `badge badge-${ws.status}`;
+  badge.textContent = selId === currentId ? `${WS_STATES[ws.status]} · الظاهرة على الموقع` : WS_STATES[ws.status];
+  $('wsa-open-page').href = selId ? `/workshop?w=${encodeURIComponent(selId)}` : '/workshop';
+  $('cert-blank-link').href = selId ? `/certificate?w=${encodeURIComponent(selId)}` : '/certificate';
+}
+
+/* ---------- history ---------- */
+function wsCounts(id) {
+  const r = allRegs.filter((x) => x.workshopId === id);
+  return { regs: r.length, attended: r.filter((x) => x.attended).length, certs: allCerts.filter((c) => c.workshopId === id).length };
+}
+
+function renderWorkshopList() {
+  const list = sortedWorkshops();
+  $('ws-list-empty').hidden = list.length > 0;
+  $('ws-list-empty').textContent = 'ما في ورشات لسا. اضغط «+ ورشة جديدة».';
+  $('ws-list').replaceChildren(...list.map((w) => {
+    const m = mergeWorkshop(w);
+    const n = wsCounts(w.id);
+    const sel = w.id === selId;
+    const sub = [m.titleAr ? h('bdi', { dir: 'ltr' }, m.title) : null, m.date ? arDate(m.date) : 'بدون تاريخ', m.place || null]
+      .filter(Boolean).flatMap((x, i) => (i ? [' · ', x] : [x]));
+    return h('li', { class: sel ? 'is-selected' : '' },
+      h('div', { class: 'wl-info' },
+        h('div', { class: 'wl-title' },
+          h('strong', {}, m.titleAr || m.title),
+          h('span', { class: `badge badge-${m.status}` }, WS_STATES[m.status]),
+          w.id === currentId ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
+        h('span', { class: 'muted small' }, sub),
+        h('div', { class: 'wl-counts' },
+          h('span', {}, `${n.regs} مسجّل`), h('span', {}, `${n.attended} حضروا`), h('span', {}, `${n.certs} شهادة`))),
+      h('div', { class: 'wl-tools' },
+        h('button', {
+          type: 'button', class: sel ? 'btn btn-primary btn-xs' : 'btn btn-ghost-dark btn-xs', 'aria-pressed': String(sel),
+          onclick: () => { selectWorkshop(w.id); if (selId === w.id) $('wsa-heading').closest('.tab-intro').scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+        }, sel ? 'مختارة ✓' : 'إدارة'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', onclick: () => copyText(wsUrl(w.id), 'انسخ رابط الورشة') }, 'نسخ الرابط'),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `حذف ورشة ${m.titleAr || m.title}`, title: 'حذف الورشة', onclick: () => deleteWorkshop(w) }, svgIcon(ICONS.trash))));
+  }));
+}
+
+async function deleteWorkshop(w) {
+  const n = wsCounts(w.id);
+  if (n.regs || n.certs) { toast('ما بتنحذف ورشة إلها تسجيلات أو شهادات. خلّي حالتها «انتهت» بدل الحذف.', true); return; }
+  if (w.id === currentId) { toast('هاي الورشة الظاهرة على الموقع. انشر ورشة ثانية أول، وبعدين احذفها.', true); return; }
+  if (!confirm(`حذف ورشة «${wsName(w)}» نهائياً؟`)) return;
+  try {
+    await fs.deleteDoc(fs.doc(db, 'workshops', w.id));
+    workshops = workshops.filter((x) => x.id !== w.id);
+    if (selId === w.id) selectWorkshop(currentId || (sortedWorkshops()[0] || {}).id || '', { force: true });
+    else renderWorkshopList();
+    toast('انحذفت الورشة');
+  } catch (e) { toast(errMsg(e), true); }
+}
+
+$('ws-new').addEventListener('click', async () => {
+  if ((certDirty || wsaDirty) && !confirm('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟')) return;
+  // copy the selected workshop's texts, topics and certificate template; a new workshop starts as a draft
+  const base = mergeWorkshop(workshops.find((w) => w.id === selId) || null);
+  const data = { ...structuredClone(base), status: 'draft', open: true, date: '', time: '', place: '', whatsappGroup: '' };
+  const btn = $('ws-new');
+  setBusy(btn, true);
+  try {
+    const ref = fs.doc(fs.collection(db, 'workshops'));
+    await fs.setDoc(ref, { ...data, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() });
+    workshops.push({ id: ref.id, ...data, _t: Date.now() });
+    selectWorkshop(ref.id, { force: true });
+    toast('انعملت ورشة جديدة (مسودة) بنفس محتوى اللي قبلها. عدّل معلوماتها، وبس تجهز خلّي حالتها «منشورة».');
+    $('wsa-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('wsa-title').focus({ preventScroll: true });
+  } catch (e) { toast(errMsg(e), true); } finally { setBusy(btn, false); }
+});
 
 /* ---------- workshop info form ---------- */
 const syncWsOpen = () => { $('wsa-open-label').textContent = $('wsa-open').checked ? 'التسجيل بالورشة مفتوح' : 'التسجيل بالورشة مسكّر'; };
 $('wsa-open').addEventListener('change', syncWsOpen);
 
+const STATE_HINTS = {
+  draft: 'المسودة مخفية عن الزوار، وما بتقبل تسجيلات.',
+  live: 'بتطلع على الموقع، وبتقبل تسجيلات لما يكون التسجيل مفتوح. لما تحفظها «منشورة» بتصير هي الظاهرة على /workshop.',
+  done: 'بتنعرض بـ «ورشاتنا السابقة»، وصفحتها بتقول «الورشة انتهت». تسجيلاتها وشهاداتها بيضلوا زي ما هم.',
+};
+const syncStateHint = () => { $('wsa-state-hint').textContent = STATE_HINTS[$('wsa-state').value] || ''; };
+$('wsa-state').addEventListener('change', syncStateHint);
+
 function fillWorkshopForm() {
+  $('wsa-state').value = ws.status;
+  syncStateHint();
   $('wsa-open').checked = ws.open;
   syncWsOpen();
   $('wsa-title').value = ws.title;
@@ -1104,7 +1265,6 @@ function fillWorkshopForm() {
   renderTopicRows(ws.topics);
   $('wsa-group').value = ws.whatsappGroup;
   $('wsa-closed').value = ws.closedMessage;
-  $('wsa-heading').textContent = ws.title;
 }
 
 /* ---------- workshop content (topics / agenda) ---------- */
@@ -1165,7 +1325,7 @@ function syncTopicTools() {
   const total = mins >= 60 ? `${+(mins / 60).toFixed(2)} ساعة` : `${mins} دقيقة`;
   $('wsa-topics-total').textContent = mins && known ? `(المجموع: ${total})` : '';
 }
-function topicsChanged() { syncTopicTools(); $('wsa-status').textContent = 'في تعديلات مش محفوظة'; }
+function topicsChanged() { syncTopicTools(); wsaDirty = true; $('wsa-status').textContent = 'في تعديلات مش محفوظة'; }
 $('wsa-topics').addEventListener('input', syncTopicTools);
 $('wsa-topic-add').addEventListener('click', () => {
   if ($('wsa-topics').children.length >= MAX_TOPICS) return;
@@ -1175,9 +1335,11 @@ $('wsa-topic-add').addEventListener('click', () => {
   li.querySelector('.t-title').focus();
 });
 
-$('wsa-form').addEventListener('input', () => { $('wsa-status').textContent = 'في تعديلات مش محفوظة'; });
+$('wsa-form').addEventListener('input', () => { wsaDirty = true; $('wsa-status').textContent = 'في تعديلات مش محفوظة'; });
 $('wsa-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!selId) { toast('ما في ورشة مختارة', true); return; }
+  const status = $('wsa-state').value;
   const title = $('wsa-title').value.trim();
   const hours = Number($('wsa-hours').value);
   const group = $('wsa-group').value.trim();
@@ -1185,6 +1347,7 @@ $('wsa-form').addEventListener('submit', async (e) => {
   if (!(hours >= 1 && hours <= 100)) { toast('عدد الساعات لازم يكون بين 1 و 100', true); $('wsa-hours').focus(); return; }
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('wsa-group').focus(); return; }
   const data = {
+    status,
     open: $('wsa-open').checked,
     title,
     titleAr: $('wsa-title-ar').value.trim(),
@@ -1200,26 +1363,36 @@ $('wsa-form').addEventListener('submit', async (e) => {
   const btn = $('wsa-save');
   setBusy(btn, true);
   try {
-    await fs.setDoc(fs.doc(db, 'site', 'workshop'), { ...data, updatedAt: fs.serverTimestamp() }, { merge: true });
+    // going «منشورة» makes it the workshop /workshop shows
+    const makeCurrent = status === 'live' && currentId !== selId;
+    const batch = fs.writeBatch(db);
+    batch.set(fs.doc(db, 'workshops', selId), { ...data, updatedAt: fs.serverTimestamp() }, { merge: true });
+    if (makeCurrent) batch.set(fs.doc(db, 'site', 'settings'), { currentWorkshop: selId, updatedAt: fs.serverTimestamp() }, { merge: true });
+    await batch.commit();
+    const raw = workshops.find((w) => w.id === selId);
+    if (raw) Object.assign(raw, data);
+    if (makeCurrent) currentId = selId;
     ws = mergeWorkshop({ ...ws, ...data, cert: ws.cert });
-    $('wsa-heading').textContent = ws.title;
+    wsaDirty = false;
     $('wsa-status').textContent = 'انحفظ';
     if (!$('ci-date').value) $('ci-date').value = ws.date || todayYmd();
+    syncSelectedUi();
+    renderWorkshopList();
     refreshPreview();
-    toast(data.open ? 'انحفظت معلومات الورشة (التسجيل مفتوح)' : 'انحفظت معلومات الورشة (التسجيل مسكّر)');
+    toast(makeCurrent ? 'انحفظت، وصارت هي الورشة الظاهرة على /workshop'
+      : status === 'live' ? (data.open ? 'انحفظت معلومات الورشة (التسجيل مفتوح)' : 'انحفظت معلومات الورشة (التسجيل مسكّر)')
+      : `انحفظت الورشة (${WS_STATES[status]})`);
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
 
-$('wsa-copy-link').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(`${location.origin}/workshop`); toast('انسخ رابط التسجيل'); } catch { toast('ما قدرت أنسخ', true); }
-});
+$('wsa-copy-link').addEventListener('click', () => { if (selId) copyText(wsUrl(selId), 'انسخ رابط الورشة'); });
 
 /* ---------- registrations ---------- */
 async function loadRegs() {
   $('wr-count').textContent = 'جاري التحميل…';
   try {
     const snap = await fs.getDocs(fs.query(fs.collection(db, 'workshopRegs'), fs.orderBy('createdAt', 'desc')));
-    regs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    allRegs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) { console.error(e); $('wr-count').textContent = errMsg(e); }
 }
 
@@ -1272,9 +1445,7 @@ function certActions(c, phone, small = true) {
 function certMessage(c) {
   return `أهلاً ${c.name} 👋\nشهادة إنجاز ورشة ${ws.title} من بيت لاهيا تيك صارت جاهزة:\n${certUrl(c.id)}\nبتقدر تفتحها وتحفظها PDF أو تطبعها. مبروك! ✦`;
 }
-async function copyCertLink(c) {
-  try { await navigator.clipboard.writeText(certUrl(c.id)); toast('انسخ رابط الشهادة'); } catch { toast('ما قدرت أنسخ', true); }
-}
+function copyCertLink(c) { return copyText(certUrl(c.id), 'انسخ رابط الشهادة'); }
 
 function renderRegs() {
   renderWsStats();
@@ -1320,6 +1491,7 @@ async function setAttended(r, value, tr, box) {
     r.attended = value;
     tr.classList.toggle('is-attended', value);
     renderWsStats();
+    renderWorkshopList();
   } catch (e) { box.checked = !value; toast(errMsg(e), true); } finally { box.disabled = false; }
 }
 
@@ -1328,14 +1500,23 @@ async function deleteReg(r) {
   if (!confirm(`حذف تسجيل «${r.name}» نهائياً؟${c ? ' شهادته بتضل شغّالة (بتقدر تلغيها من تبويب «الشهادة»).' : ''}`)) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'workshopRegs', r.id));
-    regs = regs.filter((x) => x.id !== r.id);
+    allRegs = allRegs.filter((x) => x.id !== r.id);
+    applySelection();
     renderRegs();
+    renderWorkshopList();
     toast('انحذف التسجيل');
   } catch (e) { toast(errMsg(e), true); }
 }
 
 ['wr-search', 'wr-filter', 'wr-level'].forEach((id) => $(id).addEventListener('input', renderRegs));
 $('wr-refresh').addEventListener('click', reloadLists);
+async function reloadLists() {
+  await Promise.all([loadCerts(), loadRegs()]);
+  applySelection();
+  renderCerts();
+  renderRegs();
+  renderWorkshopList();
+}
 
 $('wr-export').addEventListener('click', () => {
   const rows = filteredRegs();
@@ -1352,15 +1533,16 @@ $('wr-export').addEventListener('click', () => {
       r.createdAt ? dateTimeFmt.format(r.createdAt.toDate()) : ''];
   })].map((row) => row.map(esc).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = h('a', { href: URL.createObjectURL(blob), download: `beit-lahia-workshop-${gazaDay()}.csv` });
+  const a = h('a', { href: URL.createObjectURL(blob), download: `beit-lahia-workshop-${ws.date || gazaDay()}.csv` });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
 /* ---------- issuing certificates ---------- */
+// numbering counts every certificate with the same prefix (all workshops), so a number never repeats
 function nextNumbers(count) {
   const prefix = ws.cert.numberPrefix || '';
-  const max = certs.reduce((m, c) => {
+  const max = allCerts.reduce((m, c) => {
     if (typeof c.no !== 'string' || !c.no.startsWith(prefix)) return m;
     const n = parseInt(c.no.slice(prefix.length), 10);
     return Number.isFinite(n) ? Math.max(m, n) : m;
@@ -1369,28 +1551,38 @@ function nextNumbers(count) {
 }
 
 /** people: [{ name, regId? }] → issues them all in one batch, returns the new certificates */
+/** a draft isn't public, so its certificates would open with the wrong title → publish first */
+function canIssue() {
+  if (!selId) { toast('ما في ورشة مختارة', true); return false; }
+  if (ws.status === 'draft') { toast('الورشة لسا «مسودة». خلّي حالتها «منشورة» أو «انتهت» قبل ما تصدر شهادات.', true); return false; }
+  return true;
+}
+
 async function issue(people, date) {
   const nos = nextNumbers(people.length);
   const batch = fs.writeBatch(db);
   const made = people.map((p, i) => {
     const ref = fs.doc(fs.collection(db, 'certificates'));
-    const data = { name: p.name, no: nos[i], date, createdAt: fs.serverTimestamp() };
+    const data = { name: p.name, no: nos[i], date, workshopId: selId, createdAt: fs.serverTimestamp() };
     if (p.regId) {
       data.regId = p.regId;
       batch.update(fs.doc(db, 'workshopRegs', p.regId), { certId: ref.id });
     }
     batch.set(ref, data);
-    return { id: ref.id, name: p.name, no: nos[i], date, regId: p.regId || '' };
+    return { id: ref.id, name: p.name, no: nos[i], date, regId: p.regId || '', workshopId: selId };
   });
   await batch.commit();
-  certs.push(...made);
-  made.forEach((c) => { const r = regs.find((x) => x.id === c.regId); if (r) r.certId = c.id; });
+  allCerts.push(...made);
+  made.forEach((c) => { const r = allRegs.find((x) => x.id === c.regId); if (r) r.certId = c.id; });
+  applySelection();
   renderCerts();
   renderRegs();
+  renderWorkshopList();
   return made;
 }
 
 async function issueForReg(r, btn) {
+  if (!canIssue()) return;
   if (!r.attended && !confirm(`«${r.name}» مش متعلّم إنه حضر. تصدرله شهادة برضه؟`)) return;
   btn.disabled = true;
   try {
@@ -1401,7 +1593,7 @@ async function issueForReg(r, btn) {
 
 $('wr-bulk').addEventListener('click', async () => {
   const pending = regs.filter((r) => r.attended && !hasCert(r));
-  if (!pending.length) return;
+  if (!pending.length || !canIssue()) return;
   if (!confirm(`إصدار ${pending.length} شهادة للي حضروا وما إلهم شهادة؟`)) return;
   const btn = $('wr-bulk');
   setBusy(btn, true);
@@ -1417,6 +1609,7 @@ $('ci-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = $('ci-name').value.replace(/\s+/g, ' ').trim();
   if (name.length < 2) { toast('اكتب الاسم كامل', true); $('ci-name').focus(); return; }
+  if (!canIssue()) return;
   const btn = $('ci-save');
   setBusy(btn, true);
   try {
@@ -1431,7 +1624,7 @@ $('ci-form').addEventListener('submit', async (e) => {
 async function loadCerts() {
   try {
     const snap = await fs.getDocs(fs.collection(db, 'certificates'));
-    certs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    allCerts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) { toast(errMsg(e), true); }
 }
 
@@ -1440,7 +1633,7 @@ function renderCerts() {
   $('cl-title').textContent = `الشهادات الصادرة (${list.length})`;
   $('cert-empty').hidden = list.length > 0;
   $('cert-list').replaceChildren(...list.map((c) => {
-    const reg = c.regId ? regs.find((r) => r.id === c.regId) : null;
+    const reg = c.regId ? allRegs.find((r) => r.id === c.regId) : null;
     return h('li', {},
       h('span', { class: 'cert-no-tag' }, c.no),
       h('div', { class: 'cl-info' }, h('strong', {}, c.name), h('span', { class: 'muted small' }, [c.date, reg ? 'من تسجيلات الورشة' : 'إصدار يدوي'].filter(Boolean).join(' · '))),
@@ -1454,13 +1647,15 @@ async function revokeCert(c) {
   try {
     const batch = fs.writeBatch(db);
     batch.delete(fs.doc(db, 'certificates', c.id));
-    const reg = c.regId ? regs.find((r) => r.id === c.regId && r.certId === c.id) : null;
+    const reg = c.regId ? allRegs.find((r) => r.id === c.regId && r.certId === c.id) : null;
     if (reg) batch.update(fs.doc(db, 'workshopRegs', reg.id), { certId: '' });
     await batch.commit();
-    certs = certs.filter((x) => x.id !== c.id);
+    allCerts = allCerts.filter((x) => x.id !== c.id);
     if (reg) reg.certId = '';
+    applySelection();
     renderCerts();
     renderRegs();
+    renderWorkshopList();
     toast('انلغت الشهادة');
   } catch (e) { toast(errMsg(e), true); }
 }
@@ -1599,19 +1794,22 @@ $('cf-reset').addEventListener('click', () => {
 $('cert-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   readCertForm();
+  if (!selId) { toast('ما في ورشة مختارة', true); return; }
   if (!certDraft.title && !certDraft.titleAccent) { toast('اكتب عنوان الشهادة', true); $('cf-title').focus(); return; }
   const btn = $('cf-save');
   setBusy(btn, true);
   try {
     const cert = structuredClone(certDraft);
-    await fs.setDoc(fs.doc(db, 'site', 'workshop'), { cert, updatedAt: fs.serverTimestamp() }, { merge: true });
+    await fs.setDoc(fs.doc(db, 'workshops', selId), { cert, updatedAt: fs.serverTimestamp() }, { merge: true });
+    const raw = workshops.find((w) => w.id === selId);
+    if (raw) raw.cert = structuredClone(cert);
     ws = mergeWorkshop({ ...ws, cert });
     certDirty = false;
     $('cf-status').textContent = 'انحفظ';
-    toast('انحفظت الشهادة، وصارت ظاهرة على كل الروابط');
+    toast('انحفظت الشهادة، وصارت ظاهرة على كل روابط هاي الورشة');
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
-window.addEventListener('beforeunload', (e) => { if (certDirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', (e) => { if (certDirty || wsaDirty) { e.preventDefault(); e.returnValue = ''; } });
 
 /* =================== Settings =================== */
 // same rules as the registration form: Arabic digits ok, local 05x → +970
@@ -1798,15 +1996,15 @@ $('backup-btn').addEventListener('click', async () => {
   try {
     const all = async (name) => (await fs.getDocs(fs.collection(db, name))).docs.map((d) => ({ id: d.id, ...plainData(d.data()) }));
     const one = async (name, id) => { const s = await fs.getDoc(fs.doc(db, name, id)); return s.exists() ? plainData(s.data()) : null; };
-    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings, teamAll, siteWorkshop, regsAll, certsAll] = await Promise.all([
+    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings, teamAll, workshopsAll, regsAll, certsAll] = await Promise.all([
       all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'), all('team'),
-      one('site', 'workshop'), all('workshopRegs'), all('certificates'),
+      all('workshops'), all('workshopRegs'), all('certificates'),
     ]);
     const backup = {
       app: 'beit-lahia-tech', version: 1, exportedAt: new Date().toISOString(),
       members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll, team: teamAll,
-      workshopRegs: regsAll, certificates: certsAll,
-      site: { content: siteContent, settings: siteSettings, workshop: siteWorkshop },
+      workshops: workshopsAll, workshopRegs: regsAll, certificates: certsAll,
+      site: { content: siteContent, settings: siteSettings },
     };
     if ($('backup-full').checked) backup.galleryFull = await all('galleryFull');
     const blob = new Blob([JSON.stringify(backup, null, 1)], { type: 'application/json' });

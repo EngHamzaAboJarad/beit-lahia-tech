@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=14">
+  <link rel="stylesheet" href="/admin.css?v=15">
   <link rel="stylesheet" href="/certificate.css?v=1">
-  <script type="module" src="/admin.js?v=14"></script>
+  <script type="module" src="/admin.js?v=15"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -81,13 +81,14 @@
         </a>
         <div class="admin-user">
           <bdi class="admin-email" id="admin-email"></bdi>
+          <a class="btn btn-ghost-light btn-sm" href="/workshop" target="_blank" rel="noopener">الورشات</a>
           <a class="btn btn-ghost-light btn-sm" href="/" target="_blank" rel="noopener">عرض الموقع</a>
           <button class="btn btn-ghost-light btn-sm" type="button" data-signout>خروج</button>
         </div>
       </div>
       <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
-        <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false">الورشة</button>
+        <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false">الورشات</button>
         <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false">الشهادة</button>
         <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
@@ -178,13 +179,25 @@
 
       <!-- Workshop -->
       <section id="tab-workshop" role="tabpanel" aria-labelledby="tab-btn-workshop" hidden>
-        <div class="tab-intro stats-head">
+        <div class="panel ws-history">
+          <div class="ws-history-head">
+            <div>
+              <h2>سجل الورشات</h2>
+              <p class="muted small">كل ورشة إلها تسجيلاتها وشهاداتها لحالها. اختار ورشة بزر «إدارة» عشان تشتغل عليها تحت وبتبويب «الشهادة».</p>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" id="ws-new"><span class="btn-label">+ ورشة جديدة</span><span class="spinner" aria-hidden="true"></span></button>
+          </div>
+          <ul class="ws-list" id="ws-list"></ul>
+          <p class="empty" id="ws-list-empty" hidden>جاري التحميل…</p>
+        </div>
+
+        <div class="tab-intro stats-head ws-selected-head">
           <div>
-            <h2>الورشة: <bdi id="wsa-heading" dir="ltr">AI-Powered Development</bdi></h2>
+            <h2>الورشة: <bdi id="wsa-heading" dir="ltr">AI-Powered Development</bdi> <span class="badge" id="wsa-state-badge"></span></h2>
             <p class="muted">التسجيلات بتوصل من صفحة الورشة. علّم مين حضر، وأصدرله شهادته بضغطة، وابعتله رابطها على الواتساب.</p>
           </div>
           <div class="form-actions">
-            <a class="btn btn-ghost-dark btn-sm" href="/workshop" target="_blank" rel="noopener">افتح صفحة الورشة ↗</a>
+            <a class="btn btn-ghost-dark btn-sm" id="wsa-open-page" href="/workshop" target="_blank" rel="noopener">افتح صفحة الورشة ↗</a>
             <button class="btn btn-ghost-dark btn-sm" type="button" id="wsa-copy-link">انسخ رابط التسجيل</button>
           </div>
         </div>
@@ -245,6 +258,17 @@
         <form class="panel wsa-form" id="wsa-form" novalidate>
           <h2>معلومات الورشة</h2>
           <p class="muted small">هاي النصوص بتطلع على صفحة الورشة، والعنوان وعدد الساعات بيطلعوا كمان على الشهادة.</p>
+          <div class="row-2 ws-state-row">
+            <div class="field">
+              <label for="wsa-state">حالة الورشة</label>
+              <select id="wsa-state">
+                <option value="draft">مسودة (مخفية عن الموقع)</option>
+                <option value="live">منشورة (بتطلع على /workshop)</option>
+                <option value="done">انتهت (بتروح لـ «ورشاتنا السابقة»)</option>
+              </select>
+              <p class="muted small" id="wsa-state-hint"></p>
+            </div>
+          </div>
           <label class="switch">
             <input type="checkbox" id="wsa-open">
             <span class="switch-ui" aria-hidden="true"></span>
@@ -308,8 +332,8 @@
       <!-- Certificate -->
       <section id="tab-cert" role="tabpanel" aria-labelledby="tab-btn-cert" hidden>
         <div class="tab-intro">
-          <h2>شهادة الورشة</h2>
-          <p class="muted">عدّل نصوص الشهادة والتواقيع، والمعاينة بتتحدّث وانت بتكتب. أي تعديل بتحفظه بيطلع على كل الشهادات، حتى اللي انبعتت روابطها.</p>
+          <h2>شهادة الورشة: <bdi id="cert-heading" dir="ltr"></bdi></h2>
+          <p class="muted">عدّل نصوص الشهادة والتواقيع، والمعاينة بتتحدّث وانت بتكتب. أي تعديل بتحفظه بيطلع على كل شهادات <b>هاي الورشة</b>، حتى اللي انبعتت روابطها. شهادات الورشات الثانية ما بتتأثر. (لتغيير الورشة: «إدارة» من سجل الورشات بتبويب «الورشات»)</p>
         </div>
         <div class="cert-layout">
           <form class="panel cert-form" id="cert-form" novalidate>
@@ -377,7 +401,7 @@
                 <div class="field"><label for="cf-sample" class="visually-hidden">اسم للمعاينة</label><input id="cf-sample" type="text" maxlength="80" value="محمد أحمد سالم" placeholder="اسم للمعاينة"></div>
               </div>
               <div class="cert-shadow"><div class="cert-fit" id="cert-preview"></div></div>
-              <p class="muted small"><a href="/certificate" target="_blank" rel="noopener">نسخة فارغة للطباعة ↗</a> (بالقالب المحفوظ)</p>
+              <p class="muted small"><a href="/certificate" id="cert-blank-link" target="_blank" rel="noopener">نسخة فارغة للطباعة ↗</a> (بالقالب المحفوظ)</p>
             </div>
 
             <form class="panel" id="ci-form" novalidate>
@@ -387,7 +411,7 @@
                 <div class="field"><label for="ci-date">تاريخ الإصدار</label><input id="ci-date" type="date"></div>
               </div>
               <div class="form-actions"><button class="btn btn-primary btn-sm" type="submit" id="ci-save"><span class="btn-label">أصدر الشهادة</span><span class="spinner" aria-hidden="true"></span></button></div>
-              <p class="muted small">للمسجّلين بالورشة: أصدر من تبويب «الورشة» عشان تنربط بتسجيلهم.</p>
+              <p class="muted small">الشهادة بتنصدر للورشة المختارة. للمسجّلين بالورشة: أصدر من تبويب «الورشات» عشان تنربط بتسجيلهم.</p>
             </form>
 
             <div class="panel">

@@ -347,3 +347,20 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .topic-tools .icon-btn:hover { background: #F1F5F9; color: var(--night); border-color: var(--line); }
 .topic-tools .icon-btn.danger:hover { background: #FFF1F2; color: #BE123C; border-color: #FECDD3; }
 @media (max-width: 600px) { .topic-line { grid-template-columns: 1fr; } .topic-tools { flex-direction: row; grid-column: 2; } .topic-row { grid-template-columns: auto minmax(0, 1fr); } }
+
+/* ----- workshops history ----- */
+.ws-history { margin-bottom: 22px; }
+.ws-history-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; }
+.ws-history-head h2 { margin: 0 0 4px; font-size: 22px; }
+.ws-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 10px; }
+.ws-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+.ws-list li.is-selected { border-color: var(--emerald); box-shadow: 0 0 0 2px rgba(52, 211, 153, .25); background: #F6FEFA; }
+.ws-list .wl-info { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ws-list .wl-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ws-list .wl-title strong { font-family: var(--font-head); font-size: 16.5px; }
+.ws-list .wl-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ws-list .wl-counts span { padding: 2px 10px; border-radius: 999px; background: #F1F5F9; font-size: 12.5px; font-weight: 600; color: var(--slate); white-space: nowrap; }
+.ws-list .wl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.badge-done { background: #FFF1F2; color: #9F1239; }
+.badge-current { background: var(--night); color: var(--emerald); }
+.ws-selected-head h2 .badge { vertical-align: middle; }

@@ -177,3 +177,19 @@
 @media (prefers-reduced-motion: reduce) {
   .ws-net line.pulse, .ai-card.is-gen .ai-scan, .ai-status .spark { animation: none !important; }
 }
+
+/* ----- past workshops (archive) ----- */
+.ws-past { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; list-style: none; padding: 0; margin: 0; }
+.ws-past-card {
+  position: relative; display: flex; flex-direction: column; gap: 10px; height: 100%;
+  padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--white);
+  color: inherit; text-decoration: none; transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.ws-past-card:hover, .ws-past-card:focus-visible { border-color: #cbd5e1; box-shadow: var(--shadow); transform: translateY(-2px); }
+.ws-past-date { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-head); font-size: 13.5px; font-weight: 600; color: var(--slate); }
+.ws-past-date i { width: 8px; height: 8px; border-radius: 2px; background: var(--slate-400); }
+.ws-past-card h3 { font-family: var(--font-head); font-weight: 700; font-size: 18px; line-height: 1.5; color: var(--night); }
+.ws-past-en { font-family: var(--mono); font-size: 13px; color: var(--slate); direction: ltr; text-align: end; }
+.ws-past-meta { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+.ws-past-meta span { padding: 3px 10px; border-radius: 999px; background: var(--sand); font-size: 13px; font-weight: 600; color: var(--slate); }
+.ws-eyebrow.is-done .pixels i { background: var(--slate-400); }

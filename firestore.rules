@@ -73,33 +73,49 @@ service cloud.firestore {
     }
 
     // ---------- محتوى الصفحة والإعدادات ----------
-    // workshop = معلومات الورشة + قالب الشهادة (بيتعدّلوا من تبويبي «الورشة» و«الشهادة»)
+    // settings.currentWorkshop = رقم الورشة اللي بتطلع على /workshop
     match /site/{docId} {
-      allow read: if docId in ['content', 'settings', 'workshop'];
-      allow write: if isAdmin() && docId in ['content', 'settings', 'workshop']
+      allow read: if docId in ['content', 'settings'];
+      allow write: if isAdmin() && docId in ['content', 'settings']
         && request.resource.size() < 200 * 1024;
     }
 
-    // ---------- تسجيلات الورشة ----------
-    // الزوار: إضافة تسجيل صالح بس (ولما يكون تسجيل الورشة مفتوح). الأدمن: قراءة، حذف، تعليم «حضر»، وربط الشهادة.
-    function workshopOpen() {
-      let path = /databases/$(database)/documents/site/workshop;
-      return !exists(path) || get(path).data.get('open', true) != false;
+    // ---------- الورشات ----------
+    // كل ورشة doc لحالها: المعلومات + المحاور + قالب الشهادة. status: draft (للأدمن بس) / live (منشورة) / done (انتهت، بالأرشيف).
+    match /workshops/{wid} {
+      allow read: if resource.data.status in ['live', 'done'] || isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.status in ['draft', 'live', 'done']
+        && request.resource.data.open is bool
+        && isStr(request.resource.data.title, 1, 60)
+        && request.resource.size() < 400 * 1024;
+      allow delete: if isAdmin();
     }
 
+    // الورشة موجودة ومنشورة والتسجيل فيها مفتوح
+    function workshopOpenFor(wid) {
+      let path = /databases/$(database)/documents/workshops/$(wid);
+      return exists(path) && get(path).data.status == 'live' && get(path).data.open == true;
+    }
+
+    // ---------- تسجيلات الورشات ----------
+    // الزوار: إضافة تسجيل صالح بس، لورشة منشورة وتسجيلها مفتوح. الأدمن: قراءة، حذف، تعليم «حضر»، ربط الشهادة، وربط الورشة.
     match /workshopRegs/{regId} {
-      allow create: if workshopOpen() && isValidWorkshopReg(request.resource.data);
+      allow create: if isValidWorkshopReg(request.resource.data)
+        && workshopOpenFor(request.resource.data.workshopId);
       allow read, delete: if isAdmin();
       allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'certId'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'certId', 'workshopId'])
         && request.resource.data.get('attended', false) is bool
-        && request.resource.data.get('certId', '') is string;
+        && request.resource.data.get('certId', '') is string
+        && request.resource.data.get('workshopId', '') is string;
     }
 
     function isValidWorkshopReg(d) {
-      return d.keys().hasAll(['name', 'whatsapp', 'status', 'level', 'laptop', 'consent', 'createdAt'])
-        && d.keys().hasOnly(['name', 'whatsapp', 'email', 'status', 'level', 'laptop', 'aiTools',
+      return d.keys().hasAll(['workshopId', 'name', 'whatsapp', 'status', 'level', 'laptop', 'consent', 'createdAt'])
+        && d.keys().hasOnly(['workshopId', 'name', 'whatsapp', 'email', 'status', 'level', 'laptop', 'aiTools',
                              'expectations', 'consent', 'source', 'createdAt'])
+        && isStr(d.workshopId, 1, 40) && d.workshopId.matches('^[A-Za-z0-9_-]+$')
         && d.consent == true
         && isStr(d.name, 2, 80)
         && d.whatsapp is string && d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$')
@@ -116,15 +132,17 @@ service cloud.firestore {
 
     // ---------- الشهادات ----------
     // أي حدا معه الرابط (رقم الـ document العشوائي) بيقدر يفتح الشهادة؛ عرض القائمة والإصدار للأدمن بس.
+    // workshopId = الورشة اللي انصدرت إلها (عنوانها وقالبها بيطلعوا على الشهادة).
     match /certificates/{certId} {
       allow get: if true;
       allow list: if isAdmin();
       allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['name', 'no', 'date', 'regId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'no', 'date', 'regId', 'workshopId', 'createdAt'])
         && isStr(request.resource.data.name, 2, 80)
         && isStr(request.resource.data.no, 1, 40)
         && isStr(request.resource.data.date, 0, 40)
-        && (!('regId' in request.resource.data) || isStr(request.resource.data.regId, 0, 40));
+        && (!('regId' in request.resource.data) || isStr(request.resource.data.regId, 0, 40))
+        && (!('workshopId' in request.resource.data) || isStr(request.resource.data.workshopId, 1, 40));
       allow delete: if isAdmin();
     }
 

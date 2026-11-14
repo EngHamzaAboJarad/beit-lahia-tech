@@ -1,11 +1,14 @@
 // Beit Lahia Tech — public certificate page.
-// /certificate?id=<certificates doc id> → that person's certificate (template from site/workshop).
-// /certificate (no id) → a blank certificate for printing and filling in by hand.
+// /certificate?id=<certificates doc id> → that person's certificate, drawn with the template of the workshop
+// it was issued for (workshops/{cert.workshopId}; older certificates without one use the current workshop).
+// /certificate (no id) → a blank certificate for printing (?w=<workshop id> picks the workshop).
 import { getDbLite } from './firebase-init.js';
 import { mergeWorkshop, renderCertificate, fitSheet } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
-const id = new URLSearchParams(location.search).get('id') || '';
+const params = new URLSearchParams(location.search);
+const id = params.get('id') || '';
+const validWid = (v) => (/^[A-Za-z0-9_-]{1,40}$/.test(v || '') ? v : '');
 
 function missing(msg) {
   $('loading').hidden = true;
@@ -16,11 +19,15 @@ function missing(msg) {
 try {
   const { db, fs } = await getDbLite();
   const validId = /^[A-Za-z0-9]{6,40}$/.test(id);
-  const [wsSnap, certSnap] = await Promise.all([
-    fs.getDoc(fs.doc(db, 'site', 'workshop')),
+  const [certSnap, setSnap] = await Promise.all([
     validId ? fs.getDoc(fs.doc(db, 'certificates', id)) : Promise.resolve(null),
+    fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null),
   ]);
-  const ws = mergeWorkshop(wsSnap.exists() ? wsSnap.data() : null);
+  const current = setSnap && setSnap.exists() ? validWid(setSnap.data().currentWorkshop) : '';
+  const certData = certSnap && certSnap.exists() ? certSnap.data() : null;
+  const wid = (certData ? validWid(certData.workshopId) : validWid(params.get('w'))) || current;
+  const wsSnap = wid ? await fs.getDoc(fs.doc(db, 'workshops', wid)).catch(() => null) : null;
+  const ws = mergeWorkshop(wsSnap && wsSnap.exists() ? wsSnap.data() : null);
 
   if (id && !(certSnap && certSnap.exists())) {
     missing();
