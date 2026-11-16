@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=24">
+  <link rel="stylesheet" href="/admin.css?v=25">
   <link rel="stylesheet" href="/certificate.css?v=6">
-  <script type="module" src="/admin.js?v=26"></script>
+  <script type="module" src="/admin.js?v=27"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -159,23 +159,24 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th scope="col">الاسم</th>
+                  <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">الاسم</button></th>
                   <th scope="col">التواصل</th>
-                  <th scope="col">الحالة</th>
-                  <th scope="col">التخصص</th>
-                  <th scope="col">العمر</th>
-                  <th scope="col">الخبرة</th>
-                  <th scope="col">الإقامة</th>
-                  <th scope="col">الجامعة</th>
+                  <th scope="col" data-sort="status" aria-sort="none"><button type="button" class="th-sort">الحالة</button></th>
+                  <th scope="col" data-sort="specialty" aria-sort="none"><button type="button" class="th-sort">التخصص</button></th>
+                  <th scope="col" data-sort="age" aria-sort="none"><button type="button" class="th-sort">العمر</button></th>
+                  <th scope="col" data-sort="experience" aria-sort="none"><button type="button" class="th-sort">الخبرة</button></th>
+                  <th scope="col" data-sort="residence" aria-sort="none"><button type="button" class="th-sort">الإقامة</button></th>
+                  <th scope="col" data-sort="university" aria-sort="none"><button type="button" class="th-sort">الجامعة</button></th>
                   <th scope="col">الأعمال</th>
-                  <th scope="col">التاريخ</th>
-                  <th scope="col">تواصلنا</th>
+                  <th scope="col" data-sort="createdAt" aria-sort="none"><button type="button" class="th-sort">التاريخ</button></th>
+                  <th scope="col" data-sort="contacted" aria-sort="none"><button type="button" class="th-sort">تواصلنا</button></th>
                   <th scope="col"><span class="visually-hidden">إجراءات</span></th>
                 </tr>
               </thead>
               <tbody id="members-body"></tbody>
             </table>
           </div>
+          <div class="pager" id="m-pager"></div>
           <p class="empty" id="members-empty" hidden>ما في تسجيلات بهاد الفلتر.</p>
         </div>
       </section>
@@ -240,14 +241,14 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th scope="col">الاسم</th>
+                  <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">الاسم</button></th>
                   <th scope="col">التواصل</th>
-                  <th scope="col">الحالة</th>
-                  <th scope="col">المستوى</th>
-                  <th scope="col">لابتوب</th>
+                  <th scope="col" data-sort="status" aria-sort="none"><button type="button" class="th-sort">الحالة</button></th>
+                  <th scope="col" data-sort="level" aria-sort="none"><button type="button" class="th-sort">المستوى</button></th>
+                  <th scope="col" data-sort="laptop" aria-sort="none"><button type="button" class="th-sort">لابتوب</button></th>
                   <th scope="col">أدوات AI</th>
-                  <th scope="col">التاريخ</th>
-                  <th scope="col">حضر</th>
+                  <th scope="col" data-sort="createdAt" aria-sort="none"><button type="button" class="th-sort">التاريخ</button></th>
+                  <th scope="col" data-sort="attended" aria-sort="none"><button type="button" class="th-sort">حضر</button></th>
                   <th scope="col">الشهادة</th>
                   <th scope="col"><span class="visually-hidden">إجراءات</span></th>
                 </tr>
@@ -255,6 +256,7 @@
               <tbody id="wr-body"></tbody>
             </table>
           </div>
+          <div class="pager" id="wr-pager"></div>
           <p class="empty" id="wr-empty" hidden>ما في تسجيلات لسا.</p>
         </div>
 

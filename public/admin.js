@@ -265,14 +265,75 @@ function filtered() {
 
 const waLink = (n) => (typeof n === 'string' && /^\+\d{8,15}$/.test(n) ? `https://wa.me/${n.slice(1)}` : '');
 
+
+/* =================== Data tables: sort + pages =================== */
+const PAGERS = {};
+const pagerState = (id) => (PAGERS[id] = PAGERS[id] || { page: 1, size: 25, key: '', dir: 1 });
+const tsOf = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0);
+const MEMBER_SORT = {
+  name: (m) => m.name, status: (m) => STATUS[m.status] || m.status, specialty: (m) => m.specialty, age: (m) => Number(m.age) || 0,
+  experience: (m) => EXPERIENCE[m.experience] || m.experience || '', residence: (m) => m.residence, university: (m) => m.university || '',
+  createdAt: (m) => tsOf(m.createdAt), contacted: (m) => (m.contacted ? 1 : 0),
+};
+const REG_SORT = {
+  name: (r) => r.name, status: (r) => WS_STATUS[r.status] || r.status || '', level: (r) => WS_LEVEL[r.level] || r.level || '',
+  laptop: (r) => (r.laptop == null ? -1 : r.laptop ? 1 : 0), createdAt: (r) => tsOf(r.createdAt), attended: (r) => (r.attended ? 1 : 0),
+};
+function applyPager(id, all, getters, rerender) {
+  const st = pagerState(id);
+  let rows = all;
+  if (st.key && getters[st.key]) {
+    const g = getters[st.key];
+    rows = [...all].sort((a, b) => {
+      const x = g(a), y = g(b);
+      const r = typeof x === 'number' || typeof y === 'number' ? (x || 0) - (y || 0) : String(x ?? '').localeCompare(String(y ?? ''), 'ar');
+      return r * st.dir;
+    });
+  }
+  const pages = Math.max(1, Math.ceil(rows.length / st.size));
+  st.page = Math.min(Math.max(1, st.page), pages);
+  const start = (st.page - 1) * st.size;
+  const host = $(`${id}-pager`);
+  if (!rows.length) host.replaceChildren();
+  else {
+    const go = (p) => { st.page = p; rerender(); };
+    const size = h('select', { 'aria-label': 'عدد الصفوف بالصفحة', onchange: (e) => { st.size = Number(e.target.value); st.page = 1; rerender(); } },
+      [10, 25, 50, 100].map((n) => h('option', { value: n, selected: n === st.size }, `${n} صف`)));
+    host.replaceChildren(
+      h('span', { class: 'pager-info' }, `${start + 1}–${Math.min(start + st.size, rows.length)} من ${rows.length}`),
+      size,
+      h('div', { class: 'pager-nav' },
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', disabled: st.page <= 1, onclick: () => go(1) }, '«'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', disabled: st.page <= 1, onclick: () => go(st.page - 1) }, 'السابق'),
+        h('span', { class: 'pager-page' }, `${st.page} / ${pages}`),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', disabled: st.page >= pages, onclick: () => go(st.page + 1) }, 'التالي'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', disabled: st.page >= pages, onclick: () => go(pages) }, '»')));
+  }
+  // header arrows
+  const table = $(id === 'm' ? 'members-body' : 'wr-body').closest('table');
+  table.querySelectorAll('th[data-sort]').forEach((th) => th.setAttribute('aria-sort', th.dataset.sort === st.key ? (st.dir > 0 ? 'ascending' : 'descending') : 'none'));
+  return rows.slice(start, start + st.size);
+}
+function wireSort(id, bodyId, rerender) {
+  const st = pagerState(id);
+  $(bodyId).closest('table').querySelectorAll('th[data-sort]').forEach((th) => {
+    th.querySelector('.th-sort').addEventListener('click', () => {
+      if (st.key === th.dataset.sort) st.dir = -st.dir; else { st.key = th.dataset.sort; st.dir = 1; }
+      st.page = 1;
+      rerender();
+    });
+  });
+}
+
 function renderMembers() {
-  const rows = filtered();
+  const all = filtered();
+  const rows = applyPager('m', all, MEMBER_SORT, renderMembers);
   // same WhatsApp number registered more than once → flag it
   const seen = members.reduce((m, x) => { if (x.whatsapp) m[x.whatsapp] = (m[x.whatsapp] || 0) + 1; return m; }, {});
   const pool = showTrash ? trash : members;
-  $('members-count').textContent = showTrash ? `${rows.length} من ${pool.length} بسلة المحذوفات` : `${rows.length} من ${pool.length} تسجيل`;
+  $('members-count').textContent = showTrash ? `${all.length} من ${pool.length} بسلة المحذوفات` : `${all.length} من ${pool.length} تسجيل`;
   $('members-empty').textContent = showTrash ? 'سلة المحذوفات فاضية.' : 'ما في تسجيلات بهاد الفلتر.';
-  $('members-empty').hidden = rows.length > 0;
+  $('members-empty').hidden = all.length > 0;
   $('members-body').replaceChildren(...rows.map((m) => {
     const tr = h('tr', { class: m.contacted ? 'is-contacted' : '' },
       h('td', { class: 'cell-name' }, h('strong', {}, m.name),
@@ -361,7 +422,8 @@ $('trash-toggle').addEventListener('click', () => {
   renderMembers();
 });
 
-['f-search', 'f-status', 'f-exp', 'f-contacted', 'f-residence'].forEach((id) => $(id).addEventListener('input', renderMembers));
+['f-search', 'f-status', 'f-exp', 'f-contacted', 'f-residence'].forEach((id) => $(id).addEventListener('input', () => { pagerState('m').page = 1; renderMembers(); }));
+wireSort('m', 'members-body', () => renderMembers());
 $('refresh-members').addEventListener('click', loadMembers);
 
 $('export-csv').addEventListener('click', () => {
@@ -1710,10 +1772,11 @@ $('wa-skip').addEventListener('click', () => { waPos += 1; showWa(); });
 
 function renderRegs() {
   renderWsStats();
-  const rows = filteredRegs();
+  const all = filteredRegs();
+  const rows = applyPager('wr', all, REG_SORT, renderRegs);
   const seen = regs.reduce((m, x) => { if (x.whatsapp) m[x.whatsapp] = (m[x.whatsapp] || 0) + 1; return m; }, {});
-  $('wr-count').textContent = `${rows.length} من ${regs.length} تسجيل`;
-  $('wr-empty').hidden = rows.length > 0;
+  $('wr-count').textContent = `${all.length} من ${regs.length} تسجيل`;
+  $('wr-empty').hidden = all.length > 0;
   $('wr-empty').textContent = regs.length ? 'ما في تسجيلات بهاد الفلتر.' : 'ما في تسجيلات لسا. شارك رابط صفحة الورشة.';
   $('wr-body').replaceChildren(...rows.map((r) => {
     const c = r.certId ? certById(r.certId) : null;
@@ -1769,7 +1832,8 @@ async function deleteReg(r) {
   } catch (e) { toast(errMsg(e), true); }
 }
 
-['wr-search', 'wr-filter', 'wr-level'].forEach((id) => $(id).addEventListener('input', renderRegs));
+['wr-search', 'wr-filter', 'wr-level'].forEach((id) => $(id).addEventListener('input', () => { pagerState('wr').page = 1; renderRegs(); }));
+wireSort('wr', 'wr-body', () => renderRegs());
 $('wr-refresh').addEventListener('click', reloadLists);
 async function reloadLists() {
   await Promise.all([loadCerts(), loadRegs()]);
