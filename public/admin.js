@@ -144,7 +144,7 @@ function selectTab(name, focus = false) {
     btn.setAttribute('aria-selected', on);
     btn.tabIndex = on ? 0 : -1;
     $(`tab-${t}`).hidden = !on;
-    if (on && t === 'cert') requestAnimationFrame(() => { refitPreview(); refreshPreview(); });
+    if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
     if (on && focus) btn.focus();
   });
   history.replaceState(null, '', `#${name}`);

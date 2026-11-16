@@ -150,9 +150,10 @@ const SHEET = `
 <section class="cert-main">
   <i class="cert-corner tr"></i><i class="cert-corner br"></i><i class="cert-corner tl"></i><i class="cert-corner bl"></i>
   <div class="cert-top">
-    <div class="cert-kicker"><i></i><i></i><i></i><span data-k="titleEn"></span></div>
+    <div class="cert-brand"><svg class="cert-b-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg><div><b>بيت لاهيا <span>تيك</span></b><small>BEIT LAHIA TECH</small></div></div>
     <div class="cert-no"><small>CERTIFICATE NO.</small><b data-k="no"></b></div>
   </div>
+  <div class="cert-kicker"><i></i><i></i><i></i><span data-k="titleEn"></span></div>
   <div class="cert-title"><span data-k="title"></span> <span class="acc" data-k="titleAccent"></span></div>
   <p class="cert-intro" data-k="intro"></p>
   <div class="cert-name" data-k="name"></div>
@@ -171,13 +172,8 @@ const SHEET = `
     <div class="cert-sig" data-sig="1"><span class="cert-sig-label">التوقيع</span><div class="cert-sig-space"></div><div class="cert-sig-line"></div><div class="cert-sig-role"></div><div class="cert-sig-name"></div><div class="cert-sig-en"></div></div>
     <div class="cert-sig"><span class="cert-sig-label">تاريخ الإصدار</span><div class="cert-sig-space is-val" data-k="date"></div><div class="cert-sig-line"></div><div class="cert-sig-role" data-k="place"></div><div class="cert-sig-name"></div><div class="cert-sig-en">Date of Issue</div></div>
   </div>
+  <div class="cert-foot"><span data-k="tagline1"></span><span data-k-br> </span><b data-k="tagline2"></b><i></i><span class="u">beitlahia.tech</span></div>
 </section>
-<aside class="cert-panel">
-  <div class="cert-p-brand"><div class="n">بيت لاهيا <span>تيك</span></div><div class="e">BEIT LAHIA TECH</div></div>
-  <svg class="cert-p-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg>
-  <p class="cert-p-tag"><span data-k="tagline1"></span><br data-k-br><b data-k="tagline2"></b></p>
-  <div class="cert-p-url"><i></i>beitlahia.tech</div>
-</aside>
 <div class="cert-dissolve" aria-hidden="true"></div>`;
 
 /**

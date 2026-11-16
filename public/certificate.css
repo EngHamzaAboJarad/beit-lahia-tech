@@ -153,3 +153,26 @@
 .cert-p-brand .n { font-size: 30px; }
 .cert-p-logo { width: 128px; height: 144px; }
 .cert-p-tag { font-size: 15px; }
+
+/* ========== v3: no side panel — brand on top, tagline in the footer ========== */
+.cert { grid-template-columns: 1fr; }
+.cert-panel, .cert-dissolve { display: none !important; }
+.cert-main { padding: 50px 64px 44px; }
+.cert-main::before { inset: 24px; }
+.cert-top { padding: 0; align-items: center; }
+.cert-brand { display: flex; align-items: center; gap: 12px; }
+.cert-b-logo { width: 34px; height: 38px; flex: none; }
+.cert-brand b { display: block; font-family: 'Readex Pro', sans-serif; font-size: 21px; font-weight: 700; line-height: 1.15; color: var(--c-night); }
+.cert-brand b span { color: var(--c-emerald-500); }
+.cert-brand small { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 9.5px; letter-spacing: .34em; color: var(--c-slate-400); direction: ltr; text-align: right; margin-top: 2px; }
+.cert-kicker { margin-top: 22px; justify-content: center; }
+.cert-title { margin-top: 12px; font-size: 56px; }
+.cert-intro { margin-top: 14px !important; }
+.cert-reason { margin: 18px 0 16px !important; }
+.cert-signs { padding: 0; }
+.cert-foot { margin-top: 22px; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: 'Readex Pro', sans-serif; font-size: 13.5px; color: var(--c-slate-400); }
+.cert-foot b { color: var(--c-emerald-deep); font-weight: 600; }
+.cert-foot i { width: 5px; height: 5px; margin: 0 8px; border-radius: 1.5px; background: var(--c-emerald); display: inline-block; }
+.cert-foot .u { font-family: 'Space Grotesk', sans-serif; letter-spacing: .06em; direction: ltr; }
+/* the preview box always has the sheet's shape, even before the script sizes it */
+.cert-fit { aspect-ratio: 297 / 210; }
