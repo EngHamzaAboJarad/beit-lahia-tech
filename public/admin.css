@@ -448,3 +448,21 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .pager select { min-height: 34px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); font: inherit; font-size: 14px; }
 .pager-info, .pager-page { color: var(--slate); font-size: 14px; }
 .pager-nav { display: flex; align-items: center; gap: 6px; }
+
+/* tables fit the page: no horizontal scroll, no inner vertical scroll */
+.table-wrap { max-height: none; overflow: visible; }
+.table-wrap thead th { position: static; }
+.data-table { min-width: 0; table-layout: auto; font-size: 14px; }
+.data-table th, .data-table td { padding: 10px 8px; }
+.data-table th { white-space: normal; }
+.cell-contact { white-space: normal; overflow-wrap: anywhere; }
+.cell-contact .mail-link { display: block; margin-top: 4px; font-size: 13px; }
+.cell-actions { white-space: nowrap; }
+.cert-cell { min-width: 190px; }
+.tool-tags { max-width: 150px; }
+@media (max-width: 1000px) {
+  .table-wrap { overflow-x: auto; }
+  .data-table { min-width: 900px; }
+}
+.cell-contact .wa-btn { white-space: nowrap; }
+.cell-name strong { overflow-wrap: anywhere; }
