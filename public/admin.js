@@ -1540,16 +1540,27 @@ function filteredRegs() {
 
 const toolName = (k) => AI_TOOLS.find((t) => t.key === k)?.name || k;
 
-function certActions(c, phone, small = true) {
+function certActions(c, phone, small = true, email = '') {
   const cls = small ? 'btn btn-ghost-dark btn-xs' : 'btn btn-ghost-dark btn-sm';
   const wa = waLink(phone);
   return [
     h('a', { class: cls, href: certUrl(c.id), target: '_blank', rel: 'noopener' }, 'فتح ↗'),
     h('button', { type: 'button', class: cls, onclick: () => copyCertLink(c) }, 'نسخ الرابط'),
+    mailOk(email) ? h('a', { class: `${cls} mail-send`, href: certMailLink(c, email), target: '_blank', rel: 'noopener noreferrer', title: 'يفتح Gmail برسالة جاهزة فيها رابط الشهادة' }, 'إيميل') : null,
     wa ? h('a', { class: `${cls} wa-send`, href: `${wa}?text=${encodeURIComponent(certMessage(c))}`, target: '_blank', rel: 'noopener noreferrer', title: 'ابعت الرابط على الواتساب' }, 'واتساب') : null,
   ];
 }
 
+const mailOk = (e) => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+/** Gmail compose window with the message ready; the admin presses send */
+function certMailLink(c, email) {
+  const subject = `شهادة إنجاز ورشة ${ws.titleAr || ws.title} | بيت لاهيا تيك`;
+  const body = `${certMessage(c)}
+
+بيت لاهيا تيك
+beitlahia.tech`;
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 function certMessage(c) {
   return `أهلاً ${c.name} 👋\nشهادة إنجاز ورشة ${ws.title} من بيت لاهيا تيك صارت جاهزة:\n${certUrl(c.id)}\nبتقدر تفتحها وتحفظها PDF أو تطبعها. مبروك! ✦`;
 }
@@ -1583,7 +1594,7 @@ function renderRegs() {
         onchange: (e) => setAttended(r, e.target.checked, tr, e.target),
       })),
       h('td', {}, c
-        ? h('div', { class: 'cert-cell' }, h('span', { class: 'cert-no-tag' }, c.no), certActions(c, r.whatsapp))
+        ? h('div', { class: 'cert-cell' }, h('span', { class: 'cert-no-tag' }, c.no), certActions(c, r.whatsapp, true, r.email))
         : h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: (e) => issueForReg(r, e.currentTarget) }, 'أصدر شهادة')),
       h('td', { class: 'cell-actions' }, h('button', {
         type: 'button', class: 'icon-btn', 'aria-label': `حذف تسجيل ${r.name}`, title: 'حذف التسجيل', onclick: () => deleteReg(r),
@@ -1745,7 +1756,7 @@ function renderCerts() {
     return h('li', {},
       h('span', { class: 'cert-no-tag' }, c.no),
       h('div', { class: 'cl-info' }, h('strong', {}, c.name), h('span', { class: 'muted small' }, [c.date, reg ? 'من تسجيلات الورشة' : 'إصدار يدوي'].filter(Boolean).join(' · '))),
-      h('div', { class: 'cl-tools' }, certActions(c, reg?.whatsapp),
+      h('div', { class: 'cl-tools' }, certActions(c, reg?.whatsapp, true, reg?.email),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `إلغاء شهادة ${c.name}`, title: 'إلغاء الشهادة', onclick: () => revokeCert(c) }, svgIcon(ICONS.trash))));
   }));
 }
