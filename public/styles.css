@@ -825,3 +825,6 @@ span.member-photo { font-size: 36px; }
 .member-links .member-link:hover { transform: translateY(-2px); color: #fff; }
 @media (max-width: 520px) { .member-card { flex-basis: 100%; width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .member-card, .member-links .member-link { transition: none; } .member-card:hover, .member-links .member-link:hover { transform: none; } }
+
+/* generic links (and any platform without its own colour): dark background on hover so the white icon stays visible */
+.member-links .member-link:hover, .member-links .member-link:focus-visible { background: var(--night); border-color: var(--night); color: #fff; }
