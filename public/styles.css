@@ -792,3 +792,36 @@ span.member-photo { font-size: 36px; }
 .member-card::before { height: 96px; }
 .member-photo { width: 112px; height: 112px; margin-top: -56px; }
 @media (max-width: 520px) { .member-card { flex-basis: 100%; width: 100%; } }
+
+/* ===== members: polished profile card (v3) ===== */
+.members-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 24px; margin-inline: auto; }
+.member-card {
+  position: relative; flex: 0 1 300px; width: 300px; max-width: 100%;
+  padding: 0 24px 24px; border-radius: 26px; background: var(--white);
+  border: 1px solid #E6EAF0; box-shadow: 0 2px 4px rgba(11,18,32,.04), 0 18px 40px -18px rgba(11,18,32,.22);
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+}
+.member-card:hover { transform: translateY(-4px); border-color: #CFE9DD; box-shadow: 0 2px 4px rgba(11,18,32,.04), 0 26px 50px -18px rgba(16,185,129,.35); }
+.member-card::before {
+  height: 112px; margin: 0 -24px;
+  background:
+    radial-gradient(180px 110px at 88% -10%, rgba(52,211,153,.55), transparent 70%),
+    radial-gradient(140px 90px at 8% 120%, rgba(244,63,94,.28), transparent 70%),
+    linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px) 0 0 / 20px 20px,
+    linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px) 0 0 / 20px 20px,
+    var(--night);
+}
+.member-photo {
+  width: 120px; height: 120px; margin: -64px 0 14px; border-radius: 50%;
+  border: 5px solid var(--white); background-clip: padding-box;
+  box-shadow: 0 0 0 2px #34D399, 0 14px 30px rgba(11,18,32,.25);
+}
+.member-card h3 { font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+.member-card .member-en { font-size: 13.5px; letter-spacing: .02em; }
+.member-role { margin-top: 10px; padding: 4px 16px; font-size: 13.5px; font-weight: 600; background: linear-gradient(180deg, #F0FDF8, #E3F9EF); border-color: #A7F3D0; }
+.member-bio { margin-top: 12px; font-size: 14.5px; line-height: 1.8; color: #5B6B84; }
+.member-card > .member-links { gap: 10px; padding-top: 16px; border-top: 1px dashed #DDE3EA; }
+.member-links .member-link { width: 40px; height: 40px; background: #F6F8FA; border-color: transparent; }
+.member-links .member-link:hover { transform: translateY(-2px); color: #fff; }
+@media (max-width: 520px) { .member-card { flex-basis: 100%; width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .member-card, .member-links .member-link { transition: none; } .member-card:hover, .member-links .member-link:hover { transform: none; } }
