@@ -148,6 +148,7 @@ export function accentAI(el, text) {
 
 const SHEET = `
 <section class="cert-main">
+  <svg class="cert-wm" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg>
   <i class="cert-corner tr"></i><i class="cert-corner br"></i><i class="cert-corner tl"></i><i class="cert-corner bl"></i>
   <div class="cert-top">
     <div class="cert-brand"><svg class="cert-b-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg><div><b>بيت لاهيا <span>تيك</span></b><small>BEIT LAHIA TECH</small></div></div>

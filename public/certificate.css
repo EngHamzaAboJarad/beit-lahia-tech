@@ -176,3 +176,7 @@
 .cert-foot .u { font-family: 'Space Grotesk', sans-serif; letter-spacing: .06em; direction: ltr; }
 /* the preview box always has the sheet's shape, even before the script sizes it */
 .cert-fit { aspect-ratio: 297 / 210; }
+
+/* faint strawberry watermark behind the text */
+.cert-wm { position: absolute !important; left: 50%; top: 50%; width: 600px; height: auto; transform: translate(-50%, -48%); opacity: .05; z-index: 0; pointer-events: none; }
+.cert-main > *:not(.cert-wm) { z-index: 1; }
