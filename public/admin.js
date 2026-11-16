@@ -1247,6 +1247,7 @@ function renderWorkshopList() {
 async function setWorkshopState(w, status) {
   const m = mergeWorkshop(w);
   if (status === 'live' && !m.title) { toast('اكتب اسم الورشة أول', true); return; }
+  if (status === 'live' && !m.date) { toast('حدّد تاريخ الورشة أول (افتحها بزر «إدارة» واكتب التاريخ والوقت والمكان واحفظ)', true); return; }
   if (w.id === selId && wsaDirty && !confirm('في تعديلات مش محفوظة على هاي الورشة، رح تضيع. كمّل؟')) return;
   const label = { live: 'انشرت وصارت ظاهرة على /workshop', draft: 'صارت مسودة ومخفية عن الزوار', done: 'انأرشفت (بتظهر بالورشات السابقة)' }[status];
   try {
@@ -1438,6 +1439,7 @@ $('wsa-form').addEventListener('submit', async (e) => {
   if (!title) { toast('اكتب اسم الورشة', true); $('wsa-title').focus(); return; }
   if (!(hours >= 1 && hours <= 100)) { toast('عدد الساعات لازم يكون بين 1 و 100', true); $('wsa-hours').focus(); return; }
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('wsa-group').focus(); return; }
+  if (status === 'live' && !$('wsa-date').value && !confirm('ما حطيت تاريخ للورشة، رح يظهر «يُحدَّد قريباً» للزوار. تنشرها هيك؟')) { $('wsa-date').focus(); return; }
   const publishRaw = status === 'live' ? $('wsa-publish').value : '';
   const publishDate = publishRaw ? new Date(publishRaw) : null;
   if (publishDate && Number.isNaN(publishDate.getTime())) { toast('موعد النشر مش صحيح', true); $('wsa-publish').focus(); return; }

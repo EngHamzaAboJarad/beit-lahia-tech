@@ -38,8 +38,9 @@ function renderContent() {
   $('m-hours-v').textContent = hoursText(ws.hours);
   $('i-hours').textContent = ws.hours >= 3 ? `${ws.hours} ${hoursWord(ws.hours)}` : hoursWord(ws.hours);
   const when = [ws.date ? arDate(ws.date) : '', ws.time].filter(Boolean).join(' · ');
-  $('m-date').hidden = !when; $('m-date-v').textContent = when;
-  $('i-date-row').hidden = !when; $('i-date').textContent = when;
+  const whenText = when || 'يُحدَّد قريباً';
+  $('m-date').hidden = false; $('m-date-v').textContent = whenText;
+  $('i-date-row').hidden = false; $('i-date').textContent = whenText;
   const where = wid ? placeText(ws) : ws.place;
   $('m-place').hidden = !where; $('m-place-v').textContent = where;
   $('i-place-row').hidden = !where; $('i-place').textContent = where;
