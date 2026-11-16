@@ -4,3 +4,6 @@ node_modules/
 .firebase/
 *-debug.log
 firebase-export-*/
+
+# personal signature, kept local only
+design/signatures/signature-hamza-real.png
