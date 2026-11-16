@@ -971,6 +971,7 @@ function editTeam(m) {
   $('tm-role').value = m.role || '';
   $('tm-bio').value = m.bio || '';
   $('tm-link').value = m.link || '';
+  ['name-en', 'role-en', 'bio-en', 'facebook', 'instagram', 'linkedin', 'whatsapp'].forEach((k) => { $(`tm-${k}`).value = m[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] || ''; });
   $('tm-published').checked = !!m.published;
   setTeamPhoto(m.photo || '');
   $('team-form-title').textContent = `تعديل: ${m.name}`;
@@ -986,14 +987,25 @@ $('team-form').addEventListener('submit', async (e) => {
   const err = $('team-error');
   err.textContent = '';
   const name = $('tm-name').value.trim();
-  const link = withHttps($('tm-link').value);
-  if (!name) { err.textContent = 'اكتب الاسم.'; $('tm-name').focus(); return; }
-  if (link && !safeUrl(link)) { err.textContent = 'الرابط مش صحيح.'; $('tm-link').focus(); return; }
+  if (!name) { err.textContent = 'اكتب الاسم بالعربي.'; $('tm-name').focus(); return; }
+  const links = {};
+  for (const [key, label] of [['facebook', 'فيسبوك'], ['instagram', 'إنستغرام'], ['linkedin', 'لينكدإن'], ['link', 'الرابط الآخر']]) {
+    const url = withHttps($(`tm-${key}`).value);
+    if (url && (!safeUrl(url) || (key !== 'link' && socialInfo(url)?.icon !== key))) { err.textContent = `رابط ${label} مش صحيح.`; $(`tm-${key}`).focus(); return; }
+    links[key] = url;
+  }
+  const waRaw = $('tm-whatsapp').value.trim();
+  const whatsapp = normalizePhone(waRaw);
+  if (waRaw && !whatsapp) { err.textContent = 'رقم الواتساب مش صحيح. مثال: 0591234567 أو +970591234567'; $('tm-whatsapp').focus(); return; }
   const data = {
     name,
+    nameEn: $('tm-name-en').value.trim(),
     role: $('tm-role').value.trim(),
+    roleEn: $('tm-role-en').value.trim(),
     bio: $('tm-bio').value.trim().slice(0, 200),
-    link,
+    bioEn: $('tm-bio-en').value.trim().slice(0, 200),
+    ...links,
+    whatsapp,
     photo: teamPhoto,
     published: $('tm-published').checked,
     updatedAt: fs.serverTimestamp(),

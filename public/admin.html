@@ -10,10 +10,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=22">
+  <link rel="stylesheet" href="/styles.css?v=14">
+  <link rel="stylesheet" href="/admin.css?v=23">
   <link rel="stylesheet" href="/certificate.css?v=5">
-  <script type="module" src="/admin.js?v=24"></script>
+  <script type="module" src="/admin.js?v=25"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -594,21 +594,58 @@
                 <p class="muted small">الصورة اختيارية، وبتنقص لمربع وبتتصغّر تلقائياً. بدونها بيطلع أول حرف من الاسم.</p>
               </div>
             </div>
-            <div class="field">
-              <label for="tm-name">الاسم <span class="req" aria-hidden="true">*</span></label>
-              <input id="tm-name" type="text" maxlength="80" required>
+            <div class="row-2">
+              <div class="field">
+                <label for="tm-name">الاسم بالعربي <span class="req" aria-hidden="true">*</span></label>
+                <input id="tm-name" type="text" maxlength="80" required>
+              </div>
+              <div class="field">
+                <label for="tm-name-en">Name in English <span class="optional">(optional)</span></label>
+                <input id="tm-name-en" type="text" dir="ltr" maxlength="80">
+              </div>
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label for="tm-role">الدور أو التخصص بالعربي <span class="optional">(اختياري)</span></label>
+                <input id="tm-role" type="text" maxlength="80" placeholder="مثال: مطوّر Flutter، أو منسّق المجتمع">
+              </div>
+              <div class="field">
+                <label for="tm-role-en">Role in English <span class="optional">(optional)</span></label>
+                <input id="tm-role-en" type="text" dir="ltr" maxlength="80" placeholder="e.g. Flutter Developer">
+              </div>
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label for="tm-bio">نبذة بالعربي <span class="optional">(اختياري، 200 حرف)</span></label>
+                <textarea id="tm-bio" rows="3" maxlength="200"></textarea>
+              </div>
+              <div class="field">
+                <label for="tm-bio-en">Short bio in English <span class="optional">(optional, 200 chars)</span></label>
+                <textarea id="tm-bio-en" rows="3" dir="ltr" maxlength="200"></textarea>
+              </div>
+            </div>
+            <h3 class="team-links-h">الروابط <span class="optional">(كلها اختيارية)</span></h3>
+            <div class="row-2">
+              <div class="field">
+                <label for="tm-facebook">فيسبوك</label>
+                <input id="tm-facebook" type="url" dir="ltr" maxlength="300" placeholder="facebook.com/…">
+              </div>
+              <div class="field">
+                <label for="tm-instagram">إنستغرام</label>
+                <input id="tm-instagram" type="url" dir="ltr" maxlength="300" placeholder="instagram.com/…">
+              </div>
+              <div class="field">
+                <label for="tm-linkedin">لينكدإن</label>
+                <input id="tm-linkedin" type="url" dir="ltr" maxlength="300" placeholder="linkedin.com/in/…">
+              </div>
+              <div class="field">
+                <label for="tm-whatsapp">واتساب (رقم)</label>
+                <input id="tm-whatsapp" type="tel" dir="ltr" maxlength="20" placeholder="0591234567 أو +970591234567">
+              </div>
             </div>
             <div class="field">
-              <label for="tm-role">الدور أو التخصص <span class="optional">(اختياري)</span></label>
-              <input id="tm-role" type="text" maxlength="80" placeholder="مثال: مطوّر Flutter، أو منسّق المجتمع">
-            </div>
-            <div class="field">
-              <label for="tm-bio">نبذة قصيرة <span class="optional">(اختياري، لحد 200 حرف)</span></label>
-              <textarea id="tm-bio" rows="3" maxlength="200"></textarea>
-            </div>
-            <div class="field">
-              <label for="tm-link">رابط <span class="optional">(اختياري: لينكدإن، GitHub، بورتفوليو…)</span></label>
-              <input id="tm-link" type="url" dir="ltr" maxlength="300" placeholder="linkedin.com/in/…">
+              <label for="tm-link">رابط آخر <span class="optional">(GitHub، بورتفوليو…)</span></label>
+              <input id="tm-link" type="url" dir="ltr" maxlength="300" placeholder="github.com/…">
             </div>
             <label class="switch">
               <input type="checkbox" id="tm-published" checked>

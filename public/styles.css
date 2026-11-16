@@ -750,3 +750,8 @@ img.brand-mark { display: block; }
 .member-link svg { width: 18px; height: 18px; display: block; }
 .member-link:hover, .member-link:focus-visible { color: var(--white); background: var(--night); border-color: var(--night); }
 @media (prefers-reduced-motion: reduce) { .member-card:hover { transform: none; } }
+
+/* members: English secondary lines + several social links */
+.member-en { color: var(--slate-400, #94A3B8); font-size: 13.5px; margin: 0; }
+.member-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+.member-links .member-link { margin-top: 0; }

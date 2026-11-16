@@ -187,12 +187,19 @@ service cloud.firestore {
     }
 
     function isValidTeamMember(d) {
-      return d.keys().hasOnly(['name', 'role', 'bio', 'link', 'photo', 'order', 'published', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'nameEn', 'role', 'roleEn', 'bio', 'bioEn', 'link', 'facebook', 'instagram', 'linkedin', 'whatsapp', 'photo', 'order', 'published', 'createdAt', 'updatedAt'])
         && isStr(d.name, 1, 80)
         && d.published is bool
         && (!('role' in d) || isStr(d.role, 0, 80))
         && (!('bio' in d) || isStr(d.bio, 0, 200))
         && (!('link' in d) || (isStr(d.link, 0, 300) && (d.link == '' || d.link.matches('^https?://[^\\s]+$'))))
+        && (!('nameEn' in d) || isStr(d.nameEn, 0, 80))
+        && (!('roleEn' in d) || isStr(d.roleEn, 0, 80))
+        && (!('bioEn' in d) || isStr(d.bioEn, 0, 200))
+        && (!('facebook' in d) || (isStr(d.facebook, 0, 300) && (d.facebook == '' || d.facebook.matches('^https?://[^\\s]+$'))))
+        && (!('instagram' in d) || (isStr(d.instagram, 0, 300) && (d.instagram == '' || d.instagram.matches('^https?://[^\\s]+$'))))
+        && (!('linkedin' in d) || (isStr(d.linkedin, 0, 300) && (d.linkedin == '' || d.linkedin.matches('^https?://[^\\s]+$'))))
+        && (!('whatsapp' in d) || (isStr(d.whatsapp, 0, 20) && (d.whatsapp == '' || d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$'))))
         && (!('photo' in d) || d.photo == '' || (isStr(d.photo, 30, 90000) && d.photo.matches('^data:image/(jpeg|png|webp);base64,.*')))
         && (!('order' in d) || d.order is int);
     }

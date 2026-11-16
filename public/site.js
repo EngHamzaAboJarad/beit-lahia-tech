@@ -352,20 +352,29 @@ function renderMembers(list, show) {
   if (!on) return;
   grid.setAttribute('data-stagger', '');
   grid.replaceChildren(...list.map((m) => {
-    const link = safeUrl(m.link);
-    const info = link ? socialInfo(link) : null;
     const photo = isPhoto(m.photo)
       ? h('img', { class: 'member-photo', src: m.photo, alt: '', width: 96, height: 96, loading: 'lazy', decoding: 'async' })
       : h('span', { class: 'member-photo', 'aria-hidden': 'true' }, [...String(m.name).trim()][0] || '؟');
-    let linkEl = null;
-    if (link && info) {
-      linkEl = h('a', { class: 'member-link', href: link, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${m.name} على ${info.name}`, title: info.name });
-      linkEl.append(iconSvg(info.icon));
-    }
+    // social links: Facebook, Instagram, LinkedIn, WhatsApp (number → wa.me), then any other link
+    const items = [];
+    [['facebook', 'فيسبوك'], ['instagram', 'إنستغرام'], ['linkedin', 'لينكدإن']].forEach(([key, name]) => {
+      const u = safeUrl(m[key]);
+      if (u) items.push({ href: u, icon: key, name });
+    });
+    if (/^\+[1-9]\d{7,14}$/.test(m.whatsapp || '')) items.push({ href: `https://wa.me/${m.whatsapp.slice(1)}`, icon: 'whatsapp', name: 'واتساب' });
+    const other = safeUrl(m.link);
+    if (other) { const info = socialInfo(other); items.push({ href: other, icon: info ? info.icon : 'link', name: info ? info.name : 'رابط' }); }
+    const links = items.length ? h('div', { class: 'member-links' }, items.map((it) => {
+      const el = h('a', { class: 'member-link', href: it.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${m.name} على ${it.name}`, title: it.name });
+      el.append(iconSvg(it.icon));
+      return el;
+    })) : null;
     return h('article', { class: 'member-card' }, photo, h('h3', {}, m.name),
+      m.nameEn ? h('p', { class: 'member-en', dir: 'ltr', lang: 'en' }, m.nameEn) : null,
       m.role ? h('p', { class: 'member-role' }, m.role) : null,
+      m.roleEn ? h('p', { class: 'member-en', dir: 'ltr', lang: 'en' }, m.roleEn) : null,
       m.bio ? h('p', { class: 'member-bio' }, m.bio) : null,
-      linkEl);
+      links);
   }));
 }
 
