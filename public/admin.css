@@ -413,3 +413,11 @@ body.admin { background: #F6F7F9; }
   .admin-user .btn { min-height: 36px; font-size: 13.5px; padding: 0 10px; }
 }
 @media (max-width: 900px) { .admin-tabs button svg { display: none; } }
+
+/* WhatsApp send dialog */
+.wa-dlg { border: 0; border-radius: 18px; padding: 0; width: min(92vw, 520px); box-shadow: 0 24px 70px rgba(11,18,32,.35); }
+.wa-dlg::backdrop { background: rgba(11,18,32,.55); }
+.wa-box { display: grid; gap: 12px; padding: 22px; }
+.wa-head { display: flex; justify-content: space-between; align-items: center; font-size: 18px; }
+.wa-who { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; }
+.wa-box textarea { width: 100%; box-sizing: border-box; font: inherit; line-height: 1.7; padding: 12px; border: 1px solid var(--line); border-radius: 12px; resize: vertical; }

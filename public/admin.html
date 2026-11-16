@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=21">
+  <link rel="stylesheet" href="/admin.css?v=22">
   <link rel="stylesheet" href="/certificate.css?v=5">
-  <script type="module" src="/admin.js?v=23"></script>
+  <script type="module" src="/admin.js?v=24"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -436,6 +436,8 @@
 
             <div class="panel">
               <h3 id="cl-title">الشهادات الصادرة</h3>
+              <div class="form-actions"><button class="btn btn-primary btn-sm" type="button" id="wa-bulk">إرسال الشهادات بالواتساب</button></div>
+              <p class="muted small">بيفتح محادثة واتساب لكل طالب برسالة تهنئة ورابط شهادته، وإنت بتضغط إرسال. بيتذكر مين انبعتله.</p>
               <ul class="cert-list" id="cert-list"></ul>
               <p class="empty" id="cert-empty" hidden>ما في شهادات صادرة لسا.</p>
             </div>
@@ -704,5 +706,18 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog id="wa-dlg" class="wa-dlg">
+    <form method="dialog" class="wa-box">
+      <div class="wa-head"><strong>إرسال الشهادة بالواتساب</strong><span class="muted small" id="wa-prog"></span></div>
+      <div class="wa-who"><b id="wa-name"></b><bdi dir="ltr" id="wa-phone"></bdi></div>
+      <label class="small muted" for="wa-msg">الرسالة (بتقدر تعدّلها قبل الإرسال)</label>
+      <textarea id="wa-msg" rows="9"></textarea>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="button" id="wa-send">افتح واتساب وارسل</button>
+        <button class="btn btn-ghost-dark" type="button" id="wa-skip">تخطي</button>
+        <button class="btn btn-ghost-dark" value="close">إغلاق</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

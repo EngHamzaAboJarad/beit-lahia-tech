@@ -1547,7 +1547,7 @@ function certActions(c, phone, small = true, email = '') {
     h('a', { class: cls, href: certUrl(c.id), target: '_blank', rel: 'noopener' }, 'فتح ↗'),
     h('button', { type: 'button', class: cls, onclick: () => copyCertLink(c) }, 'نسخ الرابط'),
     mailOk(email) ? h('a', { class: `${cls} mail-send`, href: certMailLink(c, email), target: '_blank', rel: 'noopener noreferrer', title: 'يفتح Gmail برسالة جاهزة فيها رابط الشهادة' }, 'إيميل') : null,
-    wa ? h('a', { class: `${cls} wa-send`, href: `${wa}?text=${encodeURIComponent(certMessage(c))}`, target: '_blank', rel: 'noopener noreferrer', title: 'ابعت الرابط على الواتساب' }, 'واتساب') : null,
+    wa ? h('a', { class: `${cls} wa-send`, href: `${wa}?text=${encodeURIComponent(certMessage(c))}`, target: '_blank', rel: 'noopener noreferrer', title: 'ابعت الرابط على الواتساب', onclick: () => { markSent(c.id); } }, 'واتساب') : null,
   ];
 }
 
@@ -1562,9 +1562,47 @@ beitlahia.tech`;
   return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 function certMessage(c) {
-  return `أهلاً ${c.name} 👋\nشهادة إنجاز ورشة ${ws.title} من بيت لاهيا تيك صارت جاهزة:\n${certUrl(c.id)}\nبتقدر تفتحها وتحفظها PDF أو تطبعها. مبروك! ✦`;
+  return `مبروك ${c.name} 🎉🎓
+يسعدنا في بيت لاهيا تيك إنك أنهيت ورشة «${ws.titleAr || ws.title}» بنجاح، وهاي شهادتك جاهزة:
+${certUrl(c.id)}
+بتقدر تفتحها وتحفظها PDF أو تطبعها.
+نتمنى لك مسيرة تقنية موفقة، وبنشوفك بالورشات الجاية! 💚
+— بيت لاهيا تيك`;
 }
 function copyCertLink(c) { return copyText(certUrl(c.id), 'انسخ رابط الشهادة'); }
+
+/* ---------- WhatsApp: send certificates one after another ---------- */
+const WA_KEY = 'blt-wa-sent';
+const waSent = () => { try { return new Set(JSON.parse(localStorage.getItem(WA_KEY) || '[]')); } catch { return new Set(); } };
+const markSent = (id) => { try { const s = waSent(); s.add(id); localStorage.setItem(WA_KEY, JSON.stringify([...s])); } catch { /* ignore */ } };
+let waQ = [];
+let waPos = 0;
+function showWa() {
+  const x = waQ[waPos];
+  if (!x) { $('wa-dlg').close(); renderCerts(); toast('خلصت: انفتحت كل المحادثات'); return; }
+  $('wa-prog').textContent = `${waPos + 1} من ${waQ.length}`;
+  $('wa-name').textContent = x.c.name;
+  $('wa-phone').textContent = x.reg.whatsapp;
+  $('wa-msg').value = certMessage(x.c);
+}
+$('wa-bulk').addEventListener('click', () => {
+  const done = waSent();
+  waQ = certs.map((c) => ({ c, reg: c.regId ? allRegs.find((r) => r.id === c.regId) : null }))
+    .filter((x) => x.reg && waLink(x.reg.whatsapp) && !done.has(x.c.id));
+  if (!waQ.length) { toast('ما في شهادات جاهزة للإرسال: يا كلها انبعتت، يا ما في أرقام واتساب مربوطة', true); return; }
+  waPos = 0;
+  showWa();
+  $('wa-dlg').showModal();
+});
+$('wa-send').addEventListener('click', () => {
+  const x = waQ[waPos];
+  if (!x) return;
+  window.open(`${waLink(x.reg.whatsapp)}?text=${encodeURIComponent($('wa-msg').value)}`, '_blank', 'noopener');
+  markSent(x.c.id);
+  waPos += 1;
+  showWa();
+});
+$('wa-skip').addEventListener('click', () => { waPos += 1; showWa(); });
 
 function renderRegs() {
   renderWsStats();
@@ -1755,7 +1793,7 @@ function renderCerts() {
     const reg = c.regId ? allRegs.find((r) => r.id === c.regId) : null;
     return h('li', {},
       h('span', { class: 'cert-no-tag' }, c.no),
-      h('div', { class: 'cl-info' }, h('strong', {}, c.name), h('span', { class: 'muted small' }, [c.date, reg ? 'من تسجيلات الورشة' : 'إصدار يدوي'].filter(Boolean).join(' · '))),
+      h('div', { class: 'cl-info' }, h('strong', {}, c.name), h('span', { class: 'muted small' }, [c.date, reg ? 'من تسجيلات الورشة' : 'إصدار يدوي', waSent().has(c.id) ? 'انبعتت واتساب ✓' : ''].filter(Boolean).join(' · '))),
       h('div', { class: 'cl-tools' }, certActions(c, reg?.whatsapp, true, reg?.email),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `إلغاء شهادة ${c.name}`, title: 'إلغاء الشهادة', onclick: () => revokeCert(c) }, svgIcon(ICONS.trash))));
   }));
