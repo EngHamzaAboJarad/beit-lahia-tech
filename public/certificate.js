@@ -36,7 +36,7 @@ try {
     $('loading').hidden = true;
     $('cert-view').hidden = false;
     const fit = $('cert-fit');
-    const refresh = renderCertificate(fit, ws, { name: cert.name, no: cert.no, date: cert.date });
+    const refresh = renderCertificate(fit, ws, { name: cert.name, no: cert.no, date: cert.date, url: id && validId ? `${location.origin}/certificate?id=${id}` : '' });
     const refit = fitSheet(fit);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { refresh(); refit(); });
 

@@ -152,7 +152,7 @@ const SHEET = `
   <i class="cert-corner tr"></i><i class="cert-corner br"></i><i class="cert-corner tl"></i><i class="cert-corner bl"></i>
   <div class="cert-top">
     <div class="cert-brand"><svg class="cert-b-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg><div><b>بيت لاهيا <span>تيك</span></b><small>BEIT LAHIA TECH</small></div></div>
-    <div class="cert-no"><small>CERTIFICATE NO.</small><b data-k="no"></b></div>
+    <div class="cert-id"><div class="cert-no"><small>CERTIFICATE NO.</small><b data-k="no"></b></div><div class="cert-qr" hidden><img alt="" width="74" height="74"><small>امسح للتحقق</small></div></div>
   </div>
   <div class="cert-kicker"><i></i><i></i><i></i><span data-k="titleEn"></span></div>
   <div class="cert-title"><span data-k="title"></span> <span class="acc" data-k="titleAccent"></span></div>
@@ -196,6 +196,14 @@ export function renderCertificate(host, ws, data = {}) {
   set('titleEn', c.titleEn);
   set('no', data.no || '');
   sheet.querySelector('.cert-no').style.visibility = data.no ? '' : 'hidden';
+  // QR code with the certificate link (needs /vendor/qrcode.js; skipped when there is no link)
+  const qrBox = sheet.querySelector('.cert-qr');
+  let qrSrc = '';
+  if (data.url && typeof window !== 'undefined' && typeof window.qrcode === 'function') {
+    try { const q = window.qrcode(0, 'M'); q.addData(String(data.url)); q.make(); qrSrc = q.createDataURL(6, 0); } catch { qrSrc = ''; }
+  }
+  qrBox.hidden = !qrSrc;
+  if (qrSrc) qrBox.querySelector('img').src = qrSrc;
   set('title', c.title);
   set('titleAccent', c.titleAccent);
   set('intro', c.intro);

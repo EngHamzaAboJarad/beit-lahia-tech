@@ -188,3 +188,10 @@
 .cert-kicker { margin-top: auto; }
 .cert-signs { margin-top: auto; }
 .cert-title { margin-top: 14px; }
+
+/* QR code beside the certificate number */
+.cert-id { display: flex; flex-direction: row-reverse; align-items: center; gap: 14px; direction: ltr; }
+.cert-qr { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.cert-qr img { display: block; width: 74px; height: 74px; padding: 4px; background: #fff; border: 1px solid #E3E8EF; border-radius: 8px; image-rendering: pixelated; }
+.cert-qr small { font-size: 9.5px; color: var(--c-slate-400); direction: rtl; }
+.cert-qr[hidden] { display: none; }

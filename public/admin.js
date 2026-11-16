@@ -2024,7 +2024,7 @@ function refreshPreview() {
   const host = $('cert-preview');
   const sample = $('cf-sample').value.trim();
   previewRefresh = renderCertificate(host, { ...ws, cert: certDraft }, {
-    name: sample, no: sample ? nextNumbers(1)[0] : '', date: issueDateText(),
+    name: sample, no: sample ? nextNumbers(1)[0] : '', date: issueDateText(), url: sample ? `${location.origin}/certificate?id=preview` : '',
   });
   refitPreview();
 }
