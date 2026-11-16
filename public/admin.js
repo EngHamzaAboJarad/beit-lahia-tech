@@ -1224,6 +1224,16 @@ function renderWorkshopList() {
         h('div', { class: 'wl-counts' },
           h('span', {}, `${n.regs} مسجّل`), h('span', {}, `${n.attended} حضروا`), h('span', {}, `${n.certs} شهادة`))),
       h('div', { class: 'wl-tools' },
+        m.status === 'done'
+          ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', title: 'بترجع مسودة مخفية', onclick: () => setWorkshopState(w, 'draft') }, 'إلغاء الأرشفة')
+          : [
+            h('button', {
+              type: 'button', class: m.status === 'live' ? 'btn btn-ghost-dark btn-xs' : 'btn btn-primary btn-xs',
+              title: m.status === 'live' ? 'بتختفي عن الزوار وبتوقف التسجيل' : 'بتطلع على /workshop وبتفتح التسجيل (إذا مفتوح)',
+              onclick: () => setWorkshopState(w, m.status === 'live' ? 'draft' : 'live'),
+            }, m.status === 'live' ? (isScheduled(m) ? 'إلغاء الجدولة' : 'إخفاء (مسودة)') : 'انشر الآن'),
+            h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', title: 'بتنعرض بالورشات السابقة والتسجيل بوقف', onclick: () => setWorkshopState(w, 'done') }, 'أرشفة'),
+          ],
         h('button', {
           type: 'button', class: sel ? 'btn btn-primary btn-xs' : 'btn btn-ghost-dark btn-xs', 'aria-pressed': String(sel),
           onclick: () => { selectWorkshop(w.id); if (selId === w.id) $('wsa-heading').closest('.tab-intro').scrollIntoView({ behavior: 'smooth', block: 'start' }); },
@@ -1231,6 +1241,35 @@ function renderWorkshopList() {
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', onclick: () => copyText(wsUrl(w.id), 'انسخ رابط الورشة') }, 'نسخ الرابط'),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `حذف ورشة ${m.titleAr || m.title}`, title: 'حذف الورشة', onclick: () => deleteWorkshop(w) }, svgIcon(ICONS.trash))));
   }));
+}
+
+/** one-click publish / hide / archive from the list (same fields the form saves) */
+async function setWorkshopState(w, status) {
+  const m = mergeWorkshop(w);
+  if (status === 'live' && !m.title) { toast('اكتب اسم الورشة أول', true); return; }
+  if (w.id === selId && wsaDirty && !confirm('في تعديلات مش محفوظة على هاي الورشة، رح تضيع. كمّل؟')) return;
+  const label = { live: 'انشرت وصارت ظاهرة على /workshop', draft: 'صارت مسودة ومخفية عن الزوار', done: 'انأرشفت (بتظهر بالورشات السابقة)' }[status];
+  try {
+    const batch = fs.writeBatch(db);
+    batch.update(fs.doc(db, 'workshops', w.id), { status, publishAt: null, updatedAt: fs.serverTimestamp() });
+    const patch = {};
+    if (status === 'live' && currentId !== w.id) patch.currentWorkshop = w.id;
+    if (nextId === w.id) patch.nextWorkshop = '';
+    if (Object.keys(patch).length) batch.set(fs.doc(db, 'site', 'settings'), { ...patch, updatedAt: fs.serverTimestamp() }, { merge: true });
+    await batch.commit();
+    Object.assign(w, { status, publishAt: null });
+    if ('currentWorkshop' in patch) currentId = patch.currentWorkshop;
+    if ('nextWorkshop' in patch) nextId = patch.nextWorkshop;
+    if (w.id === selId) {
+      ws = mergeWorkshop({ ...ws, status, publishAt: null, cert: ws.cert });
+      $('wsa-state').value = status;
+      $('wsa-publish').value = '';
+      syncStateHint();
+      syncSelectedUi();
+    }
+    renderWorkshopList();
+    toast(`«${wsName(w)}» ${label}`);
+  } catch (e) { toast(errMsg(e), true); }
 }
 
 async function deleteWorkshop(w) {
@@ -1379,6 +1418,15 @@ $('wsa-topic-add').addEventListener('click', () => {
   li.querySelector('.t-title').focus();
 });
 
+$('wsa-fill-guide').addEventListener('click', () => {
+  if (!selId) return;
+  const d = DEFAULT_WORKSHOP;
+  $('wsa-title').value = d.title; $('wsa-title-ar').value = d.titleAr; $('wsa-desc').value = d.description;
+  $('wsa-time').value = d.time; $('wsa-hours').value = d.hours;
+  renderTopicRows(d.topics);
+  topicsChanged();
+  toast('انعبّت من دليل الورشة. راجعها وبعدين اضغط «حفظ».');
+});
 $('wsa-form').addEventListener('input', () => { wsaDirty = true; $('wsa-status').textContent = 'في تعديلات مش محفوظة'; });
 $('wsa-form').addEventListener('submit', async (e) => {
   e.preventDefault();
