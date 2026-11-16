@@ -785,3 +785,10 @@ span.member-photo { font-size: 36px; }
 .member-links .member-link[title="فيسبوك"]:hover { background: #1877F2; border-color: #1877F2; }
 .member-links .member-link[title="لينكدإن"]:hover { background: #0A66C2; border-color: #0A66C2; }
 .member-links .member-link[title="إنستغرام"]:hover { background: #E4405F; border-color: #E4405F; }
+
+/* members: centred rows (one member sits in the middle), fixed-width cards */
+.members-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px; }
+.member-card { flex: 0 1 290px; width: 290px; max-width: 100%; }
+.member-card::before { height: 96px; }
+.member-photo { width: 112px; height: 112px; margin-top: -56px; }
+@media (max-width: 520px) { .member-card { flex-basis: 100%; width: 100%; } }
