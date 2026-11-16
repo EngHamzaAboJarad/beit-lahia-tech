@@ -1796,11 +1796,10 @@ function markCertDirty() {
   $('cf-status').textContent = 'في تعديلات مش محفوظة';
 }
 
+let previewFitted = false;
 function initPreview() {
   const host = $('cert-preview');
-  if (!host.querySelector('.cert')) {
-    refitPreview = fitSheet(host);
-  }
+  if (!previewFitted) { previewFitted = true; refitPreview = fitSheet(host); } // scale the A4 sheet to the box, once
   refreshPreview();
 }
 
