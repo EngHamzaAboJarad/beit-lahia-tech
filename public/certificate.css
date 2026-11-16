@@ -180,3 +180,6 @@
 /* faint strawberry watermark behind the text */
 .cert-wm { position: absolute !important; left: 50%; top: 50%; width: 600px; height: auto; transform: translate(-50%, -48%); opacity: .05; z-index: 0; pointer-events: none; }
 .cert-main > *:not(.cert-wm) { z-index: 1; }
+
+/* signature images: smaller, so they sit lightly above the line */
+.cert-sig-space img { max-height: 44px; max-width: 62%; margin-bottom: -6px; }
