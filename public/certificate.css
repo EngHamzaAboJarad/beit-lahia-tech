@@ -183,3 +183,8 @@
 
 /* signature images: smaller, so they sit lightly above the line */
 .cert-sig-space img { max-height: 44px; max-width: 62%; margin-bottom: -6px; }
+
+/* centre the main text block between the header and the signatures */
+.cert-kicker { margin-top: auto; }
+.cert-signs { margin-top: auto; }
+.cert-title { margin-top: 14px; }
