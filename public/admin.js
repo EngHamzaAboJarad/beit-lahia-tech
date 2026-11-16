@@ -925,6 +925,7 @@ function setTeamPhoto(src) {
   next.id = 'tm-photo-preview';
   prev.replaceWith(next);
   $('tm-photo-remove').hidden = !teamPhoto;
+  $('tm-photo-edit').hidden = !teamPhoto;
 }
 $('tm-name').addEventListener('input', () => { if (!teamPhoto) $('tm-photo-preview').textContent = firstLetter($('tm-name').value); });
 
@@ -946,12 +947,103 @@ function squarePhoto(img) {
   }
   throw new Error('too-big');
 }
+/* ---------- crop + rotate editor (opens before the photo is added) ---------- */
+const CROP = { img: null, rot: 0, zoom: 1, ox: 0, oy: 0, rotated: null };
+const CS = 320; // editor canvas side
+function rotatedSource() {
+  const { img, rot } = CROP;
+  const sw = img.naturalWidth, sh = img.naturalHeight;
+  if (!rot) return { el: img, w: sw, h: sh };
+  const c = document.createElement('canvas');
+  const swap = rot % 2 === 1;
+  c.width = swap ? sh : sw; c.height = swap ? sw : sh;
+  const x = c.getContext('2d');
+  x.translate(c.width / 2, c.height / 2);
+  x.rotate((rot * Math.PI) / 2);
+  x.drawImage(img, -sw / 2, -sh / 2);
+  return { el: c, w: c.width, h: c.height };
+}
+function cropGeometry(side) {
+  const r = CROP.rotated;
+  const k = side / CS; // editor px → output px
+  const sc = (CS / Math.min(r.w, r.h)) * CROP.zoom * k;
+  const maxX = Math.max(0, (r.w * sc - side) / 2), maxY = Math.max(0, (r.h * sc - side) / 2);
+  const ox = Math.max(-maxX, Math.min(maxX, CROP.ox * k)), oy = Math.max(-maxY, Math.min(maxY, CROP.oy * k));
+  return { x: side / 2 - (r.w * sc) / 2 + ox, y: side / 2 - (r.h * sc) / 2 + oy, w: r.w * sc, h: r.h * sc };
+}
+function drawCrop() {
+  const ctx = $('crop-canvas').getContext('2d');
+  const g = cropGeometry(CS);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, CS, CS);
+  ctx.drawImage(CROP.rotated.el, g.x, g.y, g.w, g.h);
+}
+function clampOffsets() {
+  const r = CROP.rotated;
+  const sc = (CS / Math.min(r.w, r.h)) * CROP.zoom;
+  const maxX = Math.max(0, (r.w * sc - CS) / 2), maxY = Math.max(0, (r.h * sc - CS) / 2);
+  CROP.ox = Math.max(-maxX, Math.min(maxX, CROP.ox));
+  CROP.oy = Math.max(-maxY, Math.min(maxY, CROP.oy));
+}
+function cropRefresh() { CROP.rotated = rotatedSource(); clampOffsets(); drawCrop(); }
+function openCrop(img) {
+  Object.assign(CROP, { img, rot: 0, zoom: 1, ox: 0, oy: 0 });
+  $('crop-zoom').value = 1;
+  cropRefresh();
+  $('crop-dlg').showModal();
+}
+$('crop-zoom').addEventListener('input', () => { CROP.zoom = Number($('crop-zoom').value); clampOffsets(); drawCrop(); });
+$('crop-left').addEventListener('click', () => { CROP.rot = (CROP.rot + 3) % 4; CROP.ox = 0; CROP.oy = 0; cropRefresh(); });
+$('crop-right').addEventListener('click', () => { CROP.rot = (CROP.rot + 1) % 4; CROP.ox = 0; CROP.oy = 0; cropRefresh(); });
+$('crop-reset').addEventListener('click', () => { Object.assign(CROP, { rot: 0, zoom: 1, ox: 0, oy: 0 }); $('crop-zoom').value = 1; cropRefresh(); });
+{
+  const cv = $('crop-canvas');
+  let drag = null;
+  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, ox: CROP.ox, oy: CROP.oy }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const k = CS / cv.getBoundingClientRect().width;
+    CROP.ox = drag.ox + (e.clientX - drag.x) * k;
+    CROP.oy = drag.oy + (e.clientY - drag.y) * k;
+    clampOffsets(); drawCrop();
+  });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    CROP.zoom = Math.max(1, Math.min(4, CROP.zoom - e.deltaY * 0.002));
+    $('crop-zoom').value = CROP.zoom; clampOffsets(); drawCrop();
+  }, { passive: false });
+}
+$('crop-ok').addEventListener('click', () => {
+  try {
+    for (let size = 320; size >= 120; size -= 40) {
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+      const g = cropGeometry(size);
+      ctx.drawImage(CROP.rotated.el, g.x, g.y, g.w, g.h);
+      for (let q = 0.85; q >= 0.5; q -= 0.07) {
+        const data = c.toDataURL('image/jpeg', q);
+        if (data.length <= 85000) { setTeamPhoto(data); $('crop-dlg').close(); return; }
+      }
+    }
+    throw new Error('too-big');
+  } catch { toast('الصورة كبيرة كتير، جرّب تختار وحدة ثانية', true); }
+});
 $('tm-photo').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { toast('اختار صورة JPG أو PNG أو WebP', true); return; }
-  try { setTeamPhoto(squarePhoto(await loadImage(file))); } catch { toast('ما قدرت أقرأ الصورة، جرّب وحدة ثانية', true); }
+  try { openCrop(await loadImage(file)); } catch { toast('ما قدرت أقرأ الصورة، جرّب وحدة ثانية', true); }
+});
+$('tm-photo-edit').addEventListener('click', () => {
+  if (!teamPhoto) return;
+  const img = new Image();
+  img.onload = () => openCrop(img);
+  img.src = teamPhoto;
 });
 $('tm-photo-remove').addEventListener('click', () => setTeamPhoto(''));
 
