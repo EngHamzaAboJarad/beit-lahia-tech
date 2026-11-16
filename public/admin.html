@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=20">
+  <link rel="stylesheet" href="/admin.css?v=21">
   <link rel="stylesheet" href="/certificate.css?v=1">
   <script type="module" src="/admin.js?v=20"></script>
 </head>
@@ -87,19 +87,19 @@
       </div>
       <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة" aria-orientation="vertical">
         <span class="tab-group" role="presentation">المجتمع</span>
-        <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
-        <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false">الأعضاء</button>
+        <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c1.8.8 3 2.7 3 5.6"/></svg><span>التسجيلات</span></button>
+        <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg><span>الأعضاء</span></button>
         <span class="tab-group" role="presentation">الورشات</span>
-        <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false">الورشات</button>
-        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false">الشهادات</button>
+        <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5Z"/><path d="M7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></button>
+        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7"/></svg><span>الشهادات</span></button>
         <span class="tab-group" role="presentation">الموقع</span>
-        <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
-        <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
-        <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false">المعرض</button>
-        <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false">التواصل</button>
+        <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h5"/></svg><span>محتوى الصفحة</span></button>
+        <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>الفعاليات</span></button>
+        <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4.5 4.5"/></svg><span>المعرض</span></button>
+        <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.5L3.5 20.5l1.1-4.2A8.5 8.5 0 1 1 20.5 12Z"/></svg><span>التواصل</span></button>
         <span class="tab-group" role="presentation">عام</span>
-        <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
-        <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
+        <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg><span>الزيارات</span></button>
+        <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>الإعدادات</span></button>
       </nav>
     </header>
 
