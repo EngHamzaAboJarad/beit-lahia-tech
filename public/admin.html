@@ -11,9 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=13">
-  <link rel="stylesheet" href="/admin.css?v=18">
+  <link rel="stylesheet" href="/admin.css?v=19">
   <link rel="stylesheet" href="/certificate.css?v=1">
-  <script type="module" src="/admin.js?v=18"></script>
+  <script type="module" src="/admin.js?v=19"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -86,16 +86,20 @@
           <button class="btn btn-ghost-light btn-sm" type="button" data-signout>خروج</button>
         </div>
       </div>
-      <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة">
+      <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة" aria-orientation="vertical">
+        <span class="tab-group" role="presentation">المجتمع</span>
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true">التسجيلات</button>
+        <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false">الأعضاء</button>
+        <span class="tab-group" role="presentation">الورشات</span>
         <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false">الورشات</button>
-        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false">الشهادة</button>
-        <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
+        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false">الشهادات</button>
+        <span class="tab-group" role="presentation">الموقع</span>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false">محتوى الصفحة</button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false">الفعاليات</button>
         <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false">المعرض</button>
-        <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false">الأعضاء</button>
         <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false">التواصل</button>
+        <span class="tab-group" role="presentation">عام</span>
+        <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false">الزيارات</button>
         <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false">الإعدادات</button>
       </nav>
     </header>

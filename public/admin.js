@@ -136,7 +136,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'workshop', 'cert', 'stats', 'content', 'events', 'gallery', 'team', 'social', 'settings'];
+const TABS = ['members', 'team', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -154,7 +154,7 @@ TABS.forEach((t, i) => {
   btn.addEventListener('click', () => selectTab(t));
   btn.addEventListener('keydown', (e) => {
     // RTL: ArrowLeft moves to the next tab
-    const dir = e.key === 'ArrowLeft' ? 1 : e.key === 'ArrowRight' ? -1 : 0;
+    const dir = ['ArrowLeft', 'ArrowDown'].includes(e.key) ? 1 : ['ArrowRight', 'ArrowUp'].includes(e.key) ? -1 : 0;
     if (dir) { e.preventDefault(); selectTab(TABS[(i + dir + TABS.length) % TABS.length], true); }
   });
 });
