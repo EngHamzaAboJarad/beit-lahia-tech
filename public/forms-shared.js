@@ -103,3 +103,25 @@ export function friendlyError(err) {
       ? 'البيانات مش مقبولة أو الفورم مسكّر. حدّث الصفحة وجرّب.'
       : 'صار خطأ وما وصل الطلب. جرّب كمان مرة بعد شوي.';
 }
+
+/** the admin-editable bits of the two forms (site/forms): { surveyTopics, surveyOpen, surveyTitle, … } — {} when never saved */
+export async function loadFormConfig(db, fs) {
+  const snap = await fs.getDoc(fs.doc(db, 'site', 'forms')).catch(() => null);
+  return snap && snap.exists() ? snap.data() : {};
+}
+/** title/lead overrides + the closed state; returns true when the form is open */
+export function applyFormTexts(cfg, kind, form) {
+  const set = (id, v) => { if (typeof v === 'string' && v.trim()) document.getElementById(id).textContent = v.trim(); };
+  set('page-title', cfg[`${kind}Title`]);
+  set('page-lead', cfg[`${kind}Lead`]);
+  if (cfg[`${kind}Open`] === false) {
+    set('closed-msg', cfg[`${kind}ClosedMessage`]);
+    form.hidden = true;
+    document.getElementById('closed').hidden = false;
+    return false;
+  }
+  return true;
+}
+/** topics for the survey: the admin's list, else the defaults */
+export const topicsFrom = (cfg) => (Array.isArray(cfg.surveyTopics) && cfg.surveyTopics.length
+  ? cfg.surveyTopics.filter((t) => t && typeof t.key === 'string' && typeof t.name === 'string') : SURVEY_TOPICS);

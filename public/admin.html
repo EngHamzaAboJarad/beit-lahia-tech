@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=28">
+  <link rel="stylesheet" href="/admin.css?v=29">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=29"></script>
+  <script type="module" src="/admin.js?v=30"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -93,6 +93,7 @@
         <button role="tab" type="button" id="tab-btn-total" aria-controls="tab-total" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M13 14.3c.9-.2 1.8-.3 2.5-.3 3 0 5.5 2 5.5 5"/></svg><span>الإجمالي العام</span></button>
         <button role="tab" type="button" id="tab-btn-trainers" aria-controls="tab-trainers" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="m10 8 4 2-4 2z"/></svg><span>المدربين</span></button>
         <button role="tab" type="button" id="tab-btn-survey" aria-controls="tab-survey" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg><span>استبيان المواضيع</span></button>
+        <button role="tab" type="button" id="tab-btn-forms" aria-controls="tab-forms" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h4"/><circle cx="17" cy="16" r="2.2"/></svg><span>إعدادات الفورمات</span></button>
         <span class="tab-group" role="presentation">الورشات</span>
         <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5Z"/><path d="M7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></button>
         <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7"/></svg><span>الشهادات</span></button>
@@ -335,6 +336,76 @@
           <div class="pager" id="sv-pager"></div>
           <p class="empty" id="sv-empty" hidden>ما في إجابات بهاد الفلتر.</p>
         </div>
+      </section>
+
+      <!-- Forms: edit /survey and /trainer -->
+      <section id="tab-forms" role="tabpanel" aria-labelledby="tab-btn-forms" hidden>
+        <div class="tab-intro">
+          <h2>إعدادات الفورمات</h2>
+          <p class="muted">عدّل نصوص صفحتي الاستبيان والمدربين، وافتحهم أو سكّرهم، وحدّد المواضيع اللي بتطلع بالاستبيان. نتائجهم بتبويبي «المدربين» و«استبيان المواضيع».</p>
+        </div>
+        <form class="panel narrow-panel" id="fm-survey-form" novalidate>
+          <h2>استبيان المواضيع</h2>
+          <p class="muted small">الصفحة: <bdi dir="ltr">/survey</bdi></p>
+          <label class="switch">
+            <input type="checkbox" id="fm-survey-open">
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span id="fm-survey-open-label">الفورم مفتوح</span>
+          </label>
+          <div class="field">
+            <label for="fm-survey-title">عنوان الصفحة</label>
+            <input id="fm-survey-title" type="text" maxlength="100">
+          </div>
+          <div class="field">
+            <label for="fm-survey-lead">النص تحت العنوان</label>
+            <textarea id="fm-survey-lead" rows="3" maxlength="300"></textarea>
+          </div>
+          <div class="field">
+            <label for="fm-survey-closed">الرسالة اللي بتظهر لما يكون الفورم مسكّر</label>
+            <textarea id="fm-survey-closed" rows="2" maxlength="300"></textarea>
+          </div>
+          <div class="field">
+            <label>المواضيع اللي بتطلع للطلاب</label>
+            <ul class="fm-topics" id="fm-topics"></ul>
+            <div class="fm-add">
+              <input id="fm-topic-new" type="text" maxlength="60" placeholder="موضوع جديد، مثال: التسويق الرقمي" aria-label="موضوع جديد">
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="fm-topic-add">أضف</button>
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="fm-topic-reset">رجّع القائمة الأصلية</button>
+            </div>
+            <p class="muted small">لو شلت موضوع، الأصوات اللي إلو القديمة بتضل بالنتائج.</p>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit" id="fm-survey-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+            <a class="btn btn-ghost-dark" href="/survey" target="_blank" rel="noopener">شوف الصفحة</a>
+            <button class="btn btn-ghost-dark" type="button" id="fm-survey-copy">انسخ الرابط</button>
+          </div>
+        </form>
+        <form class="panel narrow-panel" id="fm-trainer-form" novalidate>
+          <h2>فورم المدربين</h2>
+          <p class="muted small">الصفحة: <bdi dir="ltr">/trainer</bdi></p>
+          <label class="switch">
+            <input type="checkbox" id="fm-trainer-open">
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span id="fm-trainer-open-label">الفورم مفتوح</span>
+          </label>
+          <div class="field">
+            <label for="fm-trainer-title">عنوان الصفحة</label>
+            <input id="fm-trainer-title" type="text" maxlength="100">
+          </div>
+          <div class="field">
+            <label for="fm-trainer-lead">النص تحت العنوان</label>
+            <textarea id="fm-trainer-lead" rows="3" maxlength="300"></textarea>
+          </div>
+          <div class="field">
+            <label for="fm-trainer-closed">الرسالة اللي بتظهر لما يكون الفورم مسكّر</label>
+            <textarea id="fm-trainer-closed" rows="2" maxlength="300"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit" id="fm-trainer-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+            <a class="btn btn-ghost-dark" href="/trainer" target="_blank" rel="noopener">شوف الصفحة</a>
+            <button class="btn btn-ghost-dark" type="button" id="fm-trainer-copy">انسخ الرابط</button>
+          </div>
+        </form>
       </section>
 
       <!-- Workshop -->

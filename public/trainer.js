@@ -1,7 +1,7 @@
 // Beit Lahia Tech — /trainer: a trainer's registration → trainers/{id}.
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
-import { clean, normalizePhone, normalizeEmail, wireForm, friendlyError } from './forms-shared.js';
+import { clean, normalizePhone, normalizeEmail, wireForm, friendlyError, loadFormConfig, applyFormTexts } from './forms-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const form = $('trainer-form');
@@ -11,8 +11,9 @@ const statusEl = $('form-status');
 $('year').textContent = new Date().getFullYear();
 renderFooterLinks($('footer-social'), null);
 getDb().then(async ({ db, fs }) => {
-  const snap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
+  const [snap, cfg] = await Promise.all([fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null), loadFormConfig(db, fs)]);
   if (snap && snap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...snap.data() });
+  applyFormTexts(cfg, 'trainer', form);
 }).catch(() => {});
 form.addEventListener('focusin', () => { getDb().catch(() => {}); }, { once: true });
 

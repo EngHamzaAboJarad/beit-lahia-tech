@@ -483,3 +483,10 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .bar-val { color: var(--slate); font-size: 14px; white-space: nowrap; }
 .other-list { margin: 0; padding: 0 18px 0 0; display: grid; gap: 6px; }
 @media (max-width: 600px) { .topic-bars li { grid-template-columns: 1fr auto; } .bar-track { grid-column: 1 / -1; order: 3; } }
+
+/* Forms settings */
+.fm-topics { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.fm-topics li { display: flex; gap: 6px; align-items: center; }
+.fm-topics input { flex: 1; min-width: 0; }
+.fm-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fm-add input { flex: 1 1 220px; min-width: 0; }

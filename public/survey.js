@@ -1,7 +1,7 @@
 // Beit Lahia Tech — /survey: which topics students want a workshop/course on → topicSurveys/{id}.
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
-import { SURVEY_TOPICS, clean, normalizePhone, wireForm, friendlyError } from './forms-shared.js';
+import { SURVEY_TOPICS, clean, normalizePhone, wireForm, friendlyError, loadFormConfig, applyFormTexts, topicsFrom } from './forms-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const form = $('survey-form');
@@ -11,18 +11,24 @@ const statusEl = $('form-status');
 $('year').textContent = new Date().getFullYear();
 renderFooterLinks($('footer-social'), null);
 getDb().then(async ({ db, fs }) => {
-  const snap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
+  const [snap, cfg] = await Promise.all([fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null), loadFormConfig(db, fs)]);
   if (snap && snap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...snap.data() });
+  if (applyFormTexts(cfg, 'survey', form)) renderTopics(topicsFrom(cfg));
 }).catch(() => {});
 form.addEventListener('focusin', () => { getDb().catch(() => {}); }, { once: true });
 
-$('topic-chips').replaceChildren(...SURVEY_TOPICS.map((t) => {
+function renderTopics(list) {
+  const was = new Set([...form.querySelectorAll('input[name="topics"]:checked')].map((b) => b.value));
+  $('topic-chips').replaceChildren(...list.map((t) => {
   const label = document.createElement('label'); label.className = 'tool-chip';
   const input = Object.assign(document.createElement('input'), { type: 'checkbox', name: 'topics', value: t.key });
   const span = document.createElement('span'); span.textContent = t.name;
+  input.checked = was.has(t.key);
   label.append(input, span);
   return label;
-}));
+  }));
+}
+renderTopics(SURVEY_TOPICS);
 const picked = () => [...form.querySelectorAll('input[name="topics"]:checked')].map((b) => b.value);
 
 // the consent box only matters when they leave a name or number

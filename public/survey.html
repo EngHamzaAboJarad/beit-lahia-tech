@@ -79,8 +79,8 @@
     <section class="page-hero">
       <div class="container">
         <p class="eyebrow"><span class="pixels" aria-hidden="true"><i></i><i></i><i class="r"></i></span>رأيك يهمنا</p>
-        <h1>شو بدك نعمل لك ورشة أو دورة عنه؟</h1>
-        <p class="lead">اختار المواضيع اللي بتحب نشتغل عليها، وإحنا بنرتّب الورشات والدورات الجاية على أساس اختياراتكم.</p>
+        <h1 id="page-title">شو بدك نعمل لك ورشة أو دورة عنه؟</h1>
+        <p class="lead" id="page-lead">اختار المواضيع اللي بتحب نشتغل عليها، وإحنا بنرتّب الورشات والدورات الجاية على أساس اختياراتكم.</p>
       </div>
     </section>
 
@@ -162,6 +162,13 @@
             </button>
             <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
           </form>
+
+          <div class="success" id="closed" hidden>
+            <svg width="56" height="63" aria-hidden="true"><use href="#logo"/></svg>
+            <h2>الفورم مسكّر حالياً</h2>
+            <p id="closed-msg">الفورم مسكّر حالياً. تابعنا، رح نفتحه قريباً.</p>
+            <div class="success-actions"><a class="btn btn-primary" href="/">ارجع للرئيسية</a></div>
+          </div>
 
           <div class="success" id="success" hidden tabindex="-1">
             <svg width="56" height="63" aria-hidden="true"><use href="#logo"/></svg>

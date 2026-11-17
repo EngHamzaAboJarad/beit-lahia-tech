@@ -75,8 +75,8 @@ service cloud.firestore {
     // ---------- محتوى الصفحة والإعدادات ----------
     // settings.currentWorkshop = رقم الورشة اللي بتطلع على /workshop
     match /site/{docId} {
-      allow read: if docId in ['content', 'settings'];
-      allow write: if isAdmin() && docId in ['content', 'settings']
+      allow read: if docId in ['content', 'settings', 'forms'];
+      allow write: if isAdmin() && docId in ['content', 'settings', 'forms']
         && request.resource.size() < 200 * 1024;
     }
 
@@ -145,8 +145,20 @@ service cloud.firestore {
     // ---------- المدربين (فورم /trainer) ----------
     // الزوار: إضافة تسجيل صالح بس. الأدمن: قراءة وحذف.
     match /trainers/{tid} {
-      allow create: if isValidTrainer(request.resource.data);
+      allow create: if formOpen('trainerOpen') && isValidTrainer(request.resource.data);
       allow read, delete: if isAdmin();
+    }
+
+    // site/forms (من تبويب «الفورمات»): surveyOpen / trainerOpen يفتحوا ويسكّروا الفورمات، و surveyKeys = مفاتيح المواضيع المسموحة
+    function formOpen(flag) {
+      let path = /databases/$(database)/documents/site/forms;
+      return !exists(path) || get(path).data.get(flag, true) != false;
+    }
+    function surveyKeys() {
+      let path = /databases/$(database)/documents/site/forms;
+      return exists(path) && get(path).data.get('surveyKeys', null) is list ? get(path).data.surveyKeys
+        : ['web', 'mobile', 'ai', 'data', 'security', 'uiux', 'graphic', 'video', 'programming',
+           'database', 'network', 'freelance', 'english', 'career', 'soft', 'startup'];
     }
 
     function isValidTrainer(d) {
@@ -168,9 +180,9 @@ service cloud.firestore {
     }
 
     // ---------- استبيان المواضيع (فورم /survey) ----------
-    // الاسم والرقم اختياريين؛ إذا انكتب واحد منهم لازم الموافقة. topics = مفاتيح المواضيع؛ لو تغيّرت SURVEY_TOPICS بـ forms-shared.js حدّث القائمة هون ونزّل القواعد.
+    // الاسم والرقم اختياريين؛ إذا انكتب واحد منهم لازم الموافقة. topics = مفاتيح المواضيع المسموحة (surveyKeys بـ site/forms، والقائمة الافتراضية لحد ما الأدمن يعدّل).
     match /topicSurveys/{sid} {
-      allow create: if isValidSurvey(request.resource.data);
+      allow create: if formOpen('surveyOpen') && isValidSurvey(request.resource.data);
       allow read, delete: if isAdmin();
     }
 
@@ -179,8 +191,7 @@ service cloud.firestore {
         && d.keys().hasOnly(['topics', 'other', 'format', 'status', 'name', 'whatsapp', 'consent', 'source', 'createdAt'])
         && d.topics is list && d.topics.size() <= 20
         && (d.topics.size() > 0 || ('other' in d && isStr(d.other, 2, 200)))
-        && d.topics.hasOnly(['web', 'mobile', 'ai', 'data', 'security', 'uiux', 'graphic', 'video', 'programming',
-                             'database', 'network', 'freelance', 'english', 'career', 'soft', 'startup'])
+        && d.topics.hasOnly(surveyKeys())
         && (!('other' in d) || isStr(d.other, 1, 200))
         && d.format in ['workshop', 'course', 'any']
         && (!('status' in d) || d.status in ['tawjihi', 'student', 'graduate', 'other'])

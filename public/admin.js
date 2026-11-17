@@ -5,7 +5,7 @@ import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, 
 import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
-import { topicName, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
+import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -138,7 +138,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'team', 'total', 'trainers', 'survey', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
+const TABS = ['members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -175,6 +175,7 @@ function boot() {
   loadWorkshopAll();
   loadTrainers();
   loadSurveys();
+  loadFormsCfg();
 }
 
 /* =================== Members =================== */
@@ -2325,6 +2326,93 @@ $('tr-export').addEventListener('click', () => {
     ['الاسم', 'واتساب', 'الإيميل', 'التخصص', 'العمر', 'سنوات الخبرة', 'بيقدّم', 'الدورة / المجال', 'جهات سابقة', 'تاريخ التسجيل'],
     filteredTrainers().map((t) => [t.name, t.whatsapp || '', t.email || '', t.specialty, t.age, t.years, TRAINER_MODES[t.mode] || t.mode,
       t.topic, t.venues || '', t.createdAt ? dateTimeFmt.format(t.createdAt.toDate()) : '']));
+});
+
+/* ---------- forms settings (site/forms): texts, open/closed, survey topics ---------- */
+let formsCfg = {};
+let fmTopics = SURVEY_TOPICS.map((t) => ({ ...t })); // the list being edited
+/** label for a topic key: the saved list, then names of topics removed later, then the defaults */
+function topicName(key) {
+  return (Array.isArray(formsCfg.surveyTopics) && formsCfg.surveyTopics.find((t) => t.key === key)?.name)
+    || formsCfg.surveyTopicNames?.[key] || SURVEY_TOPICS.find((t) => t.key === key)?.name || key;
+}
+const FM_PAGES = { survey: '/survey', trainer: '/trainer' };
+// the same texts the public pages ship with (shown when nothing was saved yet)
+const FM_TEXT = {
+  survey: { title: 'شو بدك نعمل لك ورشة أو دورة عنه؟', lead: 'اختار المواضيع اللي بتحب نشتغل عليها، وإحنا بنرتّب الورشات والدورات الجاية على أساس اختياراتكم.', closed: 'الفورم مسكّر حالياً. تابعنا، رح نفتحه قريباً.' },
+  trainer: { title: 'سجّل كمدرّب', lead: 'عندك خبرة وبتقدر تعطي ورشة أو دورة؟ عبّي بياناتك، وبنرجعلك لما نخطط لورشات ودورات جديدة للمجتمع.', closed: 'الفورم مسكّر حالياً. تابعنا، رح نفتحه قريباً.' },
+};
+function fmFill() {
+  ['survey', 'trainer'].forEach((k) => {
+    const open = formsCfg[k + 'Open'] !== false;
+    $('fm-' + k + '-open').checked = open;
+    $('fm-' + k + '-open-label').textContent = open ? 'الفورم مفتوح' : 'الفورم مسكّر';
+    $('fm-' + k + '-title').value = formsCfg[k + 'Title'] || FM_TEXT[k].title;
+    $('fm-' + k + '-lead').value = formsCfg[k + 'Lead'] || FM_TEXT[k].lead;
+    $('fm-' + k + '-closed').value = formsCfg[k + 'ClosedMessage'] || FM_TEXT[k].closed;
+  });
+  fmTopics = (Array.isArray(formsCfg.surveyTopics) && formsCfg.surveyTopics.length ? formsCfg.surveyTopics : SURVEY_TOPICS).map((t) => ({ key: t.key, name: t.name }));
+  fmRenderTopics();
+}
+async function loadFormsCfg() {
+  try {
+    const snap = await fs.getDoc(fs.doc(db, 'site', 'forms'));
+    formsCfg = snap.exists() ? snap.data() : {};
+  } catch (e) { toast(errMsg(e), true); }
+  fmFill();
+  renderSurveys();
+}
+function fmRenderTopics() {
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= fmTopics.length) return; [fmTopics[i], fmTopics[j]] = [fmTopics[j], fmTopics[i]]; fmRenderTopics(); };
+  $('fm-topics').replaceChildren(...fmTopics.map((t, i) => h('li', {},
+    h('input', { type: 'text', value: t.name, maxlength: 60, 'aria-label': 'اسم الموضوع ' + (i + 1), oninput: (e) => { t.name = e.target.value; } }),
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'فوق', disabled: i === 0, onclick: () => move(i, -1) }, svgIcon(ICONS.up)),
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'تحت', disabled: i === fmTopics.length - 1, onclick: () => move(i, 1) }, svgIcon(ICONS.down)),
+    h('button', { type: 'button', class: 'icon-btn danger', 'aria-label': 'شيل ' + t.name, onclick: () => { fmTopics.splice(i, 1); fmRenderTopics(); } }, svgIcon(ICONS.trash)))));
+}
+function fmAddTopic() {
+  const name = $('fm-topic-new').value.replace(/\s+/g, ' ').trim();
+  if (name.length < 2) { $('fm-topic-new').focus(); return; }
+  if (fmTopics.some((t) => t.name === name)) { toast('الموضوع موجود', true); return; }
+  fmTopics.push({ key: 't' + Date.now().toString(36), name });
+  $('fm-topic-new').value = '';
+  fmRenderTopics();
+}
+$('fm-topic-add').addEventListener('click', fmAddTopic);
+$('fm-topic-new').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fmAddTopic(); } });
+$('fm-topic-reset').addEventListener('click', () => {
+  if (confirm('ترجيع قائمة المواضيع الأصلية؟ (ما بتتحفظ إلا لما تضغط احفظ)')) { fmTopics = SURVEY_TOPICS.map((t) => ({ ...t })); fmRenderTopics(); }
+});
+['survey', 'trainer'].forEach((k) => {
+  $('fm-' + k + '-open').addEventListener('change', () => { $('fm-' + k + '-open-label').textContent = $('fm-' + k + '-open').checked ? 'الفورم مفتوح' : 'الفورم مسكّر'; });
+  $('fm-' + k + '-copy').addEventListener('click', () => copyText(location.origin + FM_PAGES[k], 'انسخ الرابط'));
+  $('fm-' + k + '-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+      [k + 'Open']: $('fm-' + k + '-open').checked,
+      [k + 'Title']: $('fm-' + k + '-title').value.trim() || FM_TEXT[k].title,
+      [k + 'Lead']: $('fm-' + k + '-lead').value.trim() || FM_TEXT[k].lead,
+      [k + 'ClosedMessage']: $('fm-' + k + '-closed').value.trim() || FM_TEXT[k].closed,
+    };
+    if (k === 'survey') {
+      const list = fmTopics.map((t) => ({ key: t.key, name: String(t.name).replace(/\s+/g, ' ').trim() }));
+      if (!list.length) { toast('لازم يضل موضوع واحد على الأقل', true); return; }
+      if (list.some((t) => t.name.length < 2)) { toast('في موضوع اسمه فاضي أو قصير', true); return; }
+      if (new Set(list.map((t) => t.name)).size !== list.length) { toast('في موضوعين بنفس الاسم', true); return; }
+      data.surveyTopics = list;
+      data.surveyKeys = list.map((t) => t.key);
+      data.surveyTopicNames = Object.fromEntries(list.map((t) => [t.key, t.name])); // merged: names of removed topics stay
+    }
+    const btn = $('fm-' + k + '-save');
+    setBusy(btn, true);
+    try {
+      await fs.setDoc(fs.doc(db, 'site', 'forms'), { ...data, updatedAt: fs.serverTimestamp() }, { merge: true });
+      formsCfg = { ...formsCfg, ...data };
+      if (k === 'survey') formsCfg.surveyTopicNames = { ...(formsCfg.surveyTopicNames || {}), ...data.surveyTopicNames };
+      toast('انحفظ');
+      renderSurveys();
+    } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
+  });
 });
 
 /* ---------- topic survey ---------- */
