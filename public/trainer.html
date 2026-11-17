@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>سجّل كمدرّب | كميونتي تقني بيت لاهيا</title>
+  <meta name="description" content="سجّل كمدرّب أو صاحب خبرة بكميونتي تقني بيت لاهيا: ورشة أو دورة بأي مجال.">
+  <meta name="theme-color" content="#0B1220">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ar_PS">
+  <meta property="og:title" content="سجّل كمدرّب — بيت لاهيا تيك">
+  <meta property="og:description" content="عندك خبرة؟ سجّل بياناتك وكون جزء من الكفاءات التدريبية بالمجتمع.">
+  <link rel="canonical" href="https://beitlahia.tech/trainer">
+  <meta property="og:url" content="https://beitlahia.tech/trainer">
+  <meta property="og:image" content="https://beitlahia.tech/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="شعار الفراولة البكسلية مع عبارة: معاً نبني جيلاً تقنياً">
+  <meta property="og:site_name" content="كميونتي تقني بيت لاهيا">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://beitlahia.tech/og.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&display=swap"></noscript>
+  <link rel="stylesheet" href="/styles.css?v=18">
+  <script type="module" src="/trainer.js?v=1"></script>
+  <link rel="modulepreload" href="/firebase-init.js">
+  <link rel="modulepreload" href="/firebase-config.js">
+  <link rel="modulepreload" href="/content-defaults.js">
+  <link rel="modulepreload" href="/forms-shared.js">
+  <link rel="dns-prefetch" href="https://www.gstatic.com">
+  <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+</head>
+<body class="page-trainer">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="logo" viewBox="0 0 236 266">
+      <g fill="#34D399">
+        <rect x="60" y="0" width="26" height="26" rx="5"/><rect x="150" y="0" width="26" height="26" rx="5"/>
+        <rect x="30" y="30" width="26" height="26" rx="5"/><rect x="60" y="30" width="26" height="26" rx="5"/><rect x="90" y="30" width="26" height="26" rx="5"/><rect x="120" y="30" width="26" height="26" rx="5"/><rect x="150" y="30" width="26" height="26" rx="5"/><rect x="180" y="30" width="26" height="26" rx="5"/>
+      </g>
+      <g fill="#F43F5E">
+        <rect x="0" y="60" width="26" height="26" rx="5"/><rect x="30" y="60" width="26" height="26" rx="5"/><rect x="60" y="60" width="26" height="26" rx="5"/><rect x="90" y="60" width="26" height="26" rx="5"/><rect x="120" y="60" width="26" height="26" rx="5"/><rect x="150" y="60" width="26" height="26" rx="5"/><rect x="180" y="60" width="26" height="26" rx="5"/><rect x="210" y="60" width="26" height="26" rx="5"/>
+        <rect x="0" y="90" width="26" height="26" rx="5"/><rect x="30" y="90" width="26" height="26" rx="5"/><rect x="90" y="90" width="26" height="26" rx="5"/><rect x="120" y="90" width="26" height="26" rx="5"/><rect x="180" y="90" width="26" height="26" rx="5"/><rect x="210" y="90" width="26" height="26" rx="5"/>
+        <rect x="0" y="120" width="26" height="26" rx="5"/><rect x="30" y="120" width="26" height="26" rx="5"/><rect x="60" y="120" width="26" height="26" rx="5"/><rect x="90" y="120" width="26" height="26" rx="5"/><rect x="120" y="120" width="26" height="26" rx="5"/><rect x="150" y="120" width="26" height="26" rx="5"/><rect x="180" y="120" width="26" height="26" rx="5"/><rect x="210" y="120" width="26" height="26" rx="5"/>
+        <rect x="30" y="150" width="26" height="26" rx="5"/><rect x="60" y="150" width="26" height="26" rx="5"/><rect x="120" y="150" width="26" height="26" rx="5"/><rect x="150" y="150" width="26" height="26" rx="5"/><rect x="180" y="150" width="26" height="26" rx="5"/>
+        <rect x="30" y="180" width="26" height="26" rx="5"/><rect x="60" y="180" width="26" height="26" rx="5"/><rect x="90" y="180" width="26" height="26" rx="5"/><rect x="120" y="180" width="26" height="26" rx="5"/><rect x="180" y="180" width="26" height="26" rx="5"/>
+        <rect x="60" y="210" width="26" height="26" rx="5"/><rect x="90" y="210" width="26" height="26" rx="5"/><rect x="120" y="210" width="26" height="26" rx="5"/><rect x="150" y="210" width="26" height="26" rx="5"/>
+        <rect x="90" y="240" width="26" height="26" rx="5"/><rect x="120" y="240" width="26" height="26" rx="5"/>
+      </g>
+      <g fill="#FDA4AF">
+        <rect x="60" y="90" width="26" height="26" rx="5"/><rect x="150" y="90" width="26" height="26" rx="5"/><rect x="90" y="150" width="26" height="26" rx="5"/><rect x="150" y="180" width="26" height="26" rx="5"/>
+      </g>
+    </symbol>
+  </svg>
+
+  <a class="skip" href="#main">تخطَّ إلى النموذج</a>
+
+  <header class="site-header">
+    <div class="container header-row">
+      <a class="brand" href="/" aria-label="كميونتي تقني بيت لاهيا — الصفحة الرئيسية">
+        <svg class="brand-mark" width="34" height="38" aria-hidden="true"><use href="#logo"/></svg>
+        <span class="brand-text">
+          <span class="brand-kicker">كميونتي تقني</span>
+          <span class="brand-name">بيت لاهيا</span>
+        </span>
+      </a>
+      <a class="back-btn" href="/">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        <span>الرجوع للرئيسية</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <p class="eyebrow"><span class="pixels" aria-hidden="true"><i></i><i></i><i class="r"></i></span>كفاءات تدريبية</p>
+        <h1>سجّل كمدرّب</h1>
+        <p class="lead">عندك خبرة وبتقدر تعطي ورشة أو دورة؟ عبّي بياناتك، وبنرجعلك لما نخطط لورشات ودورات جديدة للمجتمع.</p>
+      </div>
+    </section>
+
+    <section class="section section-sand join-section">
+      <div class="container register-grid">
+        <aside class="register-intro">
+          <h2>قبل ما تبدأ</h2>
+          <ul class="checks">
+            <li>بتقدر تقترح ورشة بأي مجال، مش لازم تكون عملت قبل</li>
+            <li>بياناتك ما بتنشر لأي جهة، وبنستخدمها بس للتواصل معك</li>
+            <li>الحقول اللي عليها <span class="req" aria-hidden="true">*</span> مطلوبة</li>
+          </ul>
+        </aside>
+
+        <div class="form-card">
+          <form id="trainer-form" novalidate>
+            <div class="field">
+              <label for="name">الاسم الكامل <span class="req" aria-hidden="true">*</span></label>
+              <input id="name" name="name" type="text" autocomplete="name" required minlength="2" maxlength="80" placeholder="مثال: محمد أحمد">
+              <p class="error" id="name-error" aria-live="polite"></p>
+            </div>
+
+            <div class="row-2">
+              <div class="field">
+                <label for="whatsapp">رقم الواتساب <span class="req" aria-hidden="true">*</span></label>
+                <input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" dir="ltr" autocomplete="tel" required maxlength="20" placeholder="059xxxxxxx">
+                <p class="hint-rtl">عشان نتواصل معك بخصوص الورشات.</p>
+                <p class="error" id="whatsapp-error" aria-live="polite"></p>
+              </div>
+              <div class="field">
+                <label for="email">الإيميل <span class="optional">(اختياري)</span></label>
+                <input id="email" name="email" type="email" inputmode="email" dir="ltr" autocomplete="email" maxlength="120" placeholder="name@example.com">
+                <p class="error" id="email-error" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="specialty">التخصص <span class="req" aria-hidden="true">*</span></label>
+              <input id="specialty" name="specialty" type="text" required minlength="2" maxlength="80" placeholder="مثال: هندسة برمجيات، تصميم جرافيك، تسويق رقمي">
+              <p class="error" id="specialty-error" aria-live="polite"></p>
+            </div>
+
+            <div class="row-2">
+              <div class="field">
+                <label for="age">العمر <span class="req" aria-hidden="true">*</span></label>
+                <input id="age" name="age" type="number" inputmode="numeric" min="16" max="80" required placeholder="مثال: 27">
+                <p class="error" id="age-error" aria-live="polite"></p>
+              </div>
+              <div class="field">
+                <label for="years">سنوات الخبرة <span class="req" aria-hidden="true">*</span></label>
+                <input id="years" name="years" type="number" inputmode="numeric" min="0" max="60" required placeholder="مثال: 4">
+                <p class="hint-rtl">اكتب 0 إذا لسا ببداية الطريق.</p>
+                <p class="error" id="years-error" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <fieldset class="field">
+              <legend>شو حابب تقدّم؟ <span class="req" aria-hidden="true">*</span></legend>
+              <div class="segmented segmented-3">
+                <label class="seg"><input type="radio" name="mode" value="workshop" required><span>ورشة</span></label>
+                <label class="seg"><input type="radio" name="mode" value="course"><span>دورة</span></label>
+                <label class="seg"><input type="radio" name="mode" value="both"><span>الاثنين</span></label>
+              </div>
+              <p class="error" id="mode-error" aria-live="polite"></p>
+            </fieldset>
+
+            <div class="field">
+              <label for="topic">اسم الدورة، أو بأي مجال بتقدر تعمل ورشة؟ <span class="req" aria-hidden="true">*</span></label>
+              <textarea id="topic" name="topic" rows="3" required maxlength="300" placeholder="مثال: دورة Flutter من الصفر، أو ورشة عن تصميم الشعارات، أو ورشة بأي موضوع بالتسويق"></textarea>
+              <p class="hint"><span id="topic-count">0</span> / 300</p>
+              <p class="error" id="topic-error" aria-live="polite"></p>
+            </div>
+
+            <div class="field">
+              <label for="venues">الجهات اللي أعطيت فيها دورة أو ورشة <span class="optional">(اختياري)</span></label>
+              <textarea id="venues" name="venues" rows="3" maxlength="500" placeholder="مثال: الجامعة الإسلامية، مركز…، مبادرة…. اتركه فاضي إذا لسا ما أعطيت"></textarea>
+              <p class="hint"><span id="venues-count">0</span> / 500</p>
+              <p class="error" id="venues-error" aria-live="polite"></p>
+            </div>
+
+            <div class="field consent-field">
+              <label class="consent">
+                <input type="checkbox" id="consent" name="consent" required>
+                <span>قرأت <a href="/privacy" target="_blank" rel="noopener">سياسة الخصوصية</a>، وبوافق إنه بياناتي تنحفظ وتُستخدم لتنظيم الورشات والتواصل معي. <span class="req" aria-hidden="true">*</span></span>
+              </label>
+              <p class="error" id="consent-error" aria-live="polite"></p>
+            </div>
+
+            <!-- مصيدة للبوتات: لا تُملأ من البشر -->
+            <div class="hp" aria-hidden="true">
+              <label for="website">Website</label>
+              <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+            </div>
+
+            <button class="btn btn-primary btn-block" type="submit" id="submit-btn">
+              <span class="btn-label">أرسل بياناتي</span>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+            <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div class="success" id="success" hidden tabindex="-1">
+            <svg width="56" height="63" aria-hidden="true"><use href="#logo"/></svg>
+            <h2>وصلتنا بياناتك، شكراً إلك!</h2>
+            <p>رح نتواصل معك على الواتساب لما نخطط لورشة أو دورة بمجالك.</p>
+            <div class="success-actions">
+              <a class="btn btn-ghost-dark" href="/">ارجع للرئيسية</a>
+              <button type="button" class="btn btn-ghost-dark" id="again-btn">تسجيل مدرّب آخر</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-about">
+          <a class="brand" href="/" aria-label="كميونتي تقني بيت لاهيا — الرئيسية">
+            <svg class="brand-mark" width="30" height="34" aria-hidden="true"><use href="#logo"/></svg>
+            <span class="brand-text">
+              <span class="brand-kicker">كميونتي تقني</span>
+              <span class="brand-name">بيت لاهيا</span>
+            </span>
+          </a>
+          <p class="footer-tagline">مجتمع تقني لأبناء بيت لاهيا: طلاب توجيهي، وطلاب جامعة، وخريجين. بنتعلّم سوا، وبنشتغل سوا، وبنكبر سوا.</p>
+        </div>
+        <div class="footer-connect" id="footer-connect">
+          <p class="footer-title">تابعنا وتواصل معنا</p>
+          <div class="footer-social" id="footer-social"></div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <nav class="footer-links" aria-label="روابط إضافية">
+          <a href="/">الرئيسية</a>
+          <a href="/join">سجّل معنا</a>
+          <a href="/workshop">الورشات</a>
+          <a href="/privacy">سياسة الخصوصية</a>
+        </nav>
+        <p class="footer-meta">بيت لاهيا — غزة، فلسطين · <span dir="ltr">© <span id="year">2026</span> Beit Lahia Tech</span></p>
+      </div>
+    </div>
+  </footer>
+
+  <noscript><p class="noscript">النموذج بحتاج JavaScript يكون مفعّل بالمتصفح.</p></noscript>
+</body>
+</html>

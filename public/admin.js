@@ -5,6 +5,8 @@ import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, 
 import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
+import { topicName, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
+
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
 const EXPERIENCE = { none: 'لسا ببدأ', lt1: 'أقل من سنة', '1-2': '1 – 2 سنة', '3-5': '3 – 5 سنوات', '5+': 'أكثر من 5 سنوات' };
@@ -136,7 +138,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'team', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
+const TABS = ['members', 'team', 'total', 'trainers', 'survey', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -145,6 +147,7 @@ function selectTab(name, focus = false) {
     btn.tabIndex = on ? 0 : -1;
     $(`tab-${t}`).hidden = !on;
     if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
+    if (on && t === 'total') renderTotal();
     if (on && focus) btn.focus();
   });
   history.replaceState(null, '', `#${name}`);
@@ -170,6 +173,8 @@ function boot() {
   loadTeam();
   loadSettings();
   loadWorkshopAll();
+  loadTrainers();
+  loadSurveys();
 }
 
 /* =================== Members =================== */
@@ -191,6 +196,7 @@ async function loadMembers() {
     renderStats();
     renderMembers();
     renderTraffic();
+    renderTotal();
   } catch (e) {
     console.error(e);
     $('members-count').textContent = errMsg(e);
@@ -268,6 +274,7 @@ const waLink = (n) => (typeof n === 'string' && /^\+\d{8,15}$/.test(n) ? `https:
 
 /* =================== Data tables: sort + pages =================== */
 const PAGERS = {};
+const PAGER_BODY = { m: 'members-body', wr: 'wr-body', tt: 'tt-body', tr: 'tr-body', sv: 'sv-body' }; // pager id → its table body
 const pagerState = (id) => (PAGERS[id] = PAGERS[id] || { page: 1, size: 25, key: '', dir: 1 });
 const tsOf = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0);
 const MEMBER_SORT = {
@@ -310,7 +317,7 @@ function applyPager(id, all, getters, rerender) {
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', disabled: st.page >= pages, onclick: () => go(pages) }, '»')));
   }
   // header arrows
-  const table = $(id === 'm' ? 'members-body' : 'wr-body').closest('table');
+  const table = $(PAGER_BODY[id]).closest('table');
   table.querySelectorAll('th[data-sort]').forEach((th) => th.setAttribute('aria-sort', th.dataset.sort === st.key ? (st.dir > 0 ? 'ascending' : 'descending') : 'none'));
   return rows.slice(start, start + st.size);
 }
@@ -1279,6 +1286,7 @@ async function loadWorkshopAll() {
   try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
   selectWorkshop(pick, { force: true });
+  renderTotal();
 }
 
 // First run after the move to workshops/: make the first workshop from the defaults (a draft, set as current),
@@ -2134,6 +2142,269 @@ $('cert-form').addEventListener('submit', async (e) => {
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
 window.addEventListener('beforeunload', (e) => { if (certDirty || wsaDirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* =================== Total, trainers, topic survey =================== */
+function downloadCsv(filename, head, rows) {
+  const esc = (v) => {
+    let s = String(v ?? '');
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // stop spreadsheet formula injection
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [head, ...rows].map((r) => r.map(esc).join(','));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }); // BOM → Excel reads Arabic
+  const a = h('a', { href: URL.createObjectURL(blob), download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const waCell = (n) => (waLink(n)
+  ? h('a', { class: 'wa-btn', href: waLink(n), target: '_blank', rel: 'noopener noreferrer', title: 'فتح محادثة واتساب' }, h('bdi', { dir: 'ltr' }, n))
+  : h('span', { class: 'muted' }, '—'));
+const dayStamp = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- total: community members + workshop registrations, merged ---------- */
+// One person = one row. Two records are the same person when they share a WhatsApp number or an email,
+// or (as a fallback) the same full name of 3+ words. Name-only matches are flagged so they can be reviewed.
+const arNorm = (s) => String(s || '').replace(/[ً-ٰٟـ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/\s+/g, ' ').trim().toLowerCase();
+
+function mergePeople() {
+  const items = [
+    ...members.map((m) => ({ member: true, name: m.name, wa: m.whatsapp || '', email: String(m.email || '').toLowerCase(), t: tsOf(m.createdAt) })),
+    ...allRegs.map((r) => ({ member: false, wid: r.workshopId || '', name: r.name, wa: r.whatsapp || '', email: String(r.email || '').toLowerCase(), t: tsOf(r.createdAt) })),
+  ];
+  const parent = items.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const nameOnly = new Set(); // group roots joined only through the name
+  const seen = new Map();
+  const link = (key, i, byName) => {
+    if (!seen.has(key)) { seen.set(key, i); return; }
+    const a = find(i), b = find(seen.get(key));
+    if (a === b) return;
+    parent[a] = b;
+    if (byName) nameOnly.add(b);
+  };
+  items.forEach((it, i) => { if (it.wa) link(`p:${it.wa}`, i); if (it.email) link(`e:${it.email}`, i); });
+  items.forEach((it, i) => { const n = arNorm(it.name); if (n.split(' ').length >= 3) link(`n:${n}`, i, true); });
+
+  const groups = new Map();
+  items.forEach((it, i) => {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, { name: '', wa: '', email: '', member: false, wids: new Set(), first: 0, viaName: false, size: 0 });
+    const g = groups.get(r);
+    g.size++;
+    if (it.member) { g.member = true; g.name = it.name; } else if (!g.name) g.name = it.name;
+    if (!g.wa && it.wa) g.wa = it.wa;
+    if (!g.email && it.email) g.email = it.email;
+    if (!it.member) g.wids.add(it.wid);
+    if (it.t && (!g.first || it.t < g.first)) g.first = it.t;
+  });
+  nameOnly.forEach((root) => { const g = groups.get(find(root)); if (g) g.viaName = true; });
+  return { people: [...groups.values()], records: items.length };
+}
+
+const wsLabel = (wid) => { const w = workshops.find((x) => x.id === wid); return w ? wsName(w) : 'ورشة محذوفة'; };
+const TOTAL_SORT = {
+  name: (g) => g.name, sources: (g) => (g.member ? 1 : 0) + g.wids.size, count: (g) => g.wids.size, first: (g) => g.first,
+};
+let totalCache = { people: [], records: 0 };
+
+function filteredTotal() {
+  const q = $('tt-search').value.trim().toLowerCase();
+  const src = $('tt-source').value;
+  return totalCache.people.filter((g) => {
+    if (src === 'member' && !g.member) return false;
+    if (src === 'ws' && !g.wids.size) return false;
+    if (src === 'both' && !(g.member && g.wids.size)) return false;
+    if (src === 'only-ws' && (g.member || !g.wids.size)) return false;
+    if (q && ![g.name, g.wa, g.email].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function renderTotal() {
+  if ($('tab-total').hidden) return;
+  totalCache = mergePeople();
+  const { people, records } = totalCache;
+  const n = (fn) => people.filter(fn).length;
+  const items = [
+    ['الإجمالي بدون تكرار', people.length, true],
+    ['مسجّلين بالمجتمع', n((g) => g.member)],
+    ['مسجّلين بورشة', n((g) => g.wids.size)],
+    ['بالمجتمع وبورشة', n((g) => g.member && g.wids.size)],
+    ['ورشات فقط', n((g) => !g.member && g.wids.size)],
+    ['تكرارات انشالت', records - people.length],
+  ];
+  $('total-stats').replaceChildren(...items.map(([label, value, accent]) => h('div', { class: accent ? 'stat stat-accent' : 'stat' },
+    h('span', { class: 'stat-value' }, num(value)), h('span', { class: 'stat-label' }, label))));
+  const all = filteredTotal();
+  const rows = applyPager('tt', all, TOTAL_SORT, renderTotal);
+  $('tt-count').textContent = `${all.length} من ${people.length} شخص (من ${records} تسجيل قبل الدمج)`;
+  $('tt-empty').hidden = all.length > 0;
+  $('tt-body').replaceChildren(...rows.map((g) => h('tr', {},
+    h('td', { class: 'cell-name' }, h('strong', {}, g.name),
+      g.viaName ? h('span', { class: 'badge badge-dup', title: 'اتدمجوا لأنه نفس الاسم الثلاثي، مع إنه الرقم أو الإيميل مختلف. راجعهم' }, 'دُمج بالاسم') : null),
+    h('td', { class: 'cell-contact' }, waCell(g.wa), g.email ? h('a', { class: 'mail-link', href: `mailto:${g.email}`, dir: 'ltr' }, g.email) : null),
+    h('td', { class: 'src-cell' },
+      g.member ? h('span', { class: 'badge badge-src-member' }, 'المجتمع') : null,
+      [...g.wids].map((wid) => h('span', { class: 'badge badge-src-ws' }, wsLabel(wid)))),
+    h('td', {}, g.wids.size || '—'),
+    h('td', { class: 'cell-date' }, g.first ? dateFmt.format(new Date(g.first)) : '—'))));
+}
+['tt-search', 'tt-source'].forEach((id) => $(id).addEventListener('input', () => { pagerState('tt').page = 1; renderTotal(); }));
+wireSort('tt', 'tt-body', () => renderTotal());
+$('tt-refresh').addEventListener('click', async () => { await Promise.all([loadMembers(), loadRegs()]); renderTotal(); });
+$('tt-export').addEventListener('click', () => {
+  downloadCsv(`beit-lahia-total-${dayStamp()}.csv`,
+    ['الاسم', 'واتساب', 'الإيميل', 'مسجّل بالمجتمع', 'الورشات', 'عدد الورشات', 'دُمج بالاسم', 'أول تسجيل'],
+    filteredTotal().map((g) => [g.name, g.wa, g.email, g.member ? 'نعم' : 'لا', [...g.wids].map(wsLabel).join(' / '), g.wids.size,
+      g.viaName ? 'نعم' : '', g.first ? dateTimeFmt.format(new Date(g.first)) : '']));
+});
+
+/* ---------- trainers ---------- */
+let trainers = [];
+const TRAINER_SORT = {
+  name: (t) => t.name, specialty: (t) => t.specialty, age: (t) => Number(t.age) || 0, years: (t) => Number(t.years) || 0,
+  mode: (t) => TRAINER_MODES[t.mode] || '', createdAt: (t) => tsOf(t.createdAt),
+};
+async function loadTrainers() {
+  $('tr-count').textContent = 'جاري التحميل…';
+  try {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, 'trainers'), fs.orderBy('createdAt', 'desc')));
+    trainers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderTrainers();
+  } catch (e) { console.error(e); $('tr-count').textContent = errMsg(e); }
+}
+function filteredTrainers() {
+  const q = $('tr-search').value.trim().toLowerCase();
+  const mode = $('tr-mode').value;
+  return trainers.filter((t) => {
+    if (mode && t.mode !== mode) return false;
+    return !q || [t.name, t.whatsapp, t.email, t.specialty, t.topic, t.venues].join(' ').toLowerCase().includes(q);
+  });
+}
+function renderTrainers() {
+  const avg = trainers.length ? Math.round((trainers.reduce((s, t) => s + (Number(t.years) || 0), 0) / trainers.length) * 10) / 10 : 0;
+  const c = (m) => trainers.filter((t) => t.mode === m).length;
+  const items = [['مدربين مسجّلين', trainers.length, true], ['ورشة', c('workshop')], ['دورة', c('course')], ['ورشة ودورة', c('both')], ['متوسط سنوات الخبرة', avg]];
+  $('trainers-stats').replaceChildren(...items.map(([label, value, accent]) => h('div', { class: accent ? 'stat stat-accent' : 'stat' },
+    h('span', { class: 'stat-value' }, value), h('span', { class: 'stat-label' }, label))));
+  const all = filteredTrainers();
+  const rows = applyPager('tr', all, TRAINER_SORT, renderTrainers);
+  const seen = trainers.reduce((m, x) => { if (x.whatsapp) m[x.whatsapp] = (m[x.whatsapp] || 0) + 1; return m; }, {});
+  $('tr-count').textContent = `${all.length} من ${trainers.length} مدرّب`;
+  $('tr-empty').hidden = all.length > 0;
+  $('tr-body').replaceChildren(...rows.map((t) => h('tr', {},
+    h('td', { class: 'cell-name' }, h('strong', {}, t.name),
+      seen[t.whatsapp] > 1 ? h('span', { class: 'badge badge-dup', title: 'نفس رقم الواتساب مسجّل أكثر من مرة' }, 'مكرر') : null),
+    h('td', { class: 'cell-contact' }, waCell(t.whatsapp), t.email ? h('a', { class: 'mail-link', href: `mailto:${t.email}`, dir: 'ltr' }, t.email) : null),
+    h('td', {}, t.specialty),
+    h('td', {}, t.age),
+    h('td', {}, t.years === 0 ? 'لسا ببدأ' : `${t.years} سنة`),
+    h('td', {}, h('span', { class: `badge badge-mode-${t.mode}` }, TRAINER_MODES[t.mode] || t.mode)),
+    h('td', { class: 'cell-wrap' }, t.topic),
+    h('td', { class: 'cell-wrap' }, t.venues || '—'),
+    h('td', { class: 'cell-date' }, t.createdAt ? dateFmt.format(t.createdAt.toDate()) : '—'),
+    h('td', { class: 'cell-actions' }, h('button', {
+      type: 'button', class: 'icon-btn danger', 'aria-label': `حذف ${t.name}`, title: 'حذف نهائي', onclick: () => deleteTrainer(t),
+    }, svgIcon(ICONS.trash))))));
+}
+async function deleteTrainer(t) {
+  if (!confirm(`حذف «${t.name}» نهائياً من المدربين؟ هاي ما بترجع.`)) return;
+  try {
+    await fs.deleteDoc(fs.doc(db, 'trainers', t.id));
+    trainers = trainers.filter((x) => x.id !== t.id);
+    renderTrainers();
+    toast('انحذف');
+  } catch (e) { toast(errMsg(e), true); }
+}
+['tr-search', 'tr-mode'].forEach((id) => $(id).addEventListener('input', () => { pagerState('tr').page = 1; renderTrainers(); }));
+wireSort('tr', 'tr-body', () => renderTrainers());
+$('tr-refresh').addEventListener('click', loadTrainers);
+$('tr-export').addEventListener('click', () => {
+  downloadCsv(`beit-lahia-trainers-${dayStamp()}.csv`,
+    ['الاسم', 'واتساب', 'الإيميل', 'التخصص', 'العمر', 'سنوات الخبرة', 'بيقدّم', 'الدورة / المجال', 'جهات سابقة', 'تاريخ التسجيل'],
+    filteredTrainers().map((t) => [t.name, t.whatsapp || '', t.email || '', t.specialty, t.age, t.years, TRAINER_MODES[t.mode] || t.mode,
+      t.topic, t.venues || '', t.createdAt ? dateTimeFmt.format(t.createdAt.toDate()) : '']));
+});
+
+/* ---------- topic survey ---------- */
+let surveys = [];
+const SURVEY_SORT = {
+  format: (s) => SURVEY_FORMATS[s.format] || '', status: (s) => SURVEY_STATUS[s.status] || '', name: (s) => s.name || '', createdAt: (s) => tsOf(s.createdAt),
+};
+async function loadSurveys() {
+  $('sv-count').textContent = 'جاري التحميل…';
+  try {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, 'topicSurveys'), fs.orderBy('createdAt', 'desc')));
+    surveys = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderSurveys();
+  } catch (e) { console.error(e); $('sv-count').textContent = errMsg(e); }
+}
+const topicsText = (s) => (s.topics || []).map(topicName).join('، ');
+function filteredSurveys() {
+  const q = $('sv-search').value.trim().toLowerCase();
+  const fmt = $('sv-format').value;
+  return surveys.filter((s) => {
+    if (fmt && s.format !== fmt) return false;
+    return !q || [s.name, s.whatsapp, s.other, topicsText(s)].join(' ').toLowerCase().includes(q);
+  });
+}
+function renderSurveys() {
+  const total = surveys.length;
+  const c = (f) => surveys.filter((s) => s.format === f).length;
+  const items = [['إجابات', total, true], ['بدهم ورشة قصيرة', c('workshop')], ['بدهم دورة طويلة', c('course')], ['الاثنين عادي', c('any')],
+    ['تركوا بيانات تواصل', surveys.filter((s) => s.whatsapp).length]];
+  $('survey-stats').replaceChildren(...items.map(([label, value, accent]) => h('div', { class: accent ? 'stat stat-accent' : 'stat' },
+    h('span', { class: 'stat-value' }, value), h('span', { class: 'stat-label' }, label))));
+
+  // topic ranking: votes per topic, as bars
+  const votes = {};
+  surveys.forEach((s) => (s.topics || []).forEach((k) => { votes[k] = (votes[k] || 0) + 1; }));
+  const ranked = Object.entries(votes).sort((a, b) => b[1] - a[1] || topicName(a[0]).localeCompare(topicName(b[0]), 'ar'));
+  const max = ranked.length ? ranked[0][1] : 1;
+  $('survey-bars-empty').hidden = ranked.length > 0;
+  $('survey-bars').replaceChildren(...ranked.map(([k, v]) => h('li', {},
+    h('span', { class: 'bar-name' }, topicName(k)),
+    h('span', { class: 'bar-track', 'aria-hidden': 'true' }, h('i', { style: `width:${Math.max(3, Math.round((v / max) * 100))}%` })),
+    h('span', { class: 'bar-val' }, `${v} · ${Math.round((v / total) * 100)}%`))));
+
+  const others = surveys.filter((s) => s.other);
+  $('survey-other-panel').hidden = others.length === 0;
+  $('survey-other').replaceChildren(...others.map((s) => h('li', {}, s.other, s.name ? h('small', { class: 'muted' }, ` — ${s.name}`) : null)));
+
+  const all = filteredSurveys();
+  const rows = applyPager('sv', all, SURVEY_SORT, renderSurveys);
+  $('sv-count').textContent = `${all.length} من ${total} إجابة`;
+  $('sv-empty').hidden = all.length > 0;
+  $('sv-body').replaceChildren(...rows.map((s) => h('tr', {},
+    h('td', { class: 'cell-wrap' }, topicsText(s) || '—', s.other ? h('div', { class: 'muted small' }, `غيره: ${s.other}`) : null),
+    h('td', {}, SURVEY_FORMATS[s.format] || s.format),
+    h('td', {}, SURVEY_STATUS[s.status] || '—'),
+    h('td', { class: 'cell-name' }, s.name ? h('strong', {}, s.name) : h('span', { class: 'muted' }, 'بدون اسم')),
+    h('td', { class: 'cell-contact' }, waCell(s.whatsapp)),
+    h('td', { class: 'cell-date' }, s.createdAt ? dateFmt.format(s.createdAt.toDate()) : '—'),
+    h('td', { class: 'cell-actions' }, h('button', {
+      type: 'button', class: 'icon-btn danger', 'aria-label': 'حذف هاي الإجابة', title: 'حذف نهائي', onclick: () => deleteSurvey(s),
+    }, svgIcon(ICONS.trash))))));
+}
+async function deleteSurvey(s) {
+  if (!confirm('حذف هاي الإجابة نهائياً؟ هاي ما بترجع.')) return;
+  try {
+    await fs.deleteDoc(fs.doc(db, 'topicSurveys', s.id));
+    surveys = surveys.filter((x) => x.id !== s.id);
+    renderSurveys();
+    toast('انحذفت');
+  } catch (e) { toast(errMsg(e), true); }
+}
+['sv-search', 'sv-format'].forEach((id) => $(id).addEventListener('input', () => { pagerState('sv').page = 1; renderSurveys(); }));
+wireSort('sv', 'sv-body', () => renderSurveys());
+$('sv-refresh').addEventListener('click', loadSurveys);
+$('sv-export').addEventListener('click', () => {
+  downloadCsv(`beit-lahia-survey-${dayStamp()}.csv`,
+    ['المواضيع', 'موضوع آخر', 'يفضّل', 'الحالة', 'الاسم', 'واتساب', 'تاريخ'],
+    filteredSurveys().map((s) => [topicsText(s), s.other || '', SURVEY_FORMATS[s.format] || s.format, SURVEY_STATUS[s.status] || '', s.name || '', s.whatsapp || '',
+      s.createdAt ? dateTimeFmt.format(s.createdAt.toDate()) : '']));
+});
 
 /* =================== Settings =================== */
 // same rules as the registration form: Arabic digits ok, local 05x → +970

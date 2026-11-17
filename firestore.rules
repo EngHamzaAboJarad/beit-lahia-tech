@@ -142,6 +142,56 @@ service cloud.firestore {
         && d.createdAt == request.time;
     }
 
+    // ---------- المدربين (فورم /trainer) ----------
+    // الزوار: إضافة تسجيل صالح بس. الأدمن: قراءة وحذف.
+    match /trainers/{tid} {
+      allow create: if isValidTrainer(request.resource.data);
+      allow read, delete: if isAdmin();
+    }
+
+    function isValidTrainer(d) {
+      return d.keys().hasAll(['name', 'whatsapp', 'specialty', 'age', 'years', 'mode', 'topic', 'consent', 'createdAt'])
+        && d.keys().hasOnly(['name', 'whatsapp', 'email', 'specialty', 'age', 'years', 'mode', 'topic', 'venues',
+                             'consent', 'source', 'createdAt'])
+        && d.consent == true
+        && isStr(d.name, 2, 80)
+        && d.whatsapp is string && d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$')
+        && (!('email' in d) || (isStr(d.email, 6, 120) && d.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$')))
+        && isStr(d.specialty, 2, 80)
+        && d.age is int && d.age >= 16 && d.age <= 80
+        && d.years is int && d.years >= 0 && d.years <= 60
+        && d.mode in ['workshop', 'course', 'both']
+        && isStr(d.topic, 2, 300)
+        && (!('venues' in d) || isStr(d.venues, 0, 500))
+        && (!('source' in d) || d.source == 'web')
+        && d.createdAt == request.time;
+    }
+
+    // ---------- استبيان المواضيع (فورم /survey) ----------
+    // الاسم والرقم اختياريين؛ إذا انكتب واحد منهم لازم الموافقة. topics = مفاتيح المواضيع؛ لو تغيّرت SURVEY_TOPICS بـ forms-shared.js حدّث القائمة هون ونزّل القواعد.
+    match /topicSurveys/{sid} {
+      allow create: if isValidSurvey(request.resource.data);
+      allow read, delete: if isAdmin();
+    }
+
+    function isValidSurvey(d) {
+      return d.keys().hasAll(['topics', 'format', 'createdAt'])
+        && d.keys().hasOnly(['topics', 'other', 'format', 'status', 'name', 'whatsapp', 'consent', 'source', 'createdAt'])
+        && d.topics is list && d.topics.size() <= 20
+        && (d.topics.size() > 0 || ('other' in d && isStr(d.other, 2, 200)))
+        && d.topics.hasOnly(['web', 'mobile', 'ai', 'data', 'security', 'uiux', 'graphic', 'video', 'programming',
+                             'database', 'network', 'freelance', 'english', 'career', 'soft', 'startup'])
+        && (!('other' in d) || isStr(d.other, 1, 200))
+        && d.format in ['workshop', 'course', 'any']
+        && (!('status' in d) || d.status in ['tawjihi', 'student', 'graduate', 'other'])
+        && (!('name' in d) || isStr(d.name, 2, 80))
+        && (!('whatsapp' in d) || (d.whatsapp is string && d.whatsapp.matches('^\\+[1-9][0-9]{7,14}$')))
+        && (!('consent' in d) || d.consent == true)
+        && (!(('name' in d) || ('whatsapp' in d)) || ('consent' in d))
+        && (!('source' in d) || d.source == 'web')
+        && d.createdAt == request.time;
+    }
+
     // ---------- الشهادات ----------
     // أي حدا معه الرابط (رقم الـ document العشوائي) بيقدر يفتح الشهادة؛ عرض القائمة والإصدار للأدمن بس.
     // workshopId = الورشة اللي انصدرت إلها (عنوانها وقالبها بيطلعوا على الشهادة).

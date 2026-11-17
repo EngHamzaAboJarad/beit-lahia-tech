@@ -466,3 +466,20 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 }
 .cell-contact .wa-btn { white-space: nowrap; }
 .cell-name strong { overflow-wrap: anywhere; }
+
+/* Total / trainers / topic survey tabs */
+.src-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.badge-src-member { background: #ECFDF5; color: var(--emerald-deeper); }
+.badge-src-ws { background: #EFF6FF; color: #1E40AF; }
+.badge-mode-workshop { background: #EFF6FF; color: #1E40AF; }
+.badge-mode-course { background: #FFF1F2; color: #9F1239; }
+.badge-mode-both { background: #ECFDF5; color: var(--emerald-deeper); }
+.data-table td.cell-wrap { white-space: normal; min-width: 130px; max-width: 260px; overflow-wrap: anywhere; line-height: 1.5; }
+.topic-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.topic-bars li { display: grid; grid-template-columns: minmax(120px, 220px) 1fr auto; gap: 12px; align-items: center; }
+.bar-name { font-weight: 600; }
+.bar-track { height: 12px; border-radius: 999px; background: #EEF2F6; overflow: hidden; }
+.bar-track i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--emerald-deep), var(--emerald)); }
+.bar-val { color: var(--slate); font-size: 14px; white-space: nowrap; }
+.other-list { margin: 0; padding: 0 18px 0 0; display: grid; gap: 6px; }
+@media (max-width: 600px) { .topic-bars li { grid-template-columns: 1fr auto; } .bar-track { grid-column: 1 / -1; order: 3; } }

@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=27">
+  <link rel="stylesheet" href="/admin.css?v=28">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=28"></script>
+  <script type="module" src="/admin.js?v=29"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -90,6 +90,9 @@
         <span class="tab-group" role="presentation">المجتمع</span>
         <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c1.8.8 3 2.7 3 5.6"/></svg><span>التسجيلات</span></button>
         <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg><span>الأعضاء</span></button>
+        <button role="tab" type="button" id="tab-btn-total" aria-controls="tab-total" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M13 14.3c.9-.2 1.8-.3 2.5-.3 3 0 5.5 2 5.5 5"/></svg><span>الإجمالي العام</span></button>
+        <button role="tab" type="button" id="tab-btn-trainers" aria-controls="tab-trainers" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="m10 8 4 2-4 2z"/></svg><span>المدربين</span></button>
+        <button role="tab" type="button" id="tab-btn-survey" aria-controls="tab-survey" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg><span>استبيان المواضيع</span></button>
         <span class="tab-group" role="presentation">الورشات</span>
         <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5Z"/><path d="M7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></button>
         <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7"/></svg><span>الشهادات</span></button>
@@ -179,6 +182,158 @@
           </div>
           <div class="pager" id="m-pager"></div>
           <p class="empty" id="members-empty" hidden>ما في تسجيلات بهاد الفلتر.</p>
+        </div>
+      </section>
+
+      <!-- Total: community members + every workshop's registrations, merged without duplicates -->
+      <section id="tab-total" role="tabpanel" aria-labelledby="tab-btn-total" hidden>
+        <div class="tab-intro">
+          <h2>الإجمالي العام</h2>
+          <p class="muted">كل الناس اللي سجّلوا بالمجتمع أو بأي ورشة، مدموجين بدون تكرار. الشخص بيتعرّف عليه برقم الواتساب أو الإيميل، وكمان بالاسم الثلاثي إذا الرقم مختلف (وبيطلع عليه «دُمج بالاسم» عشان تراجعه).</p>
+        </div>
+        <div class="stats" id="total-stats"></div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field grow">
+              <label for="tt-search" class="visually-hidden">بحث</label>
+              <input id="tt-search" type="search" placeholder="بحث بالاسم، الرقم، الإيميل…">
+            </div>
+            <div class="field">
+              <label for="tt-source" class="visually-hidden">المصدر</label>
+              <select id="tt-source">
+                <option value="">كل المصادر</option>
+                <option value="member">مسجّلين بالمجتمع</option>
+                <option value="ws">مسجّلين بورشة</option>
+                <option value="both">بالاثنين</option>
+                <option value="only-ws">ورشات فقط (مش بالمجتمع)</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="tt-refresh">تحديث</button>
+            <button class="btn btn-primary btn-sm" type="button" id="tt-export">تصدير Excel</button>
+          </div>
+          <p class="muted small" id="tt-count"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">الاسم</button></th>
+                  <th scope="col">التواصل</th>
+                  <th scope="col" data-sort="sources" aria-sort="none"><button type="button" class="th-sort">وين مسجّل</button></th>
+                  <th scope="col" data-sort="count" aria-sort="none"><button type="button" class="th-sort">عدد الورشات</button></th>
+                  <th scope="col" data-sort="first" aria-sort="none"><button type="button" class="th-sort">أول تسجيل</button></th>
+                </tr>
+              </thead>
+              <tbody id="tt-body"></tbody>
+            </table>
+          </div>
+          <div class="pager" id="tt-pager"></div>
+          <p class="empty" id="tt-empty" hidden>ما في نتائج.</p>
+        </div>
+      </section>
+
+      <!-- Trainers (/trainer form) -->
+      <section id="tab-trainers" role="tabpanel" aria-labelledby="tab-btn-trainers" hidden>
+        <div class="tab-intro">
+          <h2>الكفاءات التدريبية</h2>
+          <p class="muted">اللي سجّلوا من صفحة <bdi dir="ltr">/trainer</bdi> كمدربين لورشة أو دورة.</p>
+        </div>
+        <div class="stats" id="trainers-stats"></div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field grow">
+              <label for="tr-search" class="visually-hidden">بحث</label>
+              <input id="tr-search" type="search" placeholder="بحث بالاسم، التخصص، الموضوع، الجهة…">
+            </div>
+            <div class="field">
+              <label for="tr-mode" class="visually-hidden">النوع</label>
+              <select id="tr-mode">
+                <option value="">كل الأنواع</option>
+                <option value="workshop">ورشة</option>
+                <option value="course">دورة</option>
+                <option value="both">الاثنين</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="tr-refresh">تحديث</button>
+            <button class="btn btn-primary btn-sm" type="button" id="tr-export">تصدير Excel</button>
+          </div>
+          <p class="muted small" id="tr-count"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">الاسم</button></th>
+                  <th scope="col">التواصل</th>
+                  <th scope="col" data-sort="specialty" aria-sort="none"><button type="button" class="th-sort">التخصص</button></th>
+                  <th scope="col" data-sort="age" aria-sort="none"><button type="button" class="th-sort">العمر</button></th>
+                  <th scope="col" data-sort="years" aria-sort="none"><button type="button" class="th-sort">الخبرة</button></th>
+                  <th scope="col" data-sort="mode" aria-sort="none"><button type="button" class="th-sort">بيقدّم</button></th>
+                  <th scope="col">الدورة / المجال</th>
+                  <th scope="col">جهات سابقة</th>
+                  <th scope="col" data-sort="createdAt" aria-sort="none"><button type="button" class="th-sort">التاريخ</button></th>
+                  <th scope="col"><span class="visually-hidden">إجراءات</span></th>
+                </tr>
+              </thead>
+              <tbody id="tr-body"></tbody>
+            </table>
+          </div>
+          <div class="pager" id="tr-pager"></div>
+          <p class="empty" id="tr-empty" hidden>ما في مدربين مسجّلين لسا.</p>
+        </div>
+      </section>
+
+      <!-- Topic survey (/survey form) -->
+      <section id="tab-survey" role="tabpanel" aria-labelledby="tab-btn-survey" hidden>
+        <div class="tab-intro">
+          <h2>استبيان المواضيع</h2>
+          <p class="muted">شو المواضيع اللي الطلاب بدهم ورشات ودورات عنها، من صفحة <bdi dir="ltr">/survey</bdi>. الترتيب حسب عدد الأصوات.</p>
+        </div>
+        <div class="stats" id="survey-stats"></div>
+        <div class="panel">
+          <h2>المواضيع الأكثر طلباً</h2>
+          <ol class="topic-bars" id="survey-bars"></ol>
+          <p class="empty" id="survey-bars-empty" hidden>لسا ما وصلت إجابات.</p>
+        </div>
+        <div class="panel" id="survey-other-panel" hidden>
+          <h2>مواضيع اقترحوها بكلامهم</h2>
+          <ul class="other-list" id="survey-other"></ul>
+        </div>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="field grow">
+              <label for="sv-search" class="visually-hidden">بحث</label>
+              <input id="sv-search" type="search" placeholder="بحث بالاسم أو الموضوع…">
+            </div>
+            <div class="field">
+              <label for="sv-format" class="visually-hidden">التفضيل</label>
+              <select id="sv-format">
+                <option value="">كل التفضيلات</option>
+                <option value="workshop">ورشة قصيرة</option>
+                <option value="course">دورة طويلة</option>
+                <option value="any">الاثنين عادي</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="sv-refresh">تحديث</button>
+            <button class="btn btn-primary btn-sm" type="button" id="sv-export">تصدير Excel</button>
+          </div>
+          <p class="muted small" id="sv-count"></p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">المواضيع</th>
+                  <th scope="col" data-sort="format" aria-sort="none"><button type="button" class="th-sort">يفضّل</button></th>
+                  <th scope="col" data-sort="status" aria-sort="none"><button type="button" class="th-sort">الحالة</button></th>
+                  <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">الاسم</button></th>
+                  <th scope="col">التواصل</th>
+                  <th scope="col" data-sort="createdAt" aria-sort="none"><button type="button" class="th-sort">التاريخ</button></th>
+                  <th scope="col"><span class="visually-hidden">إجراءات</span></th>
+                </tr>
+              </thead>
+              <tbody id="sv-body"></tbody>
+            </table>
+          </div>
+          <div class="pager" id="sv-pager"></div>
+          <p class="empty" id="sv-empty" hidden>ما في إجابات بهاد الفلتر.</p>
         </div>
       </section>
 
