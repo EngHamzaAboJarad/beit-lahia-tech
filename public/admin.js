@@ -157,8 +157,11 @@ function moveIndicator() {
   const ind = document.querySelector('.tab-ind');
   const btn = document.querySelector('.admin-tabs [aria-selected="true"]');
   if (!ind || !btn) return;
+  const first = !ind.dataset.placed; // first placement: jump there, glide only on later moves
+  if (first) ind.style.transition = 'none';
   ind.style.transform = `translateY(${btn.offsetTop}px)`;
   ind.style.height = `${btn.offsetHeight}px`;
+  if (first && btn.offsetHeight) { void ind.offsetWidth; ind.style.transition = ''; ind.dataset.placed = '1'; }
 }
 addEventListener('resize', moveIndicator);
 
@@ -1526,8 +1529,16 @@ const toLocalInput = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000
 async function copyText(text, okMsg) {
   try { await navigator.clipboard.writeText(text); toast(okMsg); } catch { toast('ما قدرت أنسخ', true); }
 }
-$('mcp-copy-cmd').addEventListener('click', () => copyText('git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech\ncd beit-lahia-tech/mcp\nnpm install\nnpm run login', 'انسخت أوامر التنصيب'));
-$('mcp-copy-add').addEventListener('click', () => copyText('claude mcp add beit-lahia -- node <المسار>/mcp/server.mjs', 'انسخ أمر الربط'));
+// any [data-copy] button copies its text and flashes "انسخ ✓"
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  await copyText(b.dataset.copy, 'انسخ');
+  b.classList.add('is-done');
+  const old = b.textContent;
+  b.textContent = 'انسخ ✓';
+  setTimeout(() => { b.classList.remove('is-done'); b.textContent = old; }, 1600);
+});
 
 /** newest first; a workshop without a date yet (a new draft) goes on top */
 function sortedWorkshops() {
@@ -2773,8 +2784,46 @@ function normalizePhone(v) {
   else if (/^(970|972)\d{9}$/.test(s)) s = `+${s}`;
   return /^\+[1-9]\d{7,14}$/.test(s) ? s : '';
 }
-const syncOpenLabel = () => { $('set-open-label').textContent = $('set-open').checked ? 'التسجيل مفتوح' : 'التسجيل مسكّر'; };
+const syncOpenLabel = () => {
+  const on = $('set-open').checked;
+  $('set-open-label').textContent = on ? 'التسجيل مفتوح' : 'التسجيل مسكّر';
+  $('set-open-sub').textContent = on ? 'الناس بيقدروا يسجّلوا هلأ.' : 'صفحة التسجيل بتعرض الرسالة اللي تحت بدل الفورم.';
+  $('settings-form').classList.toggle('is-closed', !on);
+};
 $('set-open').addEventListener('change', syncOpenLabel);
+
+// settings card: unsaved-changes state, message counter, "try the group link"
+function setSettingsDirty(on) {
+  const st = $('settings-status');
+  st.textContent = on ? 'في تعديلات مش محفوظة' : 'كل شي محفوظ';
+  st.classList.toggle('is-dirty', on);
+}
+function syncSettingsExtras() {
+  $('set-msg-count').textContent = `${$('set-msg').value.length}/300`;
+  const url = safeUrl($('set-group').value.trim());
+  const a = $('set-group-test');
+  a.href = url || '#';
+  a.setAttribute('aria-disabled', String(!url));
+}
+$('settings-form').addEventListener('input', () => { setSettingsDirty(true); syncSettingsExtras(); });
+$('set-group-test').addEventListener('click', (e) => { if (e.currentTarget.getAttribute('aria-disabled') === 'true') e.preventDefault(); });
+
+// account card
+function fillAccount() {
+  const email = auth.currentUser?.email || '';
+  $('acc-email').textContent = email;
+  $('acc-av').textContent = (email[0] || 'أ').toUpperCase();
+}
+$('acc-reset').addEventListener('click', async () => {
+  const email = auth.currentUser?.email;
+  if (!email) return;
+  const btn = $('acc-reset');
+  setBusy(btn, true);
+  try {
+    await au.sendPasswordResetEmail(auth, email);
+    toast(`بعتنا رابط تغيير كلمة السر على ${email}`);
+  } catch (e) { toast(e?.code === 'auth/too-many-requests' ? 'طلبات كثير. استنى شوي وجرّب.' : 'ما قدرت أبعت الرابط.', true); } finally { setBusy(btn, false); }
+});
 
 // site/settings is shared by two tabs (التواصل / الإعدادات): each one saves only its own fields (merge).
 async function loadSettings() {
@@ -2789,6 +2838,9 @@ async function loadSettings() {
   $('set-msg').value = s.closedMessage || '';
   $('set-group').value = s.whatsappGroup || '';
   syncOpenLabel();
+  syncSettingsExtras();
+  setSettingsDirty(false);
+  fillAccount();
   showMembers = s.showMembers === true;
   syncTeamToggle();
   fillSocial(s);
@@ -2808,6 +2860,7 @@ $('settings-form').addEventListener('submit', async (e) => {
     }, { merge: true });
     siteSettings = { ...siteSettings, registrationOpen: $('set-open').checked };
     renderOverview();
+    setSettingsDirty(false);
     toast($('set-open').checked ? 'انحفظ: التسجيل مفتوح' : 'انحفظ: التسجيل مسكّر');
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
@@ -2952,15 +3005,16 @@ $('backup-btn').addEventListener('click', async () => {
   try {
     const all = async (name) => (await fs.getDocs(fs.collection(db, name))).docs.map((d) => ({ id: d.id, ...plainData(d.data()) }));
     const one = async (name, id) => { const s = await fs.getDoc(fs.doc(db, name, id)); return s.exists() ? plainData(s.data()) : null; };
-    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings, teamAll, workshopsAll, regsAll, certsAll] = await Promise.all([
-      all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'), all('team'),
-      all('workshops'), all('workshopRegs'), all('certificates'),
+    const [membersAll, eventsAll, galleryAll, statsAll, siteContent, siteSettings, siteForms, teamAll, workshopsAll, regsAll, certsAll, trainersAll, surveysAll] = await Promise.all([
+      all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'), one('site', 'forms'), all('team'),
+      all('workshops'), all('workshopRegs'), all('certificates'), all('trainers'), all('topicSurveys'),
     ]);
     const backup = {
       app: 'beit-lahia-tech', version: 1, exportedAt: new Date().toISOString(),
       members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll, team: teamAll,
       workshops: workshopsAll, workshopRegs: regsAll, certificates: certsAll,
-      site: { content: siteContent, settings: siteSettings },
+      trainers: trainersAll, topicSurveys: surveysAll,
+      site: { content: siteContent, settings: siteSettings, forms: siteForms },
     };
     if ($('backup-full').checked) backup.galleryFull = await all('galleryFull');
     const blob = new Blob([JSON.stringify(backup, null, 1)], { type: 'application/json' });
@@ -2968,5 +3022,6 @@ $('backup-btn').addEventListener('click', async () => {
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast(`نزلت النسخة: ${membersAll.length} تسجيل، ${eventsAll.length} فعالية، ${galleryAll.length} صورة`);
+    $('backup-status').textContent = `آخر نسخة: ${new Intl.DateTimeFormat('ar-u-nu-latn', { hour: 'numeric', minute: '2-digit' }).format(new Date())} · ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
   } catch (e) { console.error(e); toast(errMsg(e), true); } finally { setBusy(btn, false, 'نزّل نسخة احتياطية'); }
 });

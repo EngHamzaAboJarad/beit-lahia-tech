@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=30">
+  <link rel="stylesheet" href="/admin.css?v=31">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=31"></script>
+  <script type="module" src="/admin.js?v=32"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -994,45 +994,117 @@
 
       <!-- Settings -->
       <section id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings" hidden>
-        <form class="panel narrow-panel" id="settings-form">
-          <h2>التسجيل</h2>
-          <label class="switch">
-            <input type="checkbox" id="set-open">
-            <span class="switch-ui" aria-hidden="true"></span>
-            <span id="set-open-label">التسجيل مفتوح</span>
-          </label>
-          <div class="field">
-            <label for="set-msg">الرسالة اللي بتظهر لما يكون التسجيل مسكّر</label>
-            <textarea id="set-msg" rows="3" maxlength="300"></textarea>
+        <div class="set-grid">
+          <!-- Community registration -->
+          <form class="panel set-card set-reg" id="settings-form" novalidate>
+            <div class="set-head">
+              <span class="set-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 8v6M14 11h6"/></svg></span>
+              <div>
+                <h2>التسجيل بالمجتمع</h2>
+                <p class="muted small">صفحة <bdi dir="ltr">/join</bdi>: بتفتحها أو بتسكّرها من هون.</p>
+              </div>
+            </div>
+
+            <label class="reg-state">
+              <span class="reg-state-dot" aria-hidden="true"></span>
+              <span class="reg-state-text">
+                <strong id="set-open-label">التسجيل مفتوح</strong>
+                <small id="set-open-sub">الناس بيقدروا يسجّلوا هلأ.</small>
+              </span>
+              <input type="checkbox" id="set-open">
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+
+            <div class="field reg-msg">
+              <label for="set-msg">رسالة التسجيل المسكّر</label>
+              <textarea id="set-msg" rows="3" maxlength="300"></textarea>
+              <div class="field-foot"><span class="muted small">بتطلع على صفحة التسجيل بس لما يكون مسكّر.</span><span class="char-count" id="set-msg-count">0/300</span></div>
+            </div>
+
+            <div class="field">
+              <label for="set-group">رابط قروب الواتساب <span class="optional">(اختياري)</span></label>
+              <div class="input-with-btn">
+                <input id="set-group" type="url" dir="ltr" maxlength="200" placeholder="https://chat.whatsapp.com/…">
+                <a class="btn btn-ghost-dark btn-sm" id="set-group-test" href="#" target="_blank" rel="noopener" aria-disabled="true">جرّبه</a>
+              </div>
+              <p class="muted small">إذا حطيته، بيطلع زر «انضم لقروب الواتساب» للشخص مباشرة بعد ما يسجّل.</p>
+            </div>
+
+            <div class="set-foot">
+              <span class="set-status" id="settings-status" aria-live="polite">كل شي محفوظ</span>
+              <button class="btn btn-primary" type="submit" id="settings-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+            </div>
+          </form>
+
+          <!-- Account -->
+          <div class="panel set-card set-acc">
+            <div class="set-head">
+              <span class="set-ico ico-night"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><circle cx="12" cy="15.5" r="1.4"/></svg></span>
+              <div>
+                <h2>الحساب</h2>
+                <p class="muted small">الحساب اللي داخل فيه هلأ.</p>
+              </div>
+            </div>
+            <div class="acc-row">
+              <span class="acc-av" id="acc-av" aria-hidden="true">أ</span>
+              <span class="acc-text"><strong>أدمن</strong><bdi dir="ltr" id="acc-email"></bdi></span>
+            </div>
+            <div class="set-actions">
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="acc-reset"><span class="btn-label">ابعتلي رابط تغيير كلمة السر</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-danger btn-sm" type="button" data-signout>تسجيل خروج</button>
+            </div>
           </div>
-          <div class="field">
-            <label for="set-group">رابط قروب الواتساب <span class="optional">(اختياري)</span></label>
-            <input id="set-group" type="url" dir="ltr" maxlength="200" placeholder="https://chat.whatsapp.com/…">
-            <p class="muted small">إذا حطيته، بيطلع زر «انضم لقروب الواتساب» للشخص مباشرة بعد ما يسجّل.</p>
+
+          <!-- Backup -->
+          <div class="panel set-card set-backup">
+            <div class="set-head">
+              <span class="set-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16v2.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V16"/></svg></span>
+              <div>
+                <h2>نسخة احتياطية</h2>
+                <p class="muted small">ملف JSON واحد فيه كل بيانات الموقع.</p>
+              </div>
+            </div>
+            <ul class="chip-list" aria-label="شو بيكون بالملف">
+              <li>التسجيلات</li><li>سلة المحذوفات</li><li>تسجيلات الورشات</li><li>الشهادات</li><li>الفعاليات</li>
+              <li>المدربين</li><li>ردود الاستبيان</li><li>نصوص الصفحة</li><li>الإعدادات</li><li>الزيارات</li><li>صور المعرض المصغّرة</li>
+            </ul>
+            <label class="switch switch-sm">
+              <input type="checkbox" id="backup-full">
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span>مع صور المعرض بحجمها الكامل <span class="muted small">(الملف بيصير أكبر)</span></span>
+            </label>
+            <p class="callout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6l-8-3Z"/><path d="M12 9v4M12 16.5v.01"/></svg>الملف فيه أرقام وإيميلات الأعضاء، فاحفظه بمكان آمن وما تبعته لحدا.</p>
+            <div class="set-foot">
+              <span class="set-status" id="backup-status"></span>
+              <button class="btn btn-primary" type="button" id="backup-btn"><span class="btn-label">نزّل نسخة احتياطية</span><span class="spinner" aria-hidden="true"></span></button>
+            </div>
           </div>
-          <div class="form-actions">
-            <button class="btn btn-primary" type="submit" id="settings-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
-          </div>
-        </form>
-        <div class="panel narrow-panel">
-          <h2>نسخة احتياطية</h2>
-          <p class="muted small">بتنزّل ملف فيه كل التسجيلات (مع سلة المحذوفات)، وتسجيلات الورشة والشهادات، والفعاليات، ونصوص الصفحة، والإعدادات، والزيارات، وصور المعرض المصغّرة. احفظه بمكان آمن، لأنه فيه أرقام وإيميلات الأعضاء.</p>
-          <label class="check-row"><input type="checkbox" id="backup-full"> مع صور المعرض بحجمها الكامل (الملف بيصير أكبر)</label>
-          <div class="form-actions">
-            <button class="btn btn-ghost-dark" type="button" id="backup-btn"><span class="btn-label">نزّل نسخة احتياطية</span><span class="spinner" aria-hidden="true"></span></button>
-          </div>
-        </div>
-        <div class="panel narrow-panel">
-          <h2>ربط Claude بالموقع (MCP)</h2>
-          <p class="muted small">بيخلّي Claude Code يقرأ ويعدّل بيانات الموقع (التسجيلات، الورشات، الفعاليات، الإعدادات…) بحساب الأدمن تبعك. ما في حذف أبداً. بيشتغل على جهازك بس، ومش من هون.</p>
-          <ol class="small">
-            <li>نزّل المشروع: <bdi dir="ltr">git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech</bdi></li>
-            <li>جوّا مجلد <bdi dir="ltr">mcp</bdi> شغّل <bdi dir="ltr">npm install</bdi> ثم <bdi dir="ltr">npm run login</bdi> وسجّل بإيميل وكلمة سر الأدمن (كلمة السر ما بتنحفظ).</li>
-            <li>افتح Claude Code بمجلد المشروع ووافق على سيرفر <bdi dir="ltr">beit-lahia</bdi>.</li>
-          </ol>
-          <div class="form-actions">
-            <button class="btn btn-ghost-dark" type="button" id="mcp-copy-cmd">انسخ أوامر التنصيب</button>
-            <button class="btn btn-ghost-dark" type="button" id="mcp-copy-add">انسخ أمر الربط بأي مجلد</button>
+
+          <!-- Claude / MCP -->
+          <div class="panel set-card set-mcp">
+            <div class="set-head">
+              <span class="set-ico ico-claude"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg></span>
+              <div>
+                <h2>ربط Claude بالموقع <span class="badge badge-draft" dir="ltr">MCP</span></h2>
+                <p class="muted small">Claude Code بيقرأ ويعدّل بيانات الموقع بحساب الأدمن تبعك. ما في حذف أبداً، وبيشتغل على جهازك بس.</p>
+              </div>
+            </div>
+            <ol class="steps">
+              <li>
+                <strong>نزّل المشروع</strong>
+                <div class="cmd"><code dir="ltr">git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech</code><button type="button" class="cmd-copy" data-copy="git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech" aria-label="انسخ الأمر">انسخ</button></div>
+              </li>
+              <li>
+                <strong>ثبّت وسجّل دخول الأدمن</strong>
+                <div class="cmd"><code dir="ltr">cd beit-lahia-tech/mcp<br>npm install<br>npm run login</code><button type="button" class="cmd-copy" data-copy="cd beit-lahia-tech/mcp&#10;npm install&#10;npm run login" aria-label="انسخ الأوامر">انسخ</button></div>
+                <small class="muted">كلمة السر بتنكتب مخفية وما بتنحفظ، بس بيتخزّن توكن التجديد على جهازك.</small>
+              </li>
+              <li>
+                <strong>افتح Claude Code بمجلد المشروع</strong>
+                <small class="muted">ووافق على سيرفر <bdi dir="ltr">beit-lahia</bdi>. أو اربطه بأي مجلد بهاد الأمر (بدّل المسار):</small>
+                <div class="cmd"><code dir="ltr">claude mcp add beit-lahia -- node /path/to/beit-lahia-tech/mcp/server.mjs</code><button type="button" class="cmd-copy" data-copy="claude mcp add beit-lahia -- node /path/to/beit-lahia-tech/mcp/server.mjs" aria-label="انسخ الأمر">انسخ</button></div>
+              </li>
+            </ol>
           </div>
         </div>
       </section>
