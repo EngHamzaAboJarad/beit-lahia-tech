@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=29">
+  <link rel="stylesheet" href="/admin.css?v=30">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=30"></script>
+  <script type="module" src="/admin.js?v=31"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -74,7 +74,8 @@
 
   <!-- Dashboard -->
   <div id="view-app" hidden>
-    <header class="admin-top">
+    <div class="side-backdrop" id="side-backdrop" hidden></div>
+    <header class="admin-top" id="admin-side">
       <div class="admin-top-row">
         <a class="admin-brand" href="/admin">
           <svg width="30" height="34" aria-hidden="true"><use href="#logo"/></svg>
@@ -87,8 +88,10 @@
         </div>
       </div>
       <nav class="admin-tabs" role="tablist" aria-label="أقسام لوحة الإدارة" aria-orientation="vertical">
+        <span class="tab-ind" aria-hidden="true"></span>
+        <button role="tab" type="button" id="tab-btn-overview" aria-controls="tab-overview" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="8" rx="2"/><rect x="13.5" y="3.5" width="7" height="5" rx="2"/><rect x="3.5" y="14.5" width="7" height="6" rx="2"/><rect x="13.5" y="11.5" width="7" height="9" rx="2"/></svg><span>الرئيسية</span></button>
         <span class="tab-group" role="presentation">المجتمع</span>
-        <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c1.8.8 3 2.7 3 5.6"/></svg><span>التسجيلات</span></button>
+        <button role="tab" type="button" id="tab-btn-members" aria-controls="tab-members" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.4c1.8.8 3 2.7 3 5.6"/></svg><span>التسجيلات</span></button>
         <button role="tab" type="button" id="tab-btn-team" aria-controls="tab-team" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg><span>الأعضاء</span></button>
         <button role="tab" type="button" id="tab-btn-total" aria-controls="tab-total" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M13 14.3c.9-.2 1.8-.3 2.5-.3 3 0 5.5 2 5.5 5"/></svg><span>الإجمالي العام</span></button>
         <button role="tab" type="button" id="tab-btn-trainers" aria-controls="tab-trainers" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="m10 8 4 2-4 2z"/></svg><span>المدربين</span></button>
@@ -109,8 +112,59 @@
     </header>
 
     <main class="admin-main">
+      <!-- Page header: section name + mobile menu -->
+      <div class="page-head" id="page-head">
+        <button class="menu-btn" type="button" id="menu-btn" aria-label="القائمة" aria-expanded="false" aria-controls="admin-side">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+        </button>
+        <div class="ph-text">
+          <span class="ph-crumb" id="ph-crumb"></span>
+          <h1 class="ph-title" id="ph-title">الرئيسية</h1>
+        </div>
+        <span class="ph-date" id="ph-date"></span>
+      </div>
+
+      <!-- Overview -->
+      <section id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
+        <div class="ov-hero">
+          <div class="ov-hero-text">
+            <p class="ov-hello" id="ov-hello">أهلاً</p>
+            <h2 class="ov-headline">هاد ملخص المجتمع لليوم</h2>
+            <div class="ov-chips" id="ov-chips"></div>
+          </div>
+          <svg class="ov-hero-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg>
+        </div>
+        <div class="ov-kpis" id="ov-kpis"></div>
+        <div class="ov-grid">
+          <div class="panel ov-chart-panel">
+            <div class="ov-panel-head">
+              <h3>التسجيلات آخر 14 يوم</h3>
+              <div class="ov-legend"><span class="lg-m">المجتمع</span><span class="lg-w">الورشات</span></div>
+            </div>
+            <div class="ov-chart-wrap">
+              <div class="ov-chart" id="ov-chart" role="img"></div>
+              <div class="chart-tip" id="ov-tip" hidden></div>
+            </div>
+          </div>
+          <div class="panel ov-latest-panel">
+            <div class="ov-panel-head">
+              <h3>آخر التسجيلات</h3>
+              <button class="link-btn" type="button" data-goto="total">عرض الكل</button>
+            </div>
+            <ul class="ov-latest" id="ov-latest"><li class="ov-skel"></li><li class="ov-skel"></li><li class="ov-skel"></li></ul>
+          </div>
+        </div>
+        <div class="ov-grid ov-grid-b">
+          <div class="panel ov-ws" id="ov-ws"></div>
+          <div class="panel">
+            <div class="ov-panel-head"><h3>اختصارات</h3></div>
+            <div class="ov-quick" id="ov-quick"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- Members -->
-      <section id="tab-members" role="tabpanel" aria-labelledby="tab-btn-members">
+      <section id="tab-members" role="tabpanel" aria-labelledby="tab-btn-members" hidden>
         <div class="stats" id="stats"></div>
         <div class="panel">
           <div class="toolbar">

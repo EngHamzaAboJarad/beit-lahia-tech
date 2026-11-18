@@ -138,7 +138,37 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
+const TABS = ['overview', 'members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+// Page-head title per tab: the section's own first heading (hidden in place), else the sidebar label.
+// The crumb is the sidebar group the tab sits under.
+const TAB_META = {};
+TABS.forEach((t) => {
+  const btn = $(`tab-btn-${t}`);
+  let g = btn.previousElementSibling;
+  while (g && !g.classList.contains('tab-group')) g = g.previousElementSibling;
+  const intro = $(`tab-${t}`).querySelector(':scope > .tab-intro:first-child h2');
+  if (intro) intro.classList.add('moved-title');
+  TAB_META[t] = { title: intro ? intro.textContent.trim() : btn.textContent.trim(), group: g ? g.textContent.trim() : 'لوحة الإدارة' };
+});
+
+function moveIndicator() {
+  const ind = document.querySelector('.tab-ind');
+  const btn = document.querySelector('.admin-tabs [aria-selected="true"]');
+  if (!ind || !btn) return;
+  ind.style.transform = `translateY(${btn.offsetTop}px)`;
+  ind.style.height = `${btn.offsetHeight}px`;
+}
+addEventListener('resize', moveIndicator);
+
+function enterPanel(sec) {
+  if (reduceMotion.matches) return;
+  sec.classList.remove('is-entering');
+  void sec.offsetWidth; // restart the animation
+  sec.classList.add('is-entering');
+}
+
 function selectTab(name, focus = false) {
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -148,10 +178,40 @@ function selectTab(name, focus = false) {
     $(`tab-${t}`).hidden = !on;
     if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
     if (on && t === 'total') renderTotal();
+    if (on && t === 'overview') renderOverview(true);
     if (on && focus) btn.focus();
   });
+  $('ph-title').textContent = TAB_META[name].title;
+  $('ph-crumb').textContent = TAB_META[name].group;
+  document.title = `${TAB_META[name].title} | لوحة الإدارة`;
+  enterPanel($(`tab-${name}`));
+  enterPanel(document.querySelector('.ph-text'));
+  moveIndicator();
+  setDrawer(false);
   history.replaceState(null, '', `#${name}`);
 }
+
+/* mobile: the sidebar is a drawer */
+function setDrawer(open) {
+  const side = $('admin-side');
+  if (open === side.classList.contains('is-open')) return;
+  side.classList.toggle('is-open', open);
+  $('side-backdrop').hidden = !open;
+  $('menu-btn').setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('drawer-open', open);
+  if (open) requestAnimationFrame(moveIndicator);
+}
+$('menu-btn').addEventListener('click', () => setDrawer(!$('admin-side').classList.contains('is-open')));
+$('side-backdrop').addEventListener('click', () => setDrawer(false));
+addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); });
+
+// any [data-goto="tab"] button jumps to that tab
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-goto]');
+  if (b && TABS.includes(b.dataset.goto)) { selectTab(b.dataset.goto); scrollTo({ top: 0, behavior: reduceMotion.matches ? 'auto' : 'smooth' }); }
+});
+
+$('ph-date').textContent = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 TABS.forEach((t, i) => {
   const btn = $(`tab-btn-${t}`);
   btn.addEventListener('click', () => selectTab(t));
@@ -164,7 +224,9 @@ TABS.forEach((t, i) => {
 
 function boot() {
   const hash = location.hash.slice(1);
-  selectTab(TABS.includes(hash) ? hash : 'members');
+  selectTab(TABS.includes(hash) ? hash : 'overview');
+  requestAnimationFrame(moveIndicator);
+  document.fonts?.ready.then(moveIndicator);
   loadMembers();
   loadTraffic();
   loadContent();
@@ -177,6 +239,206 @@ function boot() {
   loadSurveys();
   loadFormsCfg();
 }
+
+/* =================== Overview =================== */
+let siteSettings = null; // filled by loadSettings
+const loaded = new Set(); // which data sources finished at least once
+
+// Animate a number from what the element shows now to `to`.
+function countUp(el, to) {
+  const from = Number(el.dataset.v || 0);
+  el.dataset.v = to;
+  if (reduceMotion.matches || from === to) { el.textContent = num(to); return; }
+  const t0 = performance.now();
+  const dur = 900;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    const e = 1 - (1 - p) ** 4;
+    el.textContent = num(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const relFmt = new Intl.RelativeTimeFormat('ar', { numeric: 'auto' });
+function ago(ms) {
+  const s = (ms - Date.now()) / 1000;
+  const abs = Math.abs(s);
+  if (abs < 60) return 'هلأ';
+  if (abs < 3600) return relFmt.format(Math.round(s / 60), 'minute');
+  if (abs < 86400) return relFmt.format(Math.round(s / 3600), 'hour');
+  if (abs < 86400 * 30) return relFmt.format(Math.round(s / 86400), 'day');
+  return dateFmt.format(new Date(ms));
+}
+
+function tabIcon(t) {
+  const svg = $(`tab-btn-${t}`).querySelector('svg');
+  return svg ? svg.cloneNode(true) : null;
+}
+
+function setTabCount(t, n) {
+  const btn = $(`tab-btn-${t}`);
+  let em = btn.querySelector('.tab-count');
+  if (!em) { em = h('em', { class: 'tab-count' }); btn.append(em); }
+  em.hidden = !n;
+  if (em.textContent !== String(n)) { em.textContent = n; em.classList.remove('pop'); void em.offsetWidth; em.classList.add('pop'); }
+}
+
+function renderOverview(enter = false) {
+  if ($('tab-overview').hidden && !enter) { syncTabCounts(); return; }
+  const now = Date.now();
+  const week = now - 7 * 864e5;
+  const prevWeek = now - 14 * 864e5;
+  const inRange = (t, a, b) => { const ms = tsOf(t); return ms >= a && ms < b; };
+  const newWeek = members.filter((m) => inRange(m.createdAt, week, Infinity)).length;
+  const newPrev = members.filter((m) => inRange(m.createdAt, prevWeek, week)).length;
+  const visits7 = lastDays(7).reduce((s, d) => s + (traffic[d]?.home || 0), 0);
+  const uncontacted = members.filter((m) => !m.contacted).length;
+
+  // greeting
+  const hr = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Gaza' }).format(new Date()));
+  $('ov-hello').textContent = hr < 12 ? 'صباح الخير 👋' : 'مساء الخير 👋';
+
+  // status chips
+  const cur = workshops.find((w) => w.id === currentId);
+  const regOpen = siteSettings ? siteSettings.registrationOpen !== false : null;
+  const chips = [];
+  if (regOpen != null) chips.push(h('button', { type: 'button', class: `ov-chip ${regOpen ? 'is-on' : 'is-off'}`, 'data-goto': 'settings' }, h('i'), regOpen ? 'التسجيل بالمجتمع مفتوح' : 'التسجيل بالمجتمع مسكّر'));
+  if (cur) {
+    const open = cur.status === 'live' && cur.open && !isScheduled(cur);
+    chips.push(h('button', { type: 'button', class: `ov-chip ${open ? 'is-on' : 'is-off'}`, 'data-goto': 'workshop' }, h('i'), `${wsName(cur)}: ${open ? 'التسجيل مفتوح' : 'التسجيل مسكّر'}`));
+  }
+  if (newWeek) chips.push(h('button', { type: 'button', class: 'ov-chip is-new', 'data-goto': 'members' }, h('i'), `${num(newWeek)} تسجيل جديد هالأسبوع`));
+  $('ov-chips').replaceChildren(...chips);
+
+  // KPI cards (clickable, jump to their tab)
+  const diff = newWeek - newPrev;
+  const kpis = [
+    { tab: 'members', label: 'مسجّلين بالمجتمع', value: members.length, ready: loaded.has('members'), accent: true,
+      sub: loaded.has('members') ? (diff === 0 ? 'نفس الأسبوع الماضي' : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)} عن الأسبوع الماضي`) : '', trend: Math.sign(diff) },
+    { tab: 'members', label: 'لسا ما تواصلنا معهم', value: uncontacted, ready: loaded.has('members'), sub: uncontacted ? 'بستنّوا رسالة منك' : 'تواصلت مع الكل 🎉' },
+    { tab: 'workshop', label: 'تسجيلات الورشات', value: allRegs.length, ready: loaded.has('workshops'), sub: `${num(workshops.length)} ورشة بالسجل` },
+    { tab: 'cert', label: 'شهادات انطبعت', value: allCerts.length, ready: loaded.has('workshops'), sub: 'بكل الورشات' },
+    { tab: 'trainers', label: 'مدربين متطوعين', value: trainers.length, ready: loaded.has('trainers'), sub: 'من فورم المدربين' },
+    { tab: 'survey', label: 'ردود الاستبيان', value: surveys.length, ready: loaded.has('surveys'), sub: 'على المواضيع المطلوبة' },
+    { tab: 'stats', label: 'زيارات آخر 7 أيام', value: visits7, ready: loaded.has('traffic'), sub: 'للصفحة الرئيسية' },
+    { tab: 'total', label: 'الإجمالي بدون تكرار', value: mergePeople().people.length, ready: loaded.has('members') && loaded.has('workshops'), sub: 'المجتمع + الورشات' },
+  ];
+  const box = $('ov-kpis');
+  if (box.children.length !== kpis.length) {
+    box.replaceChildren(...kpis.map((k, i) => h('button', { type: 'button', class: `kpi${k.accent ? ' kpi-accent' : ''}`, 'data-goto': k.tab, style: `--i:${i}` },
+      h('span', { class: 'kpi-icon' }, tabIcon(k.tab)),
+      h('span', { class: 'kpi-value is-loading' }, '0'),
+      h('span', { class: 'kpi-label' }, k.label),
+      h('span', { class: 'kpi-sub' }))));
+  }
+  kpis.forEach((k, i) => {
+    const card = box.children[i];
+    const v = card.querySelector('.kpi-value');
+    const sub = card.querySelector('.kpi-sub');
+    sub.textContent = k.ready ? k.sub : '';
+    sub.dataset.trend = k.trend ?? '';
+    if (!k.ready) return;
+    v.classList.remove('is-loading');
+    if (enter) v.dataset.v = 0; // count up from zero each time the page opens
+    countUp(v, k.value);
+  });
+
+  renderOvChart();
+  renderOvLatest();
+  renderOvWorkshop(cur);
+  syncTabCounts();
+}
+
+function renderOvChart() {
+  const days = lastDays(14);
+  const byDay = (list) => list.reduce((acc, x) => { if (x.createdAt?.toDate) { const d = gazaDay(x.createdAt.toDate()); acc[d] = (acc[d] || 0) + 1; } return acc; }, {});
+  const mDay = byDay(members);
+  const wDay = byDay(allRegs);
+  const rows = days.map((d) => ({ d, m: mDay[d] || 0, w: wDay[d] || 0, v: traffic[d]?.home || 0 }));
+  const peak = Math.max(1, ...rows.map((r) => r.m + r.w));
+  const chart = $('ov-chart');
+  const total = rows.reduce((s, r) => s + r.m + r.w, 0);
+  chart.setAttribute('aria-label', `التسجيلات آخر 14 يوم: ${total} تسجيل، أعلى يوم ${peak}`);
+  chart.replaceChildren(...rows.map((r, i) => {
+    const label = dayFmt.format(new Date(`${r.d}T12:00:00Z`));
+    const col = h('div', { class: 'ov-col', style: `--i:${i}`, 'data-i': i },
+      h('div', { class: 'ov-stack', style: `height:${((r.m + r.w) / peak) * 100}%` },
+        r.w ? h('i', { class: 'seg-w', style: `flex:${r.w}` }) : null,
+        r.m ? h('i', { class: 'seg-m', style: `flex:${r.m}` }) : null),
+      h('span', { class: 'ov-x' }, i % 2 === 1 || i === 13 ? label : ''));
+    return col;
+  }));
+  const tip = $('ov-tip');
+  const show = (col) => {
+    const r = rows[Number(col.dataset.i)];
+    tip.replaceChildren(h('strong', {}, dayFmt.format(new Date(`${r.d}T12:00:00Z`))),
+      h('span', {}, `بالمجتمع: ${num(r.m)}`), h('span', {}, `بالورشات: ${num(r.w)}`), h('span', {}, `زيارات: ${num(r.v)}`));
+    tip.hidden = false;
+    const wrap = chart.parentElement.getBoundingClientRect();
+    const c = col.getBoundingClientRect();
+    tip.style.left = `${Math.min(Math.max(c.left + c.width / 2 - wrap.left, 70), wrap.width - 70)}px`;
+  };
+  chart.onpointerover = (e) => { const col = e.target.closest('.ov-col'); if (col) show(col); };
+  chart.onpointerleave = () => { tip.hidden = true; };
+}
+
+function renderOvLatest() {
+  if (!loaded.has('members')) return;
+  const items = [
+    ...members.map((m) => ({ name: m.name, t: tsOf(m.createdAt), src: 'المجتمع', cls: 'src-m', sub: STATUS[m.status] || '', tab: 'members' })),
+    ...allRegs.map((r) => ({ name: r.name, t: tsOf(r.createdAt), src: 'ورشة', cls: 'src-w', sub: wsLabel(r.workshopId), tab: 'workshop' })),
+  ].filter((x) => x.t).sort((a, b) => b.t - a.t).slice(0, 6);
+  $('ov-latest').replaceChildren(...(items.length ? items.map((x, i) => h('li', { style: `--i:${i}` },
+    h('span', { class: `ov-av ${x.cls}` }, firstLetter(x.name)),
+    h('span', { class: 'ov-li-text' }, h('strong', {}, x.name), h('small', {}, `${x.src} · ${x.sub}`)),
+    h('time', { datetime: new Date(x.t).toISOString() }, ago(x.t))))
+    : [h('li', { class: 'ov-empty' }, 'لسا ما في تسجيلات.')]));
+}
+
+function renderOvWorkshop(cur) {
+  const box = $('ov-ws');
+  if (!loaded.has('workshops')) { box.replaceChildren(h('div', { class: 'ov-skel ov-skel-lg' })); return; }
+  if (!cur) {
+    box.replaceChildren(h('div', { class: 'ov-panel-head' }, h('h3', {}, 'الورشة الحالية')),
+      h('p', { class: 'muted' }, 'ما في ورشة محددة كحالية.'),
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', 'data-goto': 'workshop' }, 'روح للورشات'));
+    return;
+  }
+  const c = wsCounts(cur.id);
+  const m = mergeWorkshop(cur);
+  const b = stateBadge(cur);
+  const pct = (a, z) => (z ? Math.round((a / z) * 100) : 0);
+  const ring = (label, val, of, cls) => h('div', { class: `ov-ring ${cls}`, style: `--p:${pct(val, of)}` },
+    h('span', { class: 'ov-ring-num' }, num(val)), h('small', {}, label));
+  box.replaceChildren(
+    h('div', { class: 'ov-panel-head' }, h('h3', {}, 'الورشة الحالية'), h('span', { class: `badge ${b.cls}` }, b.text)),
+    h('p', { class: 'ov-ws-title' }, wsName(cur)),
+    m.date ? h('p', { class: 'muted small' }, arDate(m.date)) : null,
+    h('div', { class: 'ov-rings' },
+      ring('مسجّل', c.regs, c.regs, 'r-regs'),
+      ring('حضروا', c.attended, c.regs, 'r-att'),
+      ring('شهادة', c.certs, c.attended || c.regs, 'r-cert')),
+    h('div', { class: 'form-actions' },
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', 'data-goto': 'workshop' }, 'إدارة الورشة'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', 'data-goto': 'cert' }, 'الشهادات')));
+}
+
+const QUICK = [
+  ['events', 'فعالية جديدة'], ['gallery', 'رفع صور'], ['content', 'تعديل نصوص الموقع'],
+  ['team', 'أعضاء المجتمع'], ['forms', 'فتح وإغلاق الفورمات'], ['settings', 'نسخة احتياطية'],
+];
+$('ov-quick').replaceChildren(...QUICK.map(([t, label], i) => h('button', { type: 'button', class: 'ov-q', 'data-goto': t, style: `--i:${i}` },
+  h('span', { class: 'ov-q-icon' }, tabIcon(t)), h('span', {}, label))),
+  h('a', { class: 'ov-q', href: '/', target: '_blank', rel: 'noopener', style: `--i:${QUICK.length}` },
+    h('span', { class: 'ov-q-icon' }, svgIcon('<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>')), h('span', {}, 'فتح الموقع')));
+
+function syncTabCounts() {
+  if (loaded.has('members')) setTabCount('members', members.filter((m) => !m.contacted).length);
+  if (loaded.has('trainers')) setTabCount('trainers', trainers.length);
+  if (loaded.has('surveys')) setTabCount('survey', surveys.length);
+}
+const markLoaded = (k) => { loaded.add(k); renderOverview(); };
 
 /* =================== Members =================== */
 // Deleting moves a registration to the trash (deletedAt); it's purged for good 30 days later.
@@ -198,6 +460,7 @@ async function loadMembers() {
     renderMembers();
     renderTraffic();
     renderTotal();
+    markLoaded('members');
   } catch (e) {
     console.error(e);
     $('members-count').textContent = errMsg(e);
@@ -382,7 +645,7 @@ function renderMembers() {
   }));
 }
 
-const refreshMembers = () => { splitMembers(); fillResidenceFilter(); renderStats(); renderMembers(); renderTraffic(); };
+const refreshMembers = () => { splitMembers(); fillResidenceFilter(); renderStats(); renderMembers(); renderTraffic(); renderOverview(); };
 
 async function setContacted(m, value, tr, box) {
   box.disabled = true;
@@ -477,6 +740,7 @@ async function loadTraffic() {
     $('funnel-note').textContent = errMsg(e);
   }
   renderTraffic();
+  markLoaded('traffic');
 }
 
 function renderTraffic() {
@@ -1290,6 +1554,7 @@ async function loadWorkshopAll() {
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
   selectWorkshop(pick, { force: true });
   renderTotal();
+  markLoaded('workshops');
 }
 
 // First run after the move to workshops/: make the first workshop from the defaults (a draft, set as current),
@@ -2275,6 +2540,7 @@ async function loadTrainers() {
     const snap = await fs.getDocs(fs.query(fs.collection(db, 'trainers'), fs.orderBy('createdAt', 'desc')));
     trainers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderTrainers();
+    markLoaded('trainers');
   } catch (e) { console.error(e); $('tr-count').textContent = errMsg(e); }
 }
 function filteredTrainers() {
@@ -2428,6 +2694,7 @@ async function loadSurveys() {
     const snap = await fs.getDocs(fs.query(fs.collection(db, 'topicSurveys'), fs.orderBy('createdAt', 'desc')));
     surveys = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderSurveys();
+    markLoaded('surveys');
   } catch (e) { console.error(e); $('sv-count').textContent = errMsg(e); }
 }
 const topicsText = (s) => (s.topics || []).map(topicName).join('، ');
@@ -2516,6 +2783,8 @@ async function loadSettings() {
     const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
     if (snap.exists()) s = { ...DEFAULT_SETTINGS, ...snap.data() };
   } catch (e) { toast(errMsg(e), true); }
+  siteSettings = s;
+  markLoaded('settings');
   $('set-open').checked = s.registrationOpen !== false;
   $('set-msg').value = s.closedMessage || '';
   $('set-group').value = s.whatsappGroup || '';
@@ -2537,6 +2806,8 @@ $('settings-form').addEventListener('submit', async (e) => {
       whatsappGroup: group,
       updatedAt: fs.serverTimestamp(),
     }, { merge: true });
+    siteSettings = { ...siteSettings, registrationOpen: $('set-open').checked };
+    renderOverview();
     toast($('set-open').checked ? 'انحفظ: التسجيل مفتوح' : 'انحفظ: التسجيل مسكّر');
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
