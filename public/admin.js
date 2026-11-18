@@ -1262,6 +1262,8 @@ const toLocalInput = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000
 async function copyText(text, okMsg) {
   try { await navigator.clipboard.writeText(text); toast(okMsg); } catch { toast('ما قدرت أنسخ', true); }
 }
+$('mcp-copy-cmd').addEventListener('click', () => copyText('git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech\ncd beit-lahia-tech/mcp\nnpm install\nnpm run login', 'انسخت أوامر التنصيب'));
+$('mcp-copy-add').addEventListener('click', () => copyText('claude mcp add beit-lahia -- node <المسار>/mcp/server.mjs', 'انسخ أمر الربط'));
 
 /** newest first; a workshop without a date yet (a new draft) goes on top */
 function sortedWorkshops() {

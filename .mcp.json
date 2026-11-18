@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "beit-lahia": {
+      "command": "node",
+      "args": ["mcp/server.mjs"]
+    }
+  }
+}

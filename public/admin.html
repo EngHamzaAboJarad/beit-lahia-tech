@@ -968,6 +968,19 @@
             <button class="btn btn-ghost-dark" type="button" id="backup-btn"><span class="btn-label">نزّل نسخة احتياطية</span><span class="spinner" aria-hidden="true"></span></button>
           </div>
         </div>
+        <div class="panel narrow-panel">
+          <h2>ربط Claude بالموقع (MCP)</h2>
+          <p class="muted small">بيخلّي Claude Code يقرأ ويعدّل بيانات الموقع (التسجيلات، الورشات، الفعاليات، الإعدادات…) بحساب الأدمن تبعك. ما في حذف أبداً. بيشتغل على جهازك بس، ومش من هون.</p>
+          <ol class="small">
+            <li>نزّل المشروع: <bdi dir="ltr">git clone https://github.com/EngHamzaAboJarad/beit-lahia-tech</bdi></li>
+            <li>جوّا مجلد <bdi dir="ltr">mcp</bdi> شغّل <bdi dir="ltr">npm install</bdi> ثم <bdi dir="ltr">npm run login</bdi> وسجّل بإيميل وكلمة سر الأدمن (كلمة السر ما بتنحفظ).</li>
+            <li>افتح Claude Code بمجلد المشروع ووافق على سيرفر <bdi dir="ltr">beit-lahia</bdi>.</li>
+          </ol>
+          <div class="form-actions">
+            <button class="btn btn-ghost-dark" type="button" id="mcp-copy-cmd">انسخ أوامر التنصيب</button>
+            <button class="btn btn-ghost-dark" type="button" id="mcp-copy-add">انسخ أمر الربط بأي مجلد</button>
+          </div>
+        </div>
       </section>
     </main>
   </div>
