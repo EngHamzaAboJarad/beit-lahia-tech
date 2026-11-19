@@ -3,6 +3,10 @@ name = "beitlahia-social"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 
+# the Worker answers on its own sub-domain of beitlahia.tech (Cloudflare creates the DNS record).
+# top-level keys must stay above the first [table] in TOML, or they end up inside it
+routes = [{ pattern = "social.beitlahia.tech", custom_domain = true }]
+
 # every 5 minutes: publish the scheduled posts whose time has come
 [triggers]
 crons = ["*/5 * * * *"]
@@ -10,10 +14,7 @@ crons = ["*/5 * * * *"]
 # posts + images (create it once: npx wrangler kv namespace create SOCIAL, then paste the id here)
 [[kv_namespaces]]
 binding = "SOCIAL"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
-
-# the Worker answers on its own sub-domain of beitlahia.tech (Cloudflare creates the DNS record)
-routes = [{ pattern = "social.beitlahia.tech", custom_domain = true }]
+id = "287cc8b0f7bd4b4791b4237427ce8410"
 
 [vars]
 FIREBASE_PROJECT_ID = "flutter-app-distribution-a4166"
