@@ -8,6 +8,7 @@ import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fit
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
 import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=7';
 import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=1';
+import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref } from './admin-people.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -74,6 +75,7 @@ function tabAllowed(t) {
   if (t === 'admins') return me.owner;
   if (t === 'overview') return true;
   if (t === 'total') return can('members') && can('workshops');
+  if (t === 'messages') return can('members') || can('workshops');
   const hit = PERMS.find(([, , tabs]) => tabs.includes(t));
   return hit ? can(hit[0]) : isFull();
 }
@@ -186,7 +188,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['overview', 'members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'studio', 'stats', 'settings', 'admins']; // same order as the sidebar
+const TABS = ['overview', 'members', 'team', 'total', 'messages', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'studio', 'stats', 'settings', 'admins']; // same order as the sidebar
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // Page-head title per tab: the section's own first heading (hidden in place), else the sidebar label.
@@ -230,6 +232,7 @@ function selectTab(name, focus = false) {
     $(`tab-${t}`).hidden = !on;
     if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
     if (on && t === 'total') renderTotal();
+    if (on && t === 'messages') renderMessages();
     if (on && t === 'overview') renderOverview(true);
     if (on && t === 'studio') showStudio();
     if (on && focus) btn.focus();
@@ -536,6 +539,7 @@ async function loadMembers() {
     renderMembers();
     renderTraffic();
     renderTotal();
+    renderMessages();
     markLoaded('members');
   } catch (e) {
     console.error(e);
@@ -609,7 +613,7 @@ function filtered() {
   });
 }
 
-const waLink = (n) => (typeof n === 'string' && /^\+\d{8,15}$/.test(n) ? `https://wa.me/${n.slice(1)}` : '');
+const waLink = (n) => waHref(n); // any stored format → wa.me/970… (see checkin-shared.js › waDigits)
 
 
 /* =================== Data tables: sort + pages =================== */
@@ -683,7 +687,7 @@ function renderMembers() {
   $('members-empty').hidden = all.length > 0;
   $('members-body').replaceChildren(...rows.map((m) => {
     const tr = h('tr', { class: m.contacted ? 'is-contacted' : '' },
-      h('td', { class: 'cell-name' }, h('strong', {}, m.name),
+      h('td', { class: 'cell-name' }, profileBtn(m.name, { wa: m.whatsapp, email: m.email, name: m.name }),
         seen[m.whatsapp] > 1 ? h('span', { class: 'badge badge-dup', title: 'نفس رقم الواتساب مسجّل أكثر من مرة' }, 'مكرر') : null,
         m.notes ? h('details', { class: 'cell-notes' }, h('summary', {}, 'ملاحظات'), h('p', {}, m.notes)) : null),
       h('td', { class: 'cell-contact' },
@@ -720,6 +724,9 @@ function renderMembers() {
     return tr;
   }));
 }
+
+/** a person's name that opens their profile (registrations, attendance, certificates, admin notes) */
+const profileBtn = (name, seed) => h('button', { type: 'button', class: 'name-btn', title: 'افتح ملف الشخص', onclick: () => openProfile(seed) }, h('strong', {}, name));
 
 const refreshMembers = () => { splitMembers(); fillResidenceFilter(); renderStats(); renderMembers(); renderTraffic(); renderOverview(); };
 
@@ -1638,6 +1645,7 @@ async function loadWorkshopAll() {
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
   selectWorkshop(pick, { force: true });
   renderTotal();
+  renderMessages();
   markLoaded('workshops');
 }
 
@@ -2055,6 +2063,12 @@ function renderWsStats() {
   const bulk = $('wr-bulk');
   bulk.querySelector('.btn-label').textContent = pending ? `أصدر شهادات للحاضرين (${pending})` : 'أصدر شهادات للحاضرين';
   bulk.disabled = !pending;
+  const passes = pendingPassMails().length;
+  $('wr-mail-pass').querySelector('.btn-label').textContent = passes ? `ابعت بطاقات الدخول بالإيميل (${passes})` : 'بطاقات الدخول بالإيميل';
+  $('wr-mail-pass').disabled = !passes;
+  const certMails = pendingCertMails().length;
+  $('wr-mail-cert').hidden = !certMails;
+  $('wr-mail-cert').querySelector('.btn-label').textContent = `ابعت الشهادات بالإيميل (${certMails})`;
 }
 
 function filteredRegs() {
@@ -2149,7 +2163,7 @@ function renderRegs() {
   $('wr-body').replaceChildren(...rows.map((r) => {
     const c = r.certId ? certById(r.certId) : null;
     const tr = h('tr', { class: r.attended ? 'is-attended' : '' },
-      h('td', { class: 'cell-name' }, h('strong', {}, r.name),
+      h('td', { class: 'cell-name' }, profileBtn(r.name, { wa: r.whatsapp, email: r.email, name: r.name }),
         seen[r.whatsapp] > 1 ? h('span', { class: 'badge badge-dup', title: 'نفس رقم الواتساب مسجّل أكثر من مرة' }, 'مكرر') : null,
         r.expectations ? h('details', { class: 'cell-notes' }, h('summary', {}, 'توقعاته'), h('p', {}, r.expectations)) : null),
       h('td', { class: 'cell-contact' },
@@ -2162,13 +2176,16 @@ function renderRegs() {
       h('td', {}, r.laptop == null ? '—' : r.laptop ? 'آه' : 'لا'),
       h('td', {}, Array.isArray(r.aiTools) && r.aiTools.length ? h('div', { class: 'tool-tags' }, r.aiTools.map((k) => h('span', {}, toolName(k)))) : '—'),
       h('td', { class: 'cell-date' }, r.createdAt ? dateFmt.format(r.createdAt.toDate()) : '—'),
-      h('td', {}, h('input', {
+      h('td', { class: 'cell-att' }, h('input', {
         type: 'checkbox', class: 'check', checked: !!r.attended, 'aria-label': `${r.name} حضر`,
         onchange: (e) => setAttended(r, e.target.checked, tr, e.target),
-      })),
+      }), r.attended && r.attendedAt ? h('span', { class: 'att-time', title: attendedText(r) }, timeOnly(r.attendedAt)) : null),
       h('td', {}, c
-        ? h('div', { class: 'cert-cell' }, h('span', { class: 'cert-no-tag' }, c.no), certActions(c, r.whatsapp, true, r.email))
-        : h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: (e) => issueForReg(r, e.currentTarget) }, 'أصدر شهادة')),
+        ? h('div', { class: 'cert-cell' }, h('span', { class: 'cert-no-tag' }, c.no), certActions(c, r.whatsapp, true, r.email),
+          r.certMailedAt ? h('span', { class: 'muted small', title: 'انبعتت بالإيميل' }, 'إيميل ✓') : null)
+        : r.attended
+          ? h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: (e) => issueForReg(r, e.currentTarget) }, 'أصدر شهادة')
+          : h('span', { class: 'muted small', title: 'الشهادة بتنصدر بعد ما يتسجّل حضوره' }, 'بعد الحضور')),
       h('td', { class: 'cell-actions' }, h('button', {
         type: 'button', class: 'icon-btn', 'aria-label': `حذف تسجيل ${r.name}`, title: 'حذف التسجيل', onclick: () => deleteReg(r),
       }, svgIcon(ICONS.trash))));
@@ -2176,15 +2193,17 @@ function renderRegs() {
   }));
 }
 
+const timeOnly = (t) => new Intl.DateTimeFormat('ar-u-nu-latn', { hour: 'numeric', minute: '2-digit' }).format(t.toDate ? t.toDate() : new Date(t));
+// ticking the box by hand = the same as a scan (time + who, see admin-people.js › setAttendance)
 async function setAttended(r, value, tr, box) {
   box.disabled = true;
   try {
-    await fs.updateDoc(fs.doc(db, 'workshopRegs', r.id), { attended: value });
-    r.attended = value;
+    const saving = setAttendance(r, value);
     tr.classList.toggle('is-attended', value);
-    renderWsStats();
+    renderRegs();
     renderWorkshopList();
-  } catch (e) { box.checked = !value; toast(errMsg(e), true); } finally { box.disabled = false; }
+    await saving;
+  } catch (e) { box.checked = !value; toast(errMsg(e), true); renderRegs(); } finally { box.disabled = false; }
 }
 
 async function deleteReg(r) {
@@ -2209,11 +2228,25 @@ async function reloadLists() {
   renderCerts();
   renderRegs();
   renderWorkshopList();
+  renderMessages();
 }
+
+/* ---------- check-in (QR), registrant e-mails, profiles, messages: admin-people.js ---------- */
+initPeople({
+  h, toast, setBusy, db, fs, can, isFull,
+  email: () => (auth.currentUser?.email || '').toLowerCase(),
+  getToken: () => auth.currentUser.getIdToken(),
+  state: () => ({ allRegs, allCerts, members, workshops, selId, currentId }),
+  onRegsChanged: () => { applySelection(); renderRegs(); renderWorkshopList(); renderMessages(); },
+  wsName, certUrl, wsUrl,
+});
+$('wr-scan').addEventListener('click', openScanner);
+$('wr-mail-pass').addEventListener('click', (e) => mailPasses(e.currentTarget));
+$('wr-mail-cert').addEventListener('click', (e) => mailPendingCerts(e.currentTarget));
 
 $('wr-export').addEventListener('click', () => {
   const rows = filteredRegs();
-  const head = ['الاسم', 'واتساب', 'الإيميل', 'الحالة', 'المستوى', 'لابتوب', 'أدوات AI', 'توقعاته', 'حضر', 'رقم الشهادة', 'رابط الشهادة', 'تاريخ التسجيل'];
+  const head = ['الاسم', 'واتساب', 'الإيميل', 'الحالة', 'المستوى', 'لابتوب', 'أدوات AI', 'توقعاته', 'حضر', 'وقت الحضور', 'سجّل الحضور', 'رقم الشهادة', 'رابط الشهادة', 'تاريخ التسجيل'];
   const esc = (v) => {
     let x = String(v ?? '');
     if (/^[=+\-@\t\r]/.test(x)) x = `'${x}`;
@@ -2222,7 +2255,8 @@ $('wr-export').addEventListener('click', () => {
   const lines = [head, ...rows.map((r) => {
     const c = r.certId ? certById(r.certId) : null;
     return [r.name, r.whatsapp || '', r.email || '', WS_STATUS[r.status] || r.status || '', WS_LEVEL[r.level] || r.level || '', r.laptop == null ? '' : r.laptop ? 'نعم' : 'لا',
-      (r.aiTools || []).map(toolName).join(' / '), r.expectations || '', r.attended ? 'نعم' : 'لا', c ? c.no : '', c ? certUrl(c.id) : '',
+      (r.aiTools || []).map(toolName).join(' / '), r.expectations || '', r.attended ? 'نعم' : 'لا',
+      r.attended && r.attendedAt ? dateTimeFmt.format(r.attendedAt.toDate()) : '', r.attended ? r.attendedBy || '' : '', c ? c.no : '', c ? certUrl(c.id) : '',
       r.createdAt ? dateTimeFmt.format(r.createdAt.toDate()) : ''];
   })].map((row) => row.map(esc).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -2276,11 +2310,12 @@ async function issue(people, date) {
 
 async function issueForReg(r, btn) {
   if (!canIssue()) return;
-  if (!r.attended && !confirm(`«${r.name}» مش متعلّم إنه حضر. تصدرله شهادة برضه؟`)) return;
+  if (!r.attended) { toast('الشهادة بتنصدر للي حضروا بس. سجّل حضوره أول.', true); return; }
   btn.disabled = true;
   try {
-    const [c] = await issue([{ name: r.name, regId: r.id }], issueDateText());
-    toast(`انصدرت الشهادة ${c.no}`);
+    const made = await issue([{ name: r.name, regId: r.id }], issueDateText());
+    toast(`انصدرت الشهادة ${made[0].no}`);
+    mailCerts(made, { quiet: !mailOk(r.email) }).catch((e) => toast(e.message, true));
   } catch (e) { btn.disabled = false; toast(errMsg(e), true); }
 }
 
@@ -2290,12 +2325,15 @@ $('wr-bulk').addEventListener('click', async () => {
   if (!confirm(`إصدار ${pending.length} شهادة للي حضروا وما إلهم شهادة؟`)) return;
   const btn = $('wr-bulk');
   setBusy(btn, true);
+  const made = [];
   try {
     for (let i = 0; i < pending.length; i += 200) {
-      await issue(pending.slice(i, i + 200).map((r) => ({ name: r.name, regId: r.id })), issueDateText());
+      made.push(...await issue(pending.slice(i, i + 200).map((r) => ({ name: r.name, regId: r.id })), issueDateText()));
     }
-    toast(`انصدرت ${pending.length} شهادة. ابعتلهم الروابط من عمود «الشهادة».`);
+    const withMail = pending.filter((r) => mailOk(r.email)).length;
+    toast(`انصدرت ${pending.length} شهادة.${withMail ? ` بنبعتها بالإيميل لـ ${withMail}…` : ' ابعتلهم الروابط من عمود «الشهادة».'}`);
   } catch (e) { toast(errMsg(e), true); } finally { btn.classList.remove('is-loading'); renderWsStats(); }
+  if (made.length) await mailCerts(made).catch((e) => toast(e.message, true));
 });
 
 $('ci-form').addEventListener('submit', async (e) => {
@@ -2601,7 +2639,7 @@ function renderTotal() {
   $('tt-count').textContent = `${all.length} من ${people.length} شخص (من ${records} تسجيل قبل الدمج)`;
   $('tt-empty').hidden = all.length > 0;
   $('tt-body').replaceChildren(...rows.map((g) => h('tr', {},
-    h('td', { class: 'cell-name' }, h('strong', {}, g.name),
+    h('td', { class: 'cell-name' }, profileBtn(g.name, { wa: g.wa, email: g.email, name: g.name }),
       g.viaName ? h('span', { class: 'badge badge-dup', title: 'اتدمجوا لأنه نفس الاسم الثلاثي، مع إنه الرقم أو الإيميل مختلف. راجعهم' }, 'دُمج بالاسم') : null),
     h('td', { class: 'cell-contact' }, waCell(g.wa), g.email ? h('a', { class: 'mail-link', href: `mailto:${g.email}`, dir: 'ltr' }, g.email) : null),
     h('td', { class: 'src-cell' },

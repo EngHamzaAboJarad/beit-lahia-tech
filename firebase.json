@@ -19,7 +19,8 @@
         "source": "/admin{,.html}",
         "headers": [
           { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
-          { "key": "Cache-Control", "value": "no-cache" }
+          { "key": "Cache-Control", "value": "no-cache" },
+          { "key": "Permissions-Policy", "value": "camera=(self), microphone=(), geolocation=()" }
         ]
       },
       {

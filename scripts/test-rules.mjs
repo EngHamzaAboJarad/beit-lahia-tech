@@ -107,6 +107,54 @@ await t('invite for an existing account: claimed after email verification', asyn
   assert.equal(await del('adminInvites/inv@x.test', verified), OK);
   assert.equal(await get('members/m1', verified), NO);
 });
+// a partial update (only `mask` fields change; a masked field missing from body is deleted), with server-time fields
+async function patch(path, a, body, mask, times = []) {
+  const res = await fetch(`${BASE.replace(/\/documents$/, '')}/documents:commit`, {
+    method: 'POST', headers: { Authorization: `Bearer ${a}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes: [{ update: { name: `projects/demo-bitlahia/databases/(default)/documents/${path}`, fields: fields(body) },
+      updateMask: { fieldPaths: mask.filter((m) => !times.includes(m)) }, currentDocument: { exists: true },
+      updateTransforms: times.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })) }] }),
+  });
+  return res.status;
+}
+const wsAdmin = token('wsk', 'wsk@x.test');
+const memAdmin = token('mem', 'mem@x.test');
+const memAdmin2 = token('mem2', 'mem2@x.test');
+await seed('admins/wsk', { email: 'wsk@x.test', perms: ['workshops'] });
+await seed('admins/mem', { email: 'mem@x.test', perms: ['members'] });
+await seed('admins/mem2', { email: 'mem2@x.test', perms: ['members'] });
+await seed('workshopRegs/r1', { workshopId: 'w1', name: 'سارة أحمد', whatsapp: '+970599123456', consent: true });
+
+await t('check-in: attendance with server time and the scanner\'s own e-mail', async () => {
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { attended: true, attendedBy: 'wsk@x.test' }, ['attended', 'attendedBy', 'attendedAt'], ['attendedAt']), OK);
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { attendedBy: 'someone@x.test' }, ['attendedBy']), NO); // can't sign as another admin
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { attendedAt: 'NOW' }, ['attendedAt']), NO); // a client clock is not accepted
+  assert.equal(await patch('workshopRegs/r1', memAdmin, { attended: true }, ['attended']), NO); // needs «workshops»
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { name: 'x' }, ['name']), NO); // the registrant's own data stays as sent
+  // un-mark: attended false, time and scanner removed
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { attended: false }, ['attended', 'attendedAt', 'attendedBy']), OK);
+});
+await t('check-in: e-mail sent flags take the server time only', async () => {
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, {}, ['passMailedAt'], ['passMailedAt']), OK);
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, { certMailedAt: 'NOW' }, ['certMailedAt']), NO);
+  assert.equal(await patch('workshopRegs/r1', wsAdmin, {}, ['certMailedAt'], ['certMailedAt']), OK);
+  assert.equal(await get('workshopRegs/r1', memAdmin), NO);
+});
+await t('member notes: «members» permission only, signed by the writer', async () => {
+  assert.equal(await setWithTime('memberNotes/n1', memAdmin, { person: 'p970599123456', text: 'مهتم بالباك إند', by: 'mem@x.test' }, 'at'), OK);
+  assert.equal(await setWithTime('memberNotes/n2', memAdmin, { person: 'p970599123456', text: 'x', by: 'other@x.test' }, 'at'), NO);
+  assert.equal(await setWithTime('memberNotes/n3', wsAdmin, { person: 'p970599123456', text: 'x', by: 'wsk@x.test' }, 'at'), NO);
+  assert.equal(await setWithTime('memberNotes/n4', memAdmin, { person: 'p970599123456', text: 'x', by: 'mem@x.test', extra: 'y' }, 'at'), NO);
+  assert.equal(await set('memberNotes/n5', memAdmin, { person: 'p970599123456', text: 'x', by: 'mem@x.test', at: 'NOW' }), NO);
+  assert.equal(await get('memberNotes/n1', memAdmin2), OK);
+  assert.equal(await get('memberNotes/n1', wsAdmin), NO);
+  assert.equal(await get('memberNotes/n1', stranger), NO);
+  assert.equal(await set('memberNotes/n1', memAdmin, { person: 'p1', text: 'edited', by: 'mem@x.test', at: 'NOW' }), NO); // notes don't change
+  assert.equal(await del('memberNotes/n1', memAdmin2), NO); // only its writer…
+  assert.equal(await del('memberNotes/n1', legacy), OK);    // …or a full admin
+  assert.equal(await setWithTime('memberNotes/n6', memAdmin, { person: 'e:a@x.test', text: 'y', by: 'mem@x.test' }, 'at'), OK);
+  assert.equal(await del('memberNotes/n6', memAdmin), OK);
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

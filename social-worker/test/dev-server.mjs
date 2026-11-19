@@ -69,11 +69,12 @@ globalThis.fetch = async (url, init) => {
 
 const env = {
   SOCIAL: KV, FIREBASE_PROJECT_ID: PROJECT, PUBLIC_BASE_URL: `http://localhost:${PORT}`,
-  ALLOWED_ORIGINS: 'http://localhost:5055,http://localhost:5056,http://localhost:5000,http://127.0.0.1:5055', GRAPH_VERSION: 'v23.0',
+  ALLOWED_ORIGINS: ['http://localhost:5055,http://localhost:5056,http://localhost:5000,http://127.0.0.1:5055', process.env.EXTRA_ORIGINS].filter(Boolean).join(','), GRAPH_VERSION: 'v23.0',
   OWNER_EMAIL: 'habojarad305@gmail.com',
   // fake e-mail: prints what would be sent
   MAIL: {
     async send(m) {
+      if (!m.raw) { console.log(`[mail] to ${m.to}: ${m.subject}\n${m.text}`); return { messageId: `dev-${Date.now()}` }; } // Email Service style
       const [head, body] = m.raw.split('\r\n\r\n');
       const subj = /Subject: =\?UTF-8\?B\?([^?]+)/.exec(head)?.[1] || '';
       console.log(`[mail] to ${m.to}: ${Buffer.from(subj, 'base64')}\n${Buffer.from(body.replace(/\r\n/g, ''), 'base64')}`);

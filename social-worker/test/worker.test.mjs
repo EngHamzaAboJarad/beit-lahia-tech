@@ -324,4 +324,32 @@ await t('a scheduled story keeps its design and can be edited before it goes out
   await call('DELETE', `/posts/${id}`, { token: admin });
   assert.equal(await env.SOCIAL.get(`des:${id}`), null);
 });
+await t('workshop e-mails: «workshops» admins only, site links only, Cloudflare refusals explained', async () => {
+  const sent = [];
+  env.MAIL = { async send(m) { if (m.to === 'blocked@x.test') { const e = new Error('nope'); e.code = 'E_RECIPIENT_PLAN_RESTRICTED'; throw e; } sent.push(m); return { messageId: 'm1' }; } };
+  const ws = { title: 'AI-Powered Development', titleAr: 'المبرمج المعزّز', date: '14 نوفمبر 2026', place: 'وجاهي · بيت لاهيا' };
+  const pass = { kind: 'pass', workshop: ws, items: [
+    { id: 'r1', to: 'Sara@X.test', name: 'سارة <b>أحمد</b>', url: 'https://beitlahia.tech/pass?c=abcdefghijklmnop&w=w1#%D8%B3' },
+    { id: 'r2', to: 'not-an-email', name: 'x', url: 'https://beitlahia.tech/pass?c=abcdefghijklmnop' },
+    { id: 'r3', to: 'a@x.test', name: 'x', url: 'https://evil.test/phish' },
+  ] };
+  assert.equal((await call('POST', '/mail/workshop', { token: await idToken('content1'), body: pass })).status, 403);
+  assert.equal((await call('POST', '/mail/workshop', { body: pass })).status, 401);
+  assert.equal((await call('GET', '/mail', { token: admin })).data.ready, true);
+  const r = await call('POST', '/mail/workshop', { token: admin, body: pass });
+  assert.equal(r.status, 200); assert.equal(r.data.sent, 1);
+  assert.deepEqual(r.data.results.map((x) => x.ok), [true, false, false]);
+  assert.equal(sent[0].to, 'sara@x.test'); assert.equal(sent[0].from.email, 'notify@beitlahia.tech');
+  assert.match(sent[0].subject, /بطاقة دخولك لورشة «المبرمج المعزّز»/);
+  assert.ok(sent[0].html.includes('pass?c=abcdefghijklmnop')); assert.ok(!sent[0].html.includes('<b>أحمد'));
+  assert.match(sent[0].text, /14 نوفمبر 2026/);
+  const c = await call('POST', '/mail/workshop', { token: admin, body: { kind: 'cert', workshop: ws, items: [
+    { id: 'c1', to: 'blocked@x.test', name: 'a', url: 'https://beitlahia.tech/certificate?id=abc123' },
+    { id: 'c2', to: 'b@x.test', name: 'b', url: 'https://beitlahia.tech/certificate?id=abc124' },
+  ] } });
+  assert.equal(c.data.sent, 0); // the plan refuses unverified recipients → stop and explain, for everyone
+  assert.match(c.data.results[1].error, /Email Sending/);
+  assert.equal((await call('POST', '/mail/workshop', { token: admin, body: { kind: 'spam', items: [{}] } })).status, 400);
+  delete env.MAIL;
+});
 console.log(`\n${n} tests passed`);

@@ -142,15 +142,39 @@ service cloud.firestore {
 
     // ---------- تسجيلات الورشات ----------
     // الزوار: إضافة تسجيل صالح بس، لورشة منشورة وتسجيلها مفتوح. الأدمن: قراءة، حذف، تعليم «حضر»، ربط الشهادة، وربط الورشة.
+    // رقم الـ document نفسه هو كود الدخول (QR). الحضور بينحفظ مع وقته (attendedAt = وقت السيرفر) ومين سجّله
+    // (attendedBy = إيميل المشرف نفسه)، وpassMailedAt / certMailedAt = متى انبعتت بطاقة الدخول / الشهادة بالإيميل.
     match /workshopRegs/{regId} {
       allow create: if isValidWorkshopReg(request.resource.data)
         && workshopOpenFor(request.resource.data.workshopId);
       allow read, delete: if can('workshops');
-      allow update: if can('workshops')
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'certId', 'workshopId'])
-        && request.resource.data.get('attended', false) is bool
-        && request.resource.data.get('certId', '') is string
-        && request.resource.data.get('workshopId', '') is string;
+      allow update: if can('workshops') && isValidRegUpdate(request.resource.data, request.resource.data.diff(resource.data).affectedKeys());
+    }
+    function isValidRegUpdate(d, k) {
+      return k.hasOnly(['attended', 'attendedAt', 'attendedBy', 'certId', 'workshopId', 'passMailedAt', 'certMailedAt'])
+        && d.get('attended', false) is bool
+        && d.get('certId', '') is string
+        && d.get('workshopId', '') is string
+        && (!k.hasAny(['attendedAt']) || !('attendedAt' in d) || d.attendedAt == request.time)
+        && (!k.hasAny(['attendedBy']) || !('attendedBy' in d) || d.attendedBy == request.auth.token.email)
+        && (!k.hasAny(['passMailedAt']) || d.get('passMailedAt', null) == request.time)
+        && (!k.hasAny(['certMailedAt']) || d.get('certMailedAt', null) == request.time);
+    }
+
+    // ---------- ملاحظات الأدمن على الأشخاص (ملف العضو) ----------
+    // person = مفتاح الشخص (رقم الواتساب أو الإيميل)، وكل ملاحظة doc لحالها باسم كاتبها ووقتها.
+    // بتنقرأ وبتنكتب بصلاحية «التسجيلات» بس؛ كاتب الملاحظة (أو أدمن كامل) بيحذفها، وما بتتعدّل.
+    match /memberNotes/{noteId} {
+      allow read: if can('members');
+      allow create: if can('members')
+        && request.resource.data.keys().hasAll(['person', 'text', 'by', 'at'])
+        && request.resource.data.keys().hasOnly(['person', 'text', 'name', 'by', 'at'])
+        && isStr(request.resource.data.person, 3, 140)
+        && isStr(request.resource.data.text, 1, 2000)
+        && (!('name' in request.resource.data) || isStr(request.resource.data.name, 0, 80))
+        && request.resource.data.by == request.auth.token.email
+        && request.resource.data.at == request.time;
+      allow delete: if can('members') && (resource.data.by == request.auth.token.email || isFull());
     }
 
     function isValidWorkshopReg(d) {
