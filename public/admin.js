@@ -6,7 +6,7 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
-import { initStudio, showStudio } from './admin-social.js?v=5';
+import { initStudio, showStudio } from './admin-social.js?v=6';
 import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=1';
 
 const $ = (id) => document.getElementById(id);

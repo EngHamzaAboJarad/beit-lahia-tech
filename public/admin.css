@@ -995,3 +995,8 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .conn-warn { padding: 8px 12px; border-radius: 10px; background: #FFF7ED; color: #9A3412; font-size: 14px; }
 .conn-err { padding: 8px 12px; border-radius: 10px; background: #FFF1F2; color: #9F1239; font-size: 14px; }
 .conn-ok { padding: 8px 12px; border-radius: 10px; background: #ECFDF5; color: var(--emerald-deeper); font-size: 14px; }
+.tpl-head { margin-top: 0; }
+.tpl-upload { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.tpl-upload svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tpl-upload:focus-within { box-shadow: 0 0 0 3px rgba(52, 211, 153, .35); }
+.tpl-upload-hint { margin: -6px 0 12px; }

@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=35">
+  <link rel="stylesheet" href="/admin.css?v=36">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=39"></script>
+  <script type="module" src="/admin.js?v=40"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -1006,7 +1006,15 @@
         <div class="panel studio-connect" id="studio-connect" hidden></div>
         <div class="studio">
           <div class="panel studio-form">
-            <h2>القوالب</h2>
+            <div class="studio-head tpl-head">
+              <h2>القوالب</h2>
+              <label class="btn btn-ghost-dark btn-sm tpl-upload">
+                <input type="file" id="tpl-upload" accept="image/jpeg,image/png,image/webp" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+                <span>ارفع صورة جاهزة</span>
+              </label>
+            </div>
+            <p class="muted small tpl-upload-hint">عندك تصميم جاهز؟ ارفعه وبينتشر زي ما هو (وبتقدر تضيفله عناصر من «التصميم» إذا بدك).</p>
             <div class="tpl-picker" id="tpl-picker" role="radiogroup" aria-label="القوالب"></div>
             <div class="tpl-mine" id="tpl-mine-wrap" hidden>
               <h3>قوالبي</h3>

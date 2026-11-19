@@ -408,6 +408,48 @@ function readPhoto(file) {
   });
 }
 
+/* =================== a ready-made image, published as it is =================== */
+// Instagram feed takes 4:5 … 1.91:1; a tall image near 9:16 becomes a story. Outside that, the image is
+// cropped from the centre to the nearest allowed shape (preview shows exactly what goes out).
+function shapeFor(w, h) {
+  const r = w / h;
+  if (r < 0.7) return [1080, 1920];          // story
+  if (r < 0.8) return [1080, 1350];          // too tall for the feed → 4:5
+  if (r > 1.91) return [1080, 565];          // too wide → 1.91:1
+  return [1080, Math.round(1080 / r)];       // keep its own shape
+}
+function readFullImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 2160 / Math.max(img.width, img.height)); // keep it sharp (2×) but bounded
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve({ src: c.toDataURL('image/jpeg', 0.92), w: img.width, h: img.height });
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function uploadReady(file) {
+  if (!file) return;
+  if (dirty() && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح الصورة الجاهزة وتتركها؟')) return;
+  let pic;
+  try { pic = await readFullImage(file); } catch { deps.toast('ما قدرنا نقرأ الصورة', true); return; }
+  const [w, h] = shapeFor(pic.w, pic.h);
+  const d = {
+    v: 1, id: 'upload', name: (file.name || 'تصميم جاهز').replace(/\.[a-z0-9]+$/i, '').slice(0, 60), w, h,
+    bg: { color: '#0B1020', grid: false },
+    els: [{ type: 'image', src: pic.src, x: 0, y: 0, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }],
+  };
+  state.src = { kind: 'upload', id: 'upload' }; state.design = d; state.base = JSON.stringify(d);
+  state.sel = -1; state.undo = []; state.redo = [];
+  setPane('content'); refreshAll(); renderPickers();
+  const cropped = Math.abs(pic.w / pic.h - w / h) > 0.01;
+  deps.toast(cropped ? `الصورة انقصّت من النص لمقاس ${w}×${h} عشان تناسب إنستغرام` : `جاهزة للنشر (${w}×${h})`);
+}
+
 /* =================== export: SVG → canvas, fonts + images embedded =================== */
 let fontCssP;
 function fontCss() {
@@ -443,7 +485,7 @@ async function rasterize(type = 'image/png', quality) {
   } finally { URL.revokeObjectURL(url); }
 }
 const blobToBase64 = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
-const slug = () => (state.src.kind === 'builtin' ? state.src.id : 'custom');
+const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : 'custom');
 
 async function download() {
   const btn = $('studio-download');
@@ -735,7 +777,7 @@ function renderPosts() {
   $('studio-empty').hidden = state.posts.length > 0;
   list.replaceChildren(...state.posts.map((p) => {
     const [label, cls] = STATUS[p.status] || [p.status, ''];
-    const tname = BUILTIN.find((t) => t.id === p.template)?.name || 'قالب خاص';
+    const tname = p.template === 'upload' ? 'صورة جاهزة' : BUILTIN.find((t) => t.id === p.template)?.name || 'قالب خاص';
     const when = p.status === 'scheduled' ? `موعده: ${whenFmt.format(new Date(p.scheduledAt))}`
       : p.publishedAt ? `انتشر: ${whenFmt.format(new Date(p.publishedAt))}` : `انعمل: ${whenFmt.format(new Date(p.createdAt))}`;
     const results = p.platforms.map((k) => {
@@ -787,6 +829,7 @@ export function initStudio(d) {
   $('st-tab-content').addEventListener('click', () => setPane('content'));
   $('st-tab-design').addEventListener('click', () => setPane('design'));
   $('tpl-reset').addEventListener('click', resetToSource);
+  $('tpl-upload').addEventListener('change', (e) => { uploadReady(e.target.files[0]); e.target.value = ''; });
   $('tpl-save-new').addEventListener('click', saveNew);
   $('tpl-save').addEventListener('click', saveChanges);
   $('tpl-delete').addEventListener('click', deleteMine);
