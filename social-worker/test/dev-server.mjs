@@ -56,6 +56,7 @@ globalThis.fetch = async (url, init) => {
     if (url.includes('/debug_token')) return ok({ data: { is_valid: true, expires_at: 0, scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish', 'pages_read_user_content', 'read_insights', 'instagram_manage_insights'] } });
     if (/\/100[12]\?/.test(url)) return ok({ name: q.access_token === 'PAGE_TOKEN' ? 'كميونتي تقني بيت لاهيا' : 'صفحة تجربة' });
     if (url.endsWith('/photos')) return ok({ id: `ph${++n}`, post_id: `1001_${n}` });
+    if (url.endsWith('/feed')) { console.log('[meta] multi-photo post:', Object.keys(q).length ? '' : String(init?.body).slice(0, 200)); return ok({ id: `1001_f${++n}` }); }
     if (url.endsWith('/photo_stories')) return ok({ success: true, post_id: `1001_s${++n}` });
     if (url.endsWith('/videos')) return ok({ id: `v${++n}` });
     if (url.endsWith('/video_stories')) return ok(/upload_phase=start/.test(String(init?.body)) ? { video_id: `vs${++n}`, upload_url: `https://rupload.facebook.com/video-upload/v23.0/vs${n}` } : { success: true, post_id: `1001_vs${n}` });

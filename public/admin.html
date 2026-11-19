@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=39">
+  <link rel="stylesheet" href="/admin.css?v=40">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=45"></script>
+  <script type="module" src="/admin.js?v=46"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -1165,6 +1165,10 @@
             <p class="muted small studio-progress" id="studio-progress" aria-live="polite" hidden></p>
           </div>
           <div class="panel studio-preview">
+            <div class="ws-head">
+              <span class="ws-brand"><span class="ws-pix" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>استوديو بيت لاهيا</span></span>
+              <span class="ws-size" id="studio-size" aria-live="polite"></span>
+            </div>
             <div class="studio-toolbar" role="toolbar" aria-label="أدوات التصميم">
               <button type="button" class="tb-btn" id="tb-undo" title="تراجع (Ctrl+Z)" aria-label="تراجع (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
               <button type="button" class="tb-btn" id="tb-redo" title="إعادة (Ctrl+Y)" aria-label="إعادة (Ctrl+Y)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
@@ -1178,9 +1182,14 @@
               <button type="button" class="tb-btn" id="tb-draw" title="ارسم بالقلم" aria-label="ارسم بالقلم" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/><path d="M4 20h7"/></svg></button>
             </div>
             <div class="studio-drawbar" id="studio-drawbar" hidden></div>
-            <div class="studio-stage" id="studio-stage" tabindex="0" aria-label="لوحة التصميم: اضغط على عنصر لتحديده"></div>
-            <p class="muted small" id="studio-size"></p>
-            <p class="muted small studio-hint">اضغط على أي عنصر لتحدده، اسحبه لتحرّكه، واسحب المربع الأخضر بالزاوية لتكبّره أو تصغّره. الأسهم بتحرّك بدقة.</p>
+            <div class="ws-canvas">
+              <div class="studio-stage" id="studio-stage" tabindex="0" aria-label="لوحة التصميم: اضغط على عنصر لتحديده"></div>
+            </div>
+            <div class="studio-pages-wrap">
+              <div class="ws-label"><span>الصفحات</span><span class="muted small studio-pages-note" id="studio-pages-note"></span></div>
+              <div class="studio-pages" id="studio-pages" aria-label="صفحات التصميم"></div>
+            </div>
+            <p class="muted small studio-hint">اسحب العنصر لتحرّكه · المربع الأخضر بالزاوية بيكبّر ويصغّر · الدائرة فوقه بتدوّره · الأسهم بتحرّك بدقة · PageUp / PageDown بين الصفحات</p>
           </div>
         </div>
         <div class="panel">

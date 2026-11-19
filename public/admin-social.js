@@ -32,7 +32,9 @@ let started = false;
 const state = {
   src: { kind: 'builtin', id: BUILTIN[0].id }, // where the working design came from
   base: '',            // JSON of the source, to know if there are unsaved changes
-  design: clone(BUILTIN[0]),
+  design: clone(BUILTIN[0]), // the page on the canvas
+  deck: null,                 // page 1 (the design itself); pages 2… live in deck.more
+  page: 0,
   sel: -1, pane: 'content',
   undo: [], redo: [],
   mine: [], caption: '', conn: null, posts: [],
@@ -45,30 +47,110 @@ const state = {
   editing: null, // { post, mode: 'edit' | 'copy', orig } while a post from the list is open in the editor
 };
 
+/* =================== pages: a carousel post / a multi-page story =================== */
+// The design is page 1; more pages ride along in design.more (same size, own background and elements).
+const MAX_PAGES = 10; // Instagram's carousel limit
+const pages = () => [state.deck, ...(state.deck.more || [])];
+const pageCount = () => 1 + (state.deck.more?.length || 0);
+function setDeck(d, page = 0) {
+  if (d.more && !d.more.length) delete d.more;
+  state.deck = d;
+  state.page = Math.min(Math.max(0, page), pageCount() - 1);
+  state.design = pages()[state.page];
+}
+function goPage(k) {
+  if (k === state.page || k < 0 || k >= pageCount()) return;
+  if (state.pen.on) setPen(false);
+  state.page = k; state.design = pages()[k]; state.sel = -1;
+  refreshAll(); renderPages();
+}
+function blankPage(from = state.design) {
+  return { w: from.w, h: from.h, bg: clone(from.bg || {}), els: [] };
+}
+function addPage(copy) {
+  if (pageCount() >= MAX_PAGES) { deps.toast(`أكثر شي ${MAX_PAGES} صفحات`, true); return; }
+  checkpoint(true);
+  const pg = copy ? (({ more, name, id, v, ...rest }) => clone(rest))(state.design) : blankPage();
+  const more = state.deck.more || (state.deck.more = []);
+  more.splice(state.page, 0, pg); // right after the current page
+  state.page += 1; state.design = pages()[state.page]; state.sel = -1;
+  refreshAll(); renderPages(); syncPublishUi();
+}
+function removePage(k) {
+  if (pageCount() < 2) return;
+  if (!confirm(`نحذف الصفحة ${k + 1}؟`)) return;
+  checkpoint(true);
+  if (k === 0) { // page 1 is the design itself: page 2 takes its place, keeping the name and id
+    const [next, ...rest] = state.deck.more;
+    const { more, ...head } = state.deck;
+    setDeck({ ...head, w: next.w, h: next.h, bg: next.bg, els: next.els, more: rest }, 0);
+  } else {
+    state.deck.more.splice(k - 1, 1);
+    setDeck(state.deck, Math.min(state.page, pageCount() - 1));
+  }
+  state.sel = -1; refreshAll(); renderPages(); syncPublishUi();
+}
+function movePage(k, dir) {
+  const j = k + dir;
+  if (j < 0 || j >= pageCount()) return;
+  checkpoint(true);
+  const all = pages().map((pg) => { const { more, ...rest } = pg; return rest; });
+  [all[k], all[j]] = [all[j], all[k]];
+  const head = state.deck; const { more, ...meta } = head;
+  const first = all[0];
+  setDeck({ ...meta, w: first.w, h: first.h, bg: first.bg, els: first.els, more: all.slice(1).map(({ name, id, v, ...pg }) => pg) }, j);
+  state.sel = -1; refreshAll(); renderPages();
+}
+function renderPages() {
+  const box = $('studio-pages'); if (!box) return;
+  const h = deps.h; const n = pageCount();
+  box.replaceChildren(
+    ...pages().map((pg, k) => {
+      const art = h('span', { class: 'pg-art', 'aria-hidden': 'true' });
+      art.innerHTML = renderDesign(pg, { measure }); // escaped renderer output
+      const on = k === state.page;
+      return h('div', { class: `pg${on ? ' is-on' : ''}` },
+        h('button', { type: 'button', class: 'pg-pick', 'aria-label': `الصفحة ${k + 1} من ${n}`, 'aria-current': on ? 'true' : null, onclick: () => goPage(k) },
+          art, h('span', { class: 'pg-no' }, String(k + 1))),
+        n > 1 ? h('div', { class: 'pg-tools' },
+          h('button', { type: 'button', title: 'لقدّام', 'aria-label': `انقل الصفحة ${k + 1} لقدّام`, disabled: k === 0, onclick: () => movePage(k, -1) }, '→'),
+          h('button', { type: 'button', title: 'احذف الصفحة', 'aria-label': `احذف الصفحة ${k + 1}`, class: 'is-del', onclick: () => removePage(k) }, '×'),
+          h('button', { type: 'button', title: 'لورا', 'aria-label': `انقل الصفحة ${k + 1} لورا`, disabled: k === n - 1, onclick: () => movePage(k, 1) }, '←')) : '');
+    }),
+    n < MAX_PAGES ? h('div', { class: 'pg-add' },
+      h('button', { type: 'button', class: 'pg-new', onclick: () => addPage(true), title: 'نسخة من الصفحة الحالية' }, h('span', { 'aria-hidden': 'true' }, '+'), 'نسخة'),
+      h('button', { type: 'button', class: 'pg-new is-blank', onclick: () => addPage(false), title: 'صفحة فاضية بنفس الخلفية' }, h('span', { 'aria-hidden': 'true' }, '+'), 'فاضية')) : '',
+  );
+  $('studio-pages-note').textContent = n > 1
+    ? `${n} صفحات: المنشور بيطلع كاروسيل (سحب يمين وشمال)، والستوري بتطلع ${n} ستوريات ورا بعض.`
+    : 'ضيف صفحة ثانية لتعمل كاروسيل (بوست فيه أكثر من صورة) أو ستوري متتالي.';
+}
+
 /* =================== persistence (the working design survives a reload) =================== */
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE) || 'null');
     if (s && s.design && Array.isArray(s.design.els)) {
-      state.src = s.src; state.design = s.design; state.base = s.base || ''; state.caption = s.caption || '';
+      state.src = s.src; setDeck(s.design, s.page || 0); state.base = s.base || ''; state.caption = s.caption || '';
       return;
     }
   } catch { /* fresh start */ }
-  state.base = JSON.stringify(state.design);
+  setDeck(state.design);
+  state.base = JSON.stringify(state.deck);
 }
 let saveT;
 function persist() {
   if (state.src.kind === 'campaign') {
     const it = state.campaign?.items.find((x) => x.key === state.src.id);
-    if (it) { it.design = state.design; refreshCampaignThumbs(); }
+    if (it) { it.design = state.deck; refreshCampaignThumbs(); }
   }
   clearTimeout(saveT);
   saveT = setTimeout(() => {
-    try { localStorage.setItem(STORE, JSON.stringify({ src: state.src, design: state.design, base: state.base, caption: state.caption })); } catch { /* too big / private */ }
+    try { localStorage.setItem(STORE, JSON.stringify({ src: state.src, design: state.deck, page: state.page, base: state.base, caption: state.caption })); } catch { /* too big / private */ }
   }, 300);
   $('studio-dirty').hidden = !dirty();
 }
-const dirty = () => JSON.stringify(state.design) !== state.base;
+const dirty = () => JSON.stringify(state.deck) !== state.base;
 
 /* =================== history =================== */
 let lastCheck = 0;
@@ -76,23 +158,29 @@ function checkpoint(force = false) {
   const now = Date.now();
   if (!force && now - lastCheck < 700) return; // typing in one field = one undo step
   lastCheck = now;
-  state.undo.push(JSON.stringify(state.design));
+  state.undo.push(snap());
   if (state.undo.length > 60) state.undo.shift();
   state.redo = [];
 }
+// a history step is the whole deck + the page that was open
+const snap = () => JSON.stringify({ p: state.page, d: state.deck });
+function restore(json) {
+  const { p, d } = JSON.parse(json);
+  const before = pageCount();
+  setDeck(d, p);
+  if (state.sel >= state.design.els.length) state.sel = -1;
+  lastCheck = 0; refreshAll(); renderPages();
+  if (before !== pageCount()) syncPublishUi();
+}
 function undo() {
   if (!state.undo.length) return;
-  state.redo.push(JSON.stringify(state.design));
-  state.design = JSON.parse(state.undo.pop());
-  if (state.sel >= state.design.els.length) state.sel = -1;
-  lastCheck = 0; refreshAll();
+  state.redo.push(snap());
+  restore(state.undo.pop());
 }
 function redo() {
   if (!state.redo.length) return;
-  state.undo.push(JSON.stringify(state.design));
-  state.design = JSON.parse(state.redo.pop());
-  if (state.sel >= state.design.els.length) state.sel = -1;
-  lastCheck = 0; refreshAll();
+  state.undo.push(snap());
+  restore(state.redo.pop());
 }
 
 /* =================== text measuring with the real fonts =================== */
@@ -127,9 +215,9 @@ function openDesign(kind, id) {
   if (dirty() && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح قالب تاني وتتركها؟')) return;
   const d = sourceDesign(kind, id);
   if (!d) return;
-  state.src = { kind, id }; state.design = d; state.base = JSON.stringify(d);
+  state.src = { kind, id }; setDeck(d); state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
-  stopEditing(); refreshAll(); renderPickers(); autoFormats();
+  stopEditing(); refreshAll(); renderPickers(); renderPages(); autoFormats();
 }
 
 /* =================== content pane: quick text editing =================== */
@@ -155,12 +243,19 @@ function renderContent() {
 
 /* =================== the canvas =================== */
 let stageSvg = null;
+let pagesT = 0;
+function refreshPageThumb() {
+  const art = document.querySelector(`#studio-pages .pg:nth-child(${state.page + 1}) .pg-art`);
+  if (art) art.innerHTML = renderDesign(state.design, { measure }); else renderPages();
+}
 function renderStage() {
   const stage = $('studio-stage');
   stage.innerHTML = renderDesign(state.design, { measure }); // escaped renderer output
   stageSvg = stage.querySelector('svg');
   stage.classList.toggle('is-tall', state.design.h > state.design.w * 1.4);
-  $('studio-size').textContent = `${state.design.w} × ${state.design.h} بكسل · ${state.design.els.length} عنصر`;
+  stage.style.setProperty('--ar', (state.design.h / state.design.w).toFixed(3));
+  $('studio-size').textContent = `${state.design.w} × ${state.design.h} بكسل · ${state.design.els.length} عنصر${pageCount() > 1 ? ` · صفحة ${state.page + 1} من ${pageCount()}` : ''}`;
+  clearTimeout(pagesT); pagesT = setTimeout(refreshPageThumb, 250);
   drawSelection();
   syncToolbar();
 }
@@ -180,9 +275,24 @@ function drawSelection(guides = []) {
     ui.append(svgEl('rect', { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2, class: 'sel-box' }));
     const hs = Math.max(30, state.design.w / 26); // ~16px on screen: easy to grab, also by finger
     ui.append(svgEl('rect', { x: b.x + b.width + pad - hs / 2, y: b.y + b.height + pad - hs / 2, width: hs, height: hs, rx: 4, class: 'sel-handle' }));
+    const e = state.design.els[state.sel];
+    if (canRotate(e)) { // a round handle above the element: drag it around to turn it
+      const cx = b.x + b.width / 2; const top = b.y - pad; const stem = hs * 1.6;
+      ui.append(svgEl('line', { x1: cx, y1: top, x2: cx, y2: top - stem, class: 'sel-stem' }));
+      ui.append(svgEl('circle', { cx, cy: top - stem, r: hs * 0.62, class: 'sel-rot' }));
+      ui.append(svgEl('path', { d: rotIcon(cx, top - stem, hs * 0.32), class: 'sel-rot-ico' }));
+      if (drag?.mode === 'rotate') {
+        const label = svgEl('text', { x: cx, y: top - stem - hs * 1.05, class: 'sel-angle', 'text-anchor': 'middle', 'font-size': hs * 0.9 });
+        label.textContent = `${Math.round(e.rotate || 0)}°`;
+        ui.append(label);
+      }
+    }
   }
   stageSvg.append(ui);
 }
+const canRotate = (e) => !!e && TYPES[e.type]?.props.some((p) => p[0] === 'rotate');
+// a circular arrow, drawn inside the rotation handle
+const rotIcon = (cx, cy, r) => `M${cx + r} ${cy}A${r} ${r} 0 1 1 ${cx} ${cy - r}M${cx - r * 0.35} ${cy - r * 1.35}L${cx} ${cy - r}L${cx - r * 0.35} ${cy - r * 0.62}`;
 function svgEl(tag, attrs) { const el = document.createElementNS(SVGNS, tag); Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); return el; }
 function toSvg(ev) {
   const pt = stageSvg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
@@ -195,13 +305,15 @@ function onDown(ev) {
   if (!stageSvg || ev.button > 0) return;
   if (state.pen.on) { startStroke(ev); return; }
   const handle = ev.target.closest('.sel-handle');
+  const turn = ev.target.closest('.sel-rot, .sel-rot-ico');
   const g = ev.target.closest('[data-i]');
-  if (!handle && !g) { select(-1); return; }
-  const i = handle ? state.sel : +g.dataset.i;
+  if (!handle && !turn && !g) { select(-1); return; }
+  const i = handle || turn ? state.sel : +g.dataset.i;
   if (i !== state.sel) select(i);
   const p = toSvg(ev); const b = bboxOf(i);
   if (!b) return;
-  drag = { i, mode: handle ? 'resize' : 'move', p0: p, el0: clone(state.design.els[i]), b0: { x: b.x, y: b.y, width: b.width, height: b.height }, moved: false };
+  drag = { i, mode: turn ? 'rotate' : handle ? 'resize' : 'move', p0: p, el0: clone(state.design.els[i]), b0: { x: b.x, y: b.y, width: b.width, height: b.height }, moved: false };
+  if (turn) { drag.c = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; drag.a0 = Math.atan2(p.y - drag.c.y, p.x - drag.c.x); }
   try { $('studio-stage').setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
   ev.preventDefault();
 }
@@ -221,7 +333,17 @@ function applyDrag() {
     if (!drag.moved) { if (Math.hypot(dx, dy) < 3) return; checkpoint(true); drag.moved = true; }
     const el = clone(drag.el0);
     const guides = [];
-    if (drag.mode === 'move') {
+    if (drag.mode === 'rotate') {
+      // the angle the pointer turned around the element's centre; Shift = steps of 15°, near 0/45/90… it snaps
+      const a = Math.atan2(p.y - drag.c.y, p.x - drag.c.x);
+      let deg = (drag.el0.rotate || 0) + (a - drag.a0) * 180 / Math.PI;
+      deg = ((deg + 540) % 360) - 180;
+      const step = shift ? 15 : 45; const near = Math.round(deg / step) * step;
+      if (shift || Math.abs(deg - near) < 4) deg = near;
+      el.rotate = Math.round(deg) === -180 ? 180 : Math.round(deg);
+      state.design.els[drag.i] = el;
+      renderStage();
+    } else if (drag.mode === 'move') {
       // snap the element's centre to the canvas centre lines
       const { w, h } = state.design; const snap = w / 90;
       const cx = drag.b0.x + drag.b0.width / 2 + dx; const cy = drag.b0.y + drag.b0.height / 2 + dy;
@@ -247,7 +369,8 @@ function onUp() {
   cancelAnimationFrame(dragRaf);
   applyDrag(); // a fast release must not drop the last movement
   const moved = drag.moved; drag = null;
-  if (moved) { persist(); renderProps(); renderLayers(); drawSelection(); }
+  if (moved) { persist(); renderProps(); renderLayers(); }
+  drawSelection();
 }
 
 /* =================== the pen: draw on the canvas (Instagram «ارسم») =================== */
@@ -347,7 +470,14 @@ function propControl(e, [key, kind, label, options]) {
       return deps.h('div', { class: 'field span-2' }, deps.h('label', { for: id }, label),
         deps.h('textarea', { id, rows: 2, value: e[key] ?? '', dir: e.font === 'en' ? 'ltr' : 'auto', oninput: (ev) => set(ev.target.value) }));
     }
-    case 'number': return numberField(label, e[key], set);
+    case 'number':
+      if (key === 'rotate') {
+        return deps.h('div', { class: 'field rot-field' }, deps.h('span', { class: 'field-label' }, label),
+          deps.h('div', { class: 'rot-row' }, deps.h('span', { class: 'rot-val', dir: 'ltr' }, `${Math.round(e.rotate || 0)}°`),
+            deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', disabled: !e.rotate, onclick: () => { checkpoint(true); e.rotate = 0; renderStage(); persist(); renderProps(); } }, 'صفّر')),
+          deps.h('small', { class: 'muted' }, 'دوّره من المقبض الدائري فوق العنصر (Shift = كل 15°)'));
+      }
+      return numberField(label, e[key], set);
     case 'decimal': return numberField(label, e[key], set, 0.05);
     case 'color': return colorField(label, e[key], set);
     case 'weight': return selectField(label, String(e[key] ?? 800), [['400', 'عادي'], ['600', 'متوسط'], ['700', 'عريض'], ['800', 'عريض جداً']], (v) => set(+v));
@@ -455,7 +585,7 @@ function renderBg() {
       checkpoint(true); d.bg = { ...(d.bg || {}), gradient: v === 'none' ? undefined : v }; renderStage(); persist();
     }),
     selectField('المقاس', sizeKey, Object.entries(SIZES).map(([k, [w, h, n]]) => [k, `${n} (${w}×${h})`]), (k) => {
-      checkpoint(true); const [w, h] = SIZES[k]; d.w = w; d.h = h; renderStage(); persist(); autoFormats();
+      checkpoint(true); const [w, h] = SIZES[k]; pages().forEach((pg) => { pg.w = w; pg.h = h; }); renderStage(); renderPages(); persist(); autoFormats();
     }),
   );
 }
@@ -605,9 +735,9 @@ async function uploadReady(file) {
     els: [{ type: 'image', src: pic.src, x: 0, y: 0, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }],
   };
   stopEditing();
-  state.src = { kind: 'upload', id: 'upload' }; state.design = d; state.base = JSON.stringify(d);
+  state.src = { kind: 'upload', id: 'upload' }; setDeck(d); state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
-  setPane('content'); refreshAll(); renderPickers(); autoFormats();
+  setPane('content'); refreshAll(); renderPickers(); renderPages(); autoFormats();
   const cropped = Math.abs(pic.w / pic.h - w / h) > 0.01;
   deps.toast(cropped ? `الصورة انقصّت من النص لمقاس ${w}×${h} عشان تناسب إنستغرام` : `جاهزة للنشر (${w}×${h})`);
 }
@@ -797,7 +927,7 @@ function renderMusic() {
       h('a', { class: 'btn btn-ghost-dark btn-sm', href: preview.url, download: `beitlahia-${preview.fmt}-${new Date().toISOString().slice(0, 10)}.mp4` }, `نزّل MP4 (${(preview.size / 1048576).toFixed(1)} MB)`)) : '');
 }
 const blobToBase64 = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
-const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : slugOf(state.design));
+const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : slugOf(state.deck));
 const slugOf = (d) => (BUILTIN.some((b) => b.id === d.id) ? d.id : d.id === 'upload' ? 'upload' : 'custom');
 const titleOf = (d) => d.els.filter((e) => (e.type === 'text' || e.type === 'button') && !e.hidden && String(e.text || '').trim())
   .map((e) => String(e.text).replace(/\n/g, ' ')).slice(0, 2).join(' · ') || d.name;
@@ -806,10 +936,14 @@ async function download() {
   const btn = $('studio-download');
   deps.setBusy(btn, true);
   try {
-    const blob = await rasterize('image/png');
-    const a = deps.h('a', { href: URL.createObjectURL(blob), download: `beitlahia-${slug()}-${new Date().toISOString().slice(0, 10)}.png` });
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    const day = new Date().toISOString().slice(0, 10); const all = pages();
+    for (let k = 0; k < all.length; k++) {
+      const blob = await toBlob(await rasterCanvas(all[k]), 'image/png');
+      const a = deps.h('a', { href: URL.createObjectURL(blob), download: `beitlahia-${slug()}-${day}${all.length > 1 ? `-${k + 1}` : ''}.png` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      if (all.length > 1) await new Promise((r) => setTimeout(r, 350)); // browsers drop downloads fired all at once
+    }
   } catch (e) {
     console.error(e); deps.toast('ما زبط التنزيل. تأكد من الإنترنت وجرّب كمان مرة.', true);
   } finally { deps.setBusy(btn, false); }
@@ -828,20 +962,20 @@ async function loadMine() {
   } catch (e) { console.warn('[studio] templates', e); }
 }
 function payload(name) {
-  const json = JSON.stringify({ ...state.design, name });
+  const json = JSON.stringify({ ...state.deck, name });
   if (json.length > 900000) throw new Error('القالب كبير كتير (غالباً صورة مرفوعة). صغّر الصورة أو استخدم صور بيت لاهيا الجاهزة.');
   return { name, design: json, updatedAt: deps.fs.serverTimestamp(), updatedBy: deps.user()?.email || '' };
 }
 async function saveNew() {
   if (!deps.db) { deps.toast('الحفظ بيحتاج تسجيل دخول', true); return; }
-  const name = (prompt('اسم القالب الجديد؟', `${state.design.name} (نسخة)`) || '').trim().slice(0, 60);
+  const name = (prompt('اسم القالب الجديد؟', `${state.deck.name} (نسخة)`) || '').trim().slice(0, 60);
   if (!name) return;
   const btn = $('tpl-save-new'); deps.setBusy(btn, true);
   try {
     const ref = await deps.fs.addDoc(deps.fs.collection(deps.db, 'socialTemplates'), payload(name));
-    state.design.name = name;
-    state.mine.unshift({ id: ref.id, name, design: clone(state.design), at: Date.now() });
-    state.src = { kind: 'mine', id: ref.id }; state.base = JSON.stringify(state.design);
+    state.deck.name = name;
+    state.mine.unshift({ id: ref.id, name, design: clone(state.deck), at: Date.now() });
+    state.src = { kind: 'mine', id: ref.id }; state.base = JSON.stringify(state.deck);
     renderPickers(); persist(); deps.toast('انحفظ القالب ✓');
   } catch (e) { deps.toast(e.message?.startsWith('القالب') ? e.message : 'ما زبط الحفظ', true); } finally { deps.setBusy(btn, false); }
 }
@@ -852,8 +986,8 @@ async function saveChanges() {
   const btn = $('tpl-save'); deps.setBusy(btn, true);
   try {
     await deps.fs.updateDoc(deps.fs.doc(deps.db, 'socialTemplates', m.id), payload(m.name));
-    m.design = clone(state.design); m.design.name = m.name;
-    state.base = JSON.stringify(state.design);
+    m.design = clone(state.deck); m.design.name = m.name;
+    state.base = JSON.stringify(state.deck);
     renderPickers(); persist(); deps.toast('انحفظت التعديلات ✓');
   } catch (e) { deps.toast(e.message?.startsWith('القالب') ? e.message : 'ما زبط الحفظ', true); } finally { deps.setBusy(btn, false); }
 }
@@ -863,16 +997,16 @@ async function deleteMine() {
   try {
     await deps.fs.deleteDoc(deps.fs.doc(deps.db, 'socialTemplates', m.id));
     state.mine = state.mine.filter((x) => x.id !== m.id);
-    state.design = clone(BUILTIN[0]); state.base = JSON.stringify(state.design); state.src = { kind: 'builtin', id: BUILTIN[0].id };
+    setDeck(clone(BUILTIN[0])); state.base = JSON.stringify(state.deck); state.src = { kind: 'builtin', id: BUILTIN[0].id };
     state.sel = -1; state.undo = []; state.redo = [];
-    refreshAll(); renderPickers(); deps.toast('انحذف');
+    refreshAll(); renderPickers(); renderPages(); deps.toast('انحذف');
   } catch { deps.toast('ما زبط الحذف', true); }
 }
 function resetToSource() {
   const d = sourceDesign(state.src.kind, state.src.id);
   if (!d || !dirty()) return;
   if (!confirm('نرجّع القالب زي ما كان ونلغي التعديلات؟')) return;
-  checkpoint(true); state.design = d; state.sel = -1; refreshAll();
+  checkpoint(true); setDeck(d); state.sel = -1; refreshAll(); renderPages(); syncPublishUi();
 }
 
 /* =================== the publishing service =================== */
@@ -902,6 +1036,8 @@ function activityText(method, path, data) {
     if (st === 'uploading') { awaitingVideo.add(post.id); return ''; }
     return done + title;
   }
+  const pg = /^\/posts\/([^/?]+)\/page\/\d+$/.exec(path);
+  if (pg) return st !== 'uploading' && awaitingVideo.delete(pg[1]) && done ? done + title : '';
   let m = /^\/posts\/([^/?]+)\/video$/.exec(path);
   if (m) return awaitingVideo.delete(m[1]) && done ? done + title : '';
   if (/^\/posts\/[^/?]+\/design$/.test(path)) return '';
@@ -1099,11 +1235,14 @@ function syncPublishUi() {
     box.disabled = !c[k];
     box.closest('label').title = c[k] ? '' : `${PLATFORM_NAME[k]} مش مربوط لسا`;
   });
-  const post = $('pub-post').checked; const story = $('pub-story').checked; const m = !!state.music;
+  const post = $('pub-post').checked; const story = $('pub-story').checked; const n = pageCount(); const m = !!state.music && n === 1;
   $('studio-publish').disabled = !['facebook', 'instagram'].some((k) => c[k] && $(`pub-${k}`).checked) || (!post && !story);
   const tall = isTall(state.design);
   const hints = [];
-  if (story) hints.push(m ? 'الستوري: فيديو بالموسيقى على فيسبوك وإنستغرام (بيضل 24 ساعة).' : 'الستوري: صورة على فيسبوك وإنستغرام (بتضل 24 ساعة).');
+  if (n > 1 && post) hints.push(`المنشور: كاروسيل من ${n} صور بنص واحد (سحب يمين وشمال).`);
+  if (n > 1 && story) hints.push(`الستوري: ${n} ستوريات ورا بعض، بنفس الترتيب.`);
+  if (n > 1 && state.music) hints.push('الموسيقى بتشتغل مع صفحة وحدة بس، فرح ينتشر بدونها.');
+  if (story && n === 1) hints.push(m ? 'الستوري: فيديو بالموسيقى على فيسبوك وإنستغرام (بيضل 24 ساعة).' : 'الستوري: صورة على فيسبوك وإنستغرام (بتضل 24 ساعة).');
   if (story && !tall) hints.push('التصميم مش طولي، فبالستوري بيتحط بالنص على خلفية مغبّشة منه.');
   if (post && m) hints.push('المنشور مع الموسيقى: ريل على إنستغرام وفيديو على صفحة الفيسبوك.');
   if (post && !m && tall) hints.push('التصميم طولي، فبالمنشور بيتحط بإطار 4:5 (إنستغرام ما بيقبل صورة أطول بالفيد).');
@@ -1134,13 +1273,15 @@ async function publish() {
     if (+t > Date.now() + 75 * 864e5) { deps.toast('ما بنقدر نجدول لأبعد من 75 يوم', true); return; }
     scheduledAt = t.toISOString();
   }
-  const d = state.design;
+  const d = state.deck;
   const formats = [$('pub-post').checked && 'post', $('pub-story').checked && 'story'].filter(Boolean);
   if (!formats.length) { deps.toast('اختار منشور أو ستوري', true); return; }
-  const m = state.music;
+  const n = pageCount();
+  const m = n === 1 ? state.music : null;
   if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
   const verb = !deps.owner ? 'ينبعت لصاحب المنصة للموافقة' : later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
-  const what = formats.map((f) => (f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
+  const what = formats.map((f) => (n > 1 ? (f === 'story' ? `${n} ستوريات ورا بعض` : `كاروسيل من ${n} صور`)
+    : f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
   if (!confirm(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}. أكمل؟`)) return;
   stopPlay();
   const btn = $('studio-publish');
@@ -1148,10 +1289,12 @@ async function publish() {
   const progress = (t) => { const p = $('studio-progress'); p.hidden = !t; p.textContent = t || ''; };
   const done = [];
   try {
-    const base = await rasterCanvas();
+    if (n > 1) progress('عم نجهّز الصفحات…');
+    const bases = [];
+    for (const pg of pages()) bases.push(await rasterCanvas(pg));
     const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
     for (const fmt of formats) {
-      done.push(await publishJob({ design: d, base, fmt, caption: $('studio-caption').value, platforms, scheduledAt,
+      done.push(await publishJob({ design: d, base: bases[0], more: bases.slice(1), fmt, caption: $('studio-caption').value, platforms, scheduledAt,
         template: slug(), clip, motion: m?.motion, musicName: m ? musicLabel(m) : '', progress }));
     }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
@@ -1165,8 +1308,8 @@ async function publish() {
 }
 
 // one design, one format (post / story), to the chosen platforms: now or at scheduledAt
-async function publishJob({ design, base = null, fmt, caption = '', platforms, scheduledAt = null, template, clip = null, motion = 'zoom-in', musicName = '', progress = () => {}, label = '' }) {
-  const name = label || (fmt === 'story' ? 'الستوري' : 'المنشور');
+async function publishJob({ design, base = null, more = [], fmt, caption = '', platforms, scheduledAt = null, template, clip = null, motion = 'zoom-in', musicName = '', progress = () => {}, label = '' }) {
+  const name = label || (more.length ? (fmt === 'story' ? 'الستوريات' : 'الكاروسيل') : fmt === 'story' ? 'الستوري' : 'المنشور');
   const later = !!scheduledAt;
   const frame = frameFor(fmt, base || (await rasterCanvas(design)), !!clip);
   const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
@@ -1179,12 +1322,24 @@ async function publishJob({ design, base = null, fmt, caption = '', platforms, s
   let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
     image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : caption, platforms, scheduledAt,
     template: template || slugOf(design), title: titleOf(design), story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: musicName,
+    pages: 1 + more.length,
   }) });
   upsertPost(post);
   await saveDesign(post.id, design);
+  post = await uploadPages(post, more, fmt, name, progress);
   if (video) {
     progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later || !deps.owner ? '' : ' وننشره'}…`);
     ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
+    upsertPost(post);
+  }
+  return post;
+}
+// pages 2… of a carousel / stories in a row: one request each (raw JPEG), the last one sends it on its way
+async function uploadPages(post, more, fmt, name, progress) {
+  for (let k = 0; k < more.length; k++) {
+    progress(`${name}: عم نرفع الصفحة ${k + 2} من ${more.length + 1}…`);
+    const jpeg = await toBlob(frameFor(fmt, more[k], false), 'image/jpeg', 0.92);
+    ({ post } = await api(`/posts/${post.id}/page/${k + 2}`, { method: 'PUT', raw: jpeg }));
     upsertPost(post);
   }
   return post;
@@ -1207,12 +1362,12 @@ async function editPost(p) {
   } catch (e) { console.warn('[studio] design', e); }
   if (!design || !Array.isArray(design.els)) design = await designFromImage(p);
   const mode = deps.owner && p.status === 'scheduled' ? 'edit' : 'copy';
-  state.src = { kind: 'post', id: p.id }; state.design = design; state.base = JSON.stringify(design);
+  state.src = { kind: 'post', id: p.id }; setDeck(design); state.base = JSON.stringify(design);
   state.sel = -1; state.undo = []; state.redo = [];
   state.editing = { post: p, mode, orig: clone(design) };
   $('pub-story').checked = !!p.story; $('pub-post').checked = !p.story;
   if (mode === 'copy' && !p.story) { $('studio-caption').value = p.caption || ''; state.caption = p.caption || ''; $('studio-caption').dispatchEvent(new Event('input')); }
-  setPane('content'); refreshAll(); renderPickers(); syncPublishUi(); renderEditing();
+  setPane('content'); refreshAll(); renderPickers(); renderPages(); syncPublishUi(); renderEditing();
   $('studio-editing').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // a post made before designs were kept: its picture becomes the design (you can add elements on top)
@@ -1262,7 +1417,8 @@ async function saveEdit(btn) {
   const p = state.posts.find((x) => x.id === ed.post.id) || ed.post;
   const t = new Date($('ed-at').value);
   if (Number.isNaN(+t) || +t < Date.now() + 5 * 60e3) { deps.toast('الموعد لازم يكون بعد 5 دقايق على الأقل', true); return; }
-  const m = state.music;
+  const n = pageCount();
+  const m = n === 1 ? state.music : null;
   if (p.video && !m && !confirm(`ال${p.story ? 'ستوري' : 'منشور'} كان فيه موسيقى، وهي مش محمّلة هون. تحفظه صورة بدون موسيقى؟`)) return;
   if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
   const progress = (x) => { const el = $('ed-progress'); if (el) { el.hidden = !x; el.textContent = x || ''; } };
@@ -1270,18 +1426,21 @@ async function saveEdit(btn) {
   try {
     const fmt = p.story ? 'story' : 'post';
     const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
-    const frame = frameFor(fmt, await rasterCanvas(), !!clip);
+    const bases = [];
+    for (const pg of pages()) bases.push(await rasterCanvas(pg));
+    const frame = frameFor(fmt, bases[0], !!clip);
     const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
     const video = clip ? await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion: m.motion, onProgress: (k) => progress(`عم نعمل الفيديو… ${Math.round(k * 100)}%`) }) : null;
     progress('عم نحفظ…');
     let { post } = await api(`/posts/${p.id}`, { method: 'PUT', body: JSON.stringify({
-      image: await blobToBase64(jpeg), caption: $('ed-caption')?.value ?? p.caption, title: titleOf(state.design),
-      video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '', scheduledAt: t.toISOString(),
+      image: await blobToBase64(jpeg), caption: $('ed-caption')?.value ?? p.caption, title: titleOf(state.deck),
+      video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '', scheduledAt: t.toISOString(), pages: n,
     }) });
     upsertPost(post);
-    await saveDesign(p.id, state.design);
+    await saveDesign(p.id, state.deck);
+    post = await uploadPages(post, bases.slice(1), fmt, 'التعديل', progress);
     if (video) { progress(`عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)…`); ({ post } = await api(`/posts/${p.id}/video`, { method: 'PUT', raw: video })); upsertPost(post); }
-    state.base = JSON.stringify(state.design); ed.orig = clone(state.design); ed.post = post;
+    state.base = JSON.stringify(state.deck); ed.orig = clone(state.deck); ed.post = post;
     persist();
     deps.toast(`انحفظ التعديل ✓ بينزل ${whenFmt.format(new Date(post.scheduledAt))}`);
     renderEditing();
@@ -1320,9 +1479,9 @@ function editCampaignItem(key) {
   const it = campaignItem(key); if (!it) return;
   if (dirty() && state.src.kind !== 'campaign' && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح تصميم الحملة وتتركها؟')) return;
   stopEditing();
-  state.src = { kind: 'campaign', id: key }; state.design = it.design; state.base = JSON.stringify(it.orig);
+  state.src = { kind: 'campaign', id: key }; setDeck(it.design); state.base = JSON.stringify(it.orig);
   state.sel = -1; state.undo = []; state.redo = [];
-  setPane('content'); refreshAll(); renderPickers(); autoFormats();
+  setPane('content'); refreshAll(); renderPickers(); renderPages(); autoFormats();
   $('studio-stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
   deps.toast(`فتحت «${it.label}» بالمحرر. التعديلات بتنحفظ بالحملة لحالها.`);
 }
@@ -1663,7 +1822,8 @@ function renderPosts() {
       deps.h('img', { src: `${WORKER}/img/${p.id}.jpg`, alt: '', loading: 'lazy', width: 64, height: 80 }),
       deps.h('div', { class: 'sp-body' },
         deps.h('div', { class: 'sp-top' }, deps.h('span', { class: `st ${cls}` }, label),
-          p.story ? deps.h('span', { class: 'sp-badge' }, 'ستوري') : '', p.video ? deps.h('span', { class: 'sp-badge is-music', title: p.music || '' }, p.story ? '♪ فيديو' : '♪ ريل') : '',
+          p.story ? deps.h('span', { class: 'sp-badge' }, p.pages > 1 ? `${p.pages} ستوريات` : 'ستوري') : '',
+          !p.story && p.pages > 1 ? deps.h('span', { class: 'sp-badge is-carousel' }, `كاروسيل · ${p.pages}`) : '', p.video ? deps.h('span', { class: 'sp-badge is-music', title: p.music || '' }, p.story ? '♪ فيديو' : '♪ ريل') : '',
           deps.h('strong', {}, p.title || tname)),
         deps.h('p', { class: 'muted small' }, `${tname} · ${when}`),
         deps.h('div', { class: 'sp-res' }, results), reviewPost(p), statsPanel(p)),
@@ -1724,6 +1884,7 @@ export function initStudio(d) {
     if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
     if (e.key === 'Escape' && state.pen.on && !typing) { setPen(false); return; }
+    if (!typing && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); goPage(state.page + (e.key === 'PageDown' ? 1 : -1)); return; }
     if (typing || state.sel < 0) return;
     if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); act('dup'); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); act('del'); return; }
@@ -1738,8 +1899,8 @@ export function initStudio(d) {
 export function showStudio() {
   if (started) { renderStage(); return; }
   started = true;
-  renderPickers(); renderAdd(); setPane('content'); renderStage(); renderMusic(); autoFormats(); persist(); setPostsView(state.postsView);
-  fontsReady.then(() => { renderPickers(); renderStage(); }); // re-fit the texts once the real fonts are in
+  renderPickers(); renderAdd(); setPane('content'); renderStage(); renderPages(); renderMusic(); autoFormats(); persist(); setPostsView(state.postsView);
+  fontsReady.then(() => { renderPickers(); renderStage(); renderPages(); }); // re-fit the texts once the real fonts are in
   loadMine();
   checkConnection();
 }

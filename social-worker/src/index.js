@@ -24,6 +24,7 @@
 //   GET    /posts               admin: latest posts (scheduled, published, failed)
 //   POST   /posts               admin: { image, video?: true, duration?, music?, caption, platforms[], scheduledAt?, template, title, story? }
 //   PUT    /posts/:id/video     admin: the MP4 of a post made with { video: true } (raw bytes) → publish/schedule
+//   PUT    /posts/:id/page/:n   admin: page n (2…10) of a post made with { pages: N } (raw JPEG) → after the last one: publish/schedule
 //   PATCH  /posts/:id           admin: { scheduledAt } move a scheduled post (the studio calendar)
 //   PUT    /posts/:id           admin: edit a scheduled post { image, caption?, title?, video?, scheduledAt? }
 //   PUT|GET /posts/:id/design   admin: the post's editable design (studio JSON), to open it again in the editor
@@ -38,6 +39,8 @@
 //   post  + video → Facebook page video        · Instagram reel (also shown in the feed)
 //   story + image → Facebook page photo story  · Instagram story
 //   story + video → Facebook page video story  · Instagram story (video, with its music)
+//   post  + pages → Facebook multi-photo post  · Instagram carousel (2…10 pictures, one caption)
+//   story + pages → one story per page, in order, on both
 // The video is made in the admin panel (the design + the chosen music, as MP4/H.264/AAC); the image
 // always comes along too (the thumbnail in the posts list).
 
@@ -49,6 +52,7 @@ const MAX_VIDEO = 24 * 1024 * 1024; // below KV's 25 MiB value limit (a 60 s sto
 const MAX_CAPTION = 2200;          // Instagram's caption limit
 const MAX_AHEAD = 75 * 864e5;      // schedule at most ~75 days ahead
 const PLATFORMS = ['facebook', 'instagram'];
+const MAX_PAGES = 10;       // Instagram's carousel limit
 
 export default {
   async fetch(req, env, ctx) {
@@ -188,7 +192,7 @@ async function route(req, env, ctx) {
 
   const owner = isOwner(env, user);
   if (!owner && req.method !== 'GET') {
-    const attachment = req.method === 'PUT' && ['video', 'design'].includes(parts[2]);
+    const attachment = req.method === 'PUT' && ['video', 'design', 'page'].includes(parts[2]);
     if (!attachment || post.preparedBy !== user.uid || !['pending', 'uploading'].includes(post.status)) {
       throw fail(403, 'الموافقة وتعديل المنشورات الجاهزة للنشر لصاحب المنصة بس');
     }
@@ -251,8 +255,12 @@ async function route(req, env, ctx) {
     post.video = body.video === true;
     post.duration = post.video ? Math.max(0, Math.min(90, Number(body.duration) || 0)) : 0;
     post.music = post.video ? String(body.music || '').slice(0, 120) : '';
-    post.status = post.video ? 'uploading' : 'scheduled';
+    await dropPages(env, post);
+    post.pages = pageCountOf(body, post.video);
+    post.got = [];
+    post.status = post.video || post.pages > 1 ? 'uploading' : 'scheduled';
     post.results = {};
+    post.done = {};
     post.editedAt = new Date().toISOString();
     await savePost(env, post);
     return json({ post });
@@ -266,9 +274,23 @@ async function route(req, env, ctx) {
     if (buf.byteLength < 1000 || String.fromCharCode(...head.slice(4, 8)) !== 'ftyp') throw fail(400, 'لازم الفيديو يكون MP4');
     if (buf.byteLength > MAX_VIDEO) throw fail(400, 'الفيديو أكبر من 24MB. قصّر مدة الموسيقى.');
     await env.SOCIAL.put(`vid:${post.id}`, buf, { expirationTtl: post.keepFor || 120 * 86400 });
-    if (post.preparedBy && !post.approvedAt) { post.status = 'pending'; await savePost(env, post); return json({ post }); }
-    if (post.scheduledAt) { post.status = 'scheduled'; await savePost(env, post); return json({ post }); }
-    return json({ post: await publishPost(env, post) });
+    return json({ post: await uploaded(env, post) });
+  }
+
+  // page n of a carousel / multi-page story (page 1 came with the post)
+  if (req.method === 'PUT' && parts[2] === 'page') {
+    const n = Number(parts[3]);
+    if (post.status !== 'uploading') throw fail(409, 'الصفحات انرفعت من قبل');
+    if (!Number.isInteger(n) || n < 2 || n > (post.pages || 1)) throw fail(400, 'رقم الصفحة مش صالح');
+    if (Number(req.headers.get('Content-Length') || 0) > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw fail(400, 'لازم الصورة تكون JPEG');
+    if (bytes.length > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
+    await env.SOCIAL.put(`img:${post.id}-p${n}`, bytes, { expirationTtl: post.keepFor || 120 * 86400 });
+    post.got = [...new Set([...(post.got || []), n])].sort((a, b) => a - b);
+    const all = post.got.length >= (post.pages || 1) - 1;
+    if (!all) { await savePost(env, post); return json({ post }); }
+    return json({ post: await uploaded(env, post) });
   }
 
   if (req.method === 'POST' && parts[2] === 'publish') {
@@ -286,12 +308,32 @@ async function route(req, env, ctx) {
     await env.SOCIAL.delete(`vid:${id}`);
     await env.SOCIAL.delete(`des:${id}`);
     await env.SOCIAL.delete('approval:' + id);
+    await dropPages(env, post);
     return json({ ok: true });
   }
   throw fail(405, 'طلب مش مدعوم');
 }
 
 /* ---------------- posts ---------------- */
+// how many pictures: 1 (default) or 2…10 (carousel / stories in a row); music goes with one page only
+function pageCountOf(body, video) {
+  const n = body.pages == null ? 1 : Number(body.pages);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_PAGES) throw fail(400, `عدد الصفحات لازم يكون من 1 لـ ${MAX_PAGES}`);
+  if (n > 1 && video) throw fail(400, 'الموسيقى بتشتغل مع صفحة وحدة بس');
+  return n;
+}
+async function dropPages(env, post) {
+  for (let k = 2; k <= MAX_PAGES; k++) await env.SOCIAL.delete(`img:${post.id}-p${k}`);
+}
+// everything a post needs is uploaded: wait for approval, wait for its time, or go out now
+async function uploaded(env, post) {
+  if (post.preparedBy && !post.approvedAt) { post.status = 'pending'; await savePost(env, post); return post; }
+  if (post.scheduledAt && Date.parse(post.scheduledAt) > Date.now()) { post.status = 'scheduled'; await savePost(env, post); return post; }
+  return publishPost(env, post);
+}
+const imageUrls = (base, post) => [`${base}/img/${post.id}.jpg`,
+  ...Array.from({ length: Math.max(0, (post.pages || 1) - 1) }, (_, i) => `${base}/img/${post.id}-p${i + 2}.jpg`)];
+
 function jpegFrom(image) {
   const b64 = typeof image === 'string' ? image.replace(/^data:image\/jpeg;base64,/, '') : '';
   let bytes;
@@ -318,6 +360,7 @@ async function createPost(env, body, user) {
   // raw bytes): decoding megabytes of base64 here would blow the Worker's CPU budget.
   const video = body.video === true;
   const duration = video ? Math.max(0, Math.min(90, Number(body.duration) || 0)) : 0;
+  const pages = pageCountOf(body, video);
 
   let scheduledAt = null;
   if (body.scheduledAt) {
@@ -340,8 +383,9 @@ async function createPost(env, body, user) {
     video,
     duration,
     music: video ? String(body.music || '').slice(0, 120) : '',
+    pages,
     preparedBy: isOwner(env, user) ? null : user.uid,
-    status: video ? 'uploading' : !isOwner(env, user) ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
+    status: video || pages > 1 ? 'uploading' : !isOwner(env, user) ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
     scheduledAt,
     createdAt: new Date().toISOString(),
     createdBy: user.email || user.uid,
@@ -732,6 +776,7 @@ async function publishPost(env, post) {
   const tk = meta.pageToken || '';
   const base = env.PUBLIC_BASE_URL.replace(/\/$/, '');
   const imageUrl = `${base}/img/${post.id}.jpg`;
+  const urls = imageUrls(base, post);
   const videoUrl = post.video ? `${base}/vid/${post.id}.mp4` : '';
   const results = post.results || {};
 
@@ -740,9 +785,13 @@ async function publishPost(env, post) {
     try {
       if (p === 'facebook') {
         if (!meta.pageId) throw new Error('فيسبوك مش مربوط');
-        results.facebook = { ...(await publishFacebook(env, meta, post, imageUrl, videoUrl)), at: new Date().toISOString() };
+        results.facebook = { ...(urls.length > 1 ? await facebookPages(env, meta, post, urls) : await publishFacebook(env, meta, post, imageUrl, videoUrl)), at: new Date().toISOString() };
       } else {
         if (!meta.igId) throw new Error('إنستغرام مش مربوط');
+        if (urls.length > 1) {
+          results.instagram = { ...(await instagramPages(env, meta, post, urls)), at: new Date().toISOString() };
+          continue;
+        }
         const params = post.story
           ? (videoUrl ? { video_url: videoUrl, media_type: 'STORIES' } : { image_url: imageUrl, media_type: 'STORIES' })
           : (videoUrl ? { video_url: videoUrl, media_type: 'REELS', caption: post.caption, share_to_feed: 'true' } : { image_url: imageUrl, caption: post.caption });
@@ -764,6 +813,56 @@ async function publishPost(env, post) {
   post.publishedAt = ok ? new Date().toISOString() : post.publishedAt || null;
   await savePost(env, post);
   return post;
+}
+
+// several pictures. Post: they go up unpublished, then one feed post holds them all (Facebook's
+// multi-photo post). Story: one photo story per page, in order; the ones already out are remembered
+// (post.done) so a retry only adds the missing ones.
+async function facebookPages(env, meta, post, urls) {
+  const tk = meta.pageToken; const page = meta.pageId;
+  if (!post.story) {
+    const ids = [];
+    for (const url of urls) ids.push((await graphCall(env, `${page}/photos`, { url, published: 'false' }, 'POST', tk)).id);
+    const media = Object.fromEntries(ids.map((id, i) => [`attached_media[${i}]`, JSON.stringify({ media_fbid: id })]));
+    const r = await graphCall(env, `${page}/feed`, { message: post.caption, ...media }, 'POST', tk);
+    return { id: r.id, pages: urls.length };
+  }
+  const done = (post.done ||= {}).facebook ||= [];
+  for (let i = done.length; i < urls.length; i++) {
+    const ph = await graphCall(env, `${page}/photos`, { url: urls[i], published: 'false' }, 'POST', tk);
+    const r = await graphCall(env, `${page}/photo_stories`, { photo_id: ph.id }, 'POST', tk);
+    done.push(r.post_id || ph.id);
+    await savePost(env, post);
+  }
+  return { id: done[0], ids: done, story: true, pages: urls.length };
+}
+// Instagram: a carousel (an item container per picture, then one CAROUSEL container), or stories in a row
+async function instagramPages(env, meta, post, urls) {
+  const tk = meta.pageToken; const ig = meta.igId;
+  if (!post.story) {
+    const children = [];
+    for (const url of urls) {
+      const c = await graphCall(env, `${ig}/media`, { image_url: url, is_carousel_item: 'true' }, 'POST', tk);
+      await waitForContainer(env, c.id, tk);
+      children.push(c.id);
+    }
+    const box = await graphCall(env, `${ig}/media`, { media_type: 'CAROUSEL', children: children.join(','), caption: post.caption }, 'POST', tk);
+    await waitForContainer(env, box.id, tk);
+    const r = await graphCall(env, `${ig}/media_publish`, { creation_id: box.id }, 'POST', tk);
+    let permalink = '';
+    try { permalink = (await graphCall(env, r.id, { fields: 'permalink' }, 'GET', tk)).permalink || ''; } catch { /* optional */ }
+    return { id: r.id, permalink, pages: urls.length };
+  }
+  const done = (post.done ||= {}).instagram ||= [];
+  for (let i = done.length; i < urls.length; i++) {
+    const c = await graphCall(env, `${ig}/media`, { image_url: urls[i], media_type: 'STORIES' }, 'POST', tk);
+    await waitForContainer(env, c.id, tk);
+    done.push((await graphCall(env, `${ig}/media_publish`, { creation_id: c.id }, 'POST', tk)).id);
+    await savePost(env, post);
+  }
+  let permalink = '';
+  try { permalink = (await graphCall(env, done[0], { fields: 'permalink' }, 'GET', tk)).permalink || ''; } catch { /* optional */ }
+  return { id: done[0], ids: done, permalink, story: true, pages: urls.length };
 }
 
 // Facebook page: feed photo / feed video / photo story / video story

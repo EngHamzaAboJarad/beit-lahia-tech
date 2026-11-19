@@ -54,6 +54,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (url.endsWith('/PAGE/photos')) return ok(body.published === 'false' ? { id: 'ph9' } : { id: 'ph1', post_id: 'PAGE_123' });
     if (url.endsWith('/PAGE/photo_stories')) return ok({ success: true, post_id: 'PAGE_S1' });
     if (url.endsWith('/PAGE/videos')) return ok({ id: 'V1' });
+    if (url.endsWith('/PAGE/feed')) return ok({ id: 'PAGE_FEED1' });
     if (url.endsWith('/PAGE/video_stories')) return ok(body.upload_phase === 'start' ? { video_id: 'VS1', upload_url: 'https://rupload.facebook.com/video-upload/v23.0/VS1' } : { success: true, post_id: 'PAGE_VS1' });
     if (url.endsWith('/IGU/media')) return failInstagram ? new Response(JSON.stringify({ error: { message: 'bad image' } }), { status: 400 }) : ok({ id: 'C1' });
     if (url.includes('/C1?')) return ok({ status_code: 'FINISHED' });
@@ -393,6 +394,47 @@ await t('statistics name the Meta permission a #10 refusal needs', async () => {
     assert.equal(need('instagram', 'reach'), 'instagram_manage_insights');
     assert.deepEqual(data.rows.instagram, { likes: 1, comments: 0, reach: null });
   } finally { globalThis.fetch = saved; }
+});
+await t('carousel: page 1 with the post, pages 2… after it, then one multi-photo post and one IG carousel', async () => {
+  const jpg = Buffer.from(jpeg.split(',')[1], 'base64');
+  assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], pages: 11 } })).status, 400);
+  assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], pages: 2, video: true } })).status, 400);
+  const before = calls.length;
+  const { post } = (await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'سلايدات', platforms: ['facebook', 'instagram'], pages: 3 } })).data;
+  assert.equal(post.status, 'uploading');
+  assert.equal((await call('PUT', `/posts/${post.id}/page/4`, { token: admin, raw: jpg })).status, 400);
+  assert.equal((await call('PUT', `/posts/${post.id}/page/2`, { token: admin, raw: jpg })).data.post.status, 'uploading');
+  const done = (await call('PUT', `/posts/${post.id}/page/3`, { token: admin, raw: jpg })).data.post;
+  assert.equal(done.status, 'published');
+  assert.equal((await call('GET', `/img/${post.id}-p3.jpg`)).status, 200);
+  const mine = calls.slice(before);
+  const photos = mine.filter((c) => c.url.endsWith('/PAGE/photos'));
+  assert.equal(photos.length, 3); assert.ok(photos.every((c) => c.body.published === 'false'));
+  assert.deepEqual(photos.map((c) => c.body.url), [1, 2, 3].map((k) => `https://social.example/img/${post.id}${k === 1 ? '' : '-p' + k}.jpg`));
+  const feed = mine.find((c) => c.url.endsWith('/PAGE/feed'));
+  assert.equal(feed.body.message, 'سلايدات'); assert.equal(JSON.parse(feed.body['attached_media[2]']).media_fbid, 'ph9');
+  assert.equal(done.results.facebook.id, 'PAGE_FEED1');
+  const media = mine.filter((c) => c.url.endsWith('/IGU/media')).map((c) => c.body);
+  assert.equal(media.filter((b) => b.is_carousel_item === 'true').length, 3);
+  const box = media.find((b) => b.media_type === 'CAROUSEL');
+  assert.equal(box.children, 'C1,C1,C1'); assert.equal(box.caption, 'سلايدات');
+  assert.equal(done.results.instagram.pages, 3);
+});
+await t('stories in a row: one per page, and a retry only adds the missing ones', async () => {
+  const jpg = Buffer.from(jpeg.split(',')[1], 'base64');
+  failInstagram = true;
+  const before = calls.length;
+  const { post } = (await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook', 'instagram'], story: true, pages: 2 } })).data;
+  const first = (await call('PUT', `/posts/${post.id}/page/2`, { token: admin, raw: jpg })).data.post;
+  assert.equal(first.status, 'partial');
+  assert.deepEqual(first.results.facebook.ids, ['PAGE_S1', 'PAGE_S1']);
+  failInstagram = false;
+  const again = (await call('POST', `/posts/${post.id}/publish`, { token: admin })).data.post;
+  assert.equal(again.status, 'published');
+  const mine = calls.slice(before);
+  assert.equal(mine.filter((c) => c.url.endsWith('/PAGE/photo_stories')).length, 2); // facebook not repeated
+  assert.equal(mine.filter((c) => c.url.endsWith('/IGU/media') && c.body.media_type === 'STORIES').length, 3); // the refused try + the two that went out
+  assert.deepEqual(again.results.instagram.ids, ['IG1', 'IG1']);
 });
 await t('shared photos can be reused by another studio account and deduplicate by content', async () => {
   const body = { name: 'Trainer', image: jpeg };
