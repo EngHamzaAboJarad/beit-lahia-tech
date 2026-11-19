@@ -7,7 +7,7 @@ import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fit
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
 import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=8';
-import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=3';
+import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=4';
 import { withActivity, startActivity, logAction } from './admin-activity.js?v=2';
 import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref } from './admin-people.js?v=1';
 

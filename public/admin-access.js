@@ -63,7 +63,7 @@ export async function loadAccess() {
     rows = [
       ...a.docs.map((d) => ({ kind: 'admin', id: d.id, ...d.data() })),
       ...i.docs.map((d) => ({ kind: 'invite', id: d.id, ...d.data() })),
-    ].map((r) => ({ ...r, perms: Array.isArray(r.perms) ? r.perms : null, at: r.createdAt?.toMillis?.() || 0 }))
+    ].map((r) => ({ ...r, email: r.email || ownEmail(r), perms: Array.isArray(r.perms) ? r.perms : null, at: r.createdAt?.toMillis?.() || 0 }))
       .sort((x, y) => (isOwnerRow(y) - isOwnerRow(x)) || (y.at - x.at));
     render();
     loadActivity();
@@ -73,6 +73,8 @@ export async function loadAccess() {
   }
 }
 const isOwnerRow = (r) => (r.email || '').toLowerCase() === OWNER_EMAIL;
+// an admin document made by hand in the console may have no e-mail: for your own account it's known
+const ownEmail = (r) => (r.kind === 'admin' && r.id === deps.auth.currentUser?.uid ? (deps.auth.currentUser.email || '').toLowerCase() : '');
 
 const seenOf = (uid) => (typeof act !== 'undefined' ? act.seen.find((x) => x.uid === uid) : null);
 function render() {
@@ -94,7 +96,7 @@ function render() {
       h('span', { class: `acc-card-av${online ? ' is-online' : ''}`, 'aria-hidden': 'true' }, initial(r.name || r.email)),
       h('div', { class: 'acc-card-id' },
         h('strong', {}, r.name || r.email || '(بدون إيميل)'),
-        h('bdi', { dir: 'ltr' }, r.email || `uid: ${r.id}`)),
+        r.name && r.email ? h('bdi', { dir: 'ltr' }, r.email) : r.email ? '' : h('bdi', { dir: 'ltr' }, `uid: ${r.id}`)),
       h('span', { class: `acc-role ${role[1]}` }, role[0]));
     const meta = h('div', { class: 'acc-card-meta' },
       sub ? h('span', { class: online ? 'is-online' : '' }, sub) : '',
@@ -260,6 +262,8 @@ async function loadActivity() {
     act.seen = seen.docs.map((d) => ({ uid: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
   } catch (e) { console.error(e); act.seen = []; }
   act.log = []; act.last = null; act.done = false;
+  // still no e-mail? the activity log knows it once that admin has opened the panel
+  rows.forEach((r) => { if (!r.email && r.kind === 'admin') r.email = act.seen.find((x) => x.uid === r.id)?.email || ''; });
   renderPeople();
   render();
   await loadLog();
