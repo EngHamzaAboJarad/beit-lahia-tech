@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<title>ربط فيسبوك</title><p>عم نرجع للاستوديو…</p>
+<script>
+const params = new URLSearchParams(location.search);
+const expected = sessionStorage.getItem('studio-facebook-state');
+sessionStorage.removeItem('studio-facebook-state');
+const state = params.get('state');
+const result = expected && state === expected && params.get('code')
+  ? { state, code: params.get('code') }
+  : { error: 'ما اكتمل ربط فيسبوك. افتح الاستوديو وجرّب الربط من جديد.' };
+sessionStorage.setItem('studio-facebook-result', JSON.stringify(result));
+location.replace('/admin#studio');
+</script></html>

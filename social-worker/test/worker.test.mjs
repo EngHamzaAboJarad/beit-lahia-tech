@@ -65,7 +65,7 @@ globalThis.fetch = async (url, init = {}) => {
 };
 
 const env = {
-  SOCIAL: kv(), FIREBASE_PROJECT_ID: PROJECT, PUBLIC_BASE_URL: 'https://social.example',
+  SOCIAL: kv(), OWNER_EMAIL: 'admin1@x.test', FIREBASE_PROJECT_ID: PROJECT, PUBLIC_BASE_URL: 'https://social.example',
   ALLOWED_ORIGINS: 'https://beitlahia.tech', GRAPH_VERSION: 'v23.0', META_PAGE_TOKEN: 'secret', FB_PAGE_ID: 'PAGE', IG_USER_ID: 'IGU',
 };
 const ctx = { waitUntil: (p) => p };
@@ -294,7 +294,7 @@ await t('daily connection check alerts when Meta refuses the token', async () =>
   assert.equal(env.MAIL.sent.length, 1);
   const body = Buffer.from(env.MAIL.sent[0].raw.split('\r\n\r\n')[1].replace(/\r\n/g, ''), 'base64').toString();
   assert.match(body, /Session has expired/);
-  delete env.MAIL; delete env.OWNER_EMAIL;
+  delete env.MAIL;
 });
 await t('a scheduled story keeps its design and can be edited before it goes out', async () => {
   const when = new Date(Date.now() + 3600e3).toISOString();
@@ -323,5 +323,84 @@ await t('a scheduled story keeps its design and can be edited before it goes out
   assert.equal((await call('PUT', `/posts/${pub.data.post.id}`, { token: admin, body: { image: jpeg2 } })).status, 409);
   await call('DELETE', `/posts/${id}`, { token: admin });
   assert.equal(await env.SOCIAL.get(`des:${id}`), null);
+});
+await t('only the owner can release a studio submission, including scheduled videos', async () => {
+  const staff = await idToken('social1');
+  const body = { image: jpeg, platforms: ['facebook'] };
+  const draft = (await call('POST', '/posts', { token: staff, body })).data.post;
+  assert.equal(draft.status, 'pending');
+  assert.deepEqual(draft.results, {});
+  for (const action of ['publish', 'approve']) {
+    assert.equal((await call('POST', '/posts/' + draft.id + '/' + action, { token: staff })).status, 403);
+  }
+  const path = '/posts/' + draft.id + '/approve';
+  for (const reply of await Promise.all([call('POST', path, { token: admin }), call('POST', path, { token: admin })])) {
+    assert.equal(reply.data.post.status, 'approved');
+  }
+  const countBefore = calls.filter(c => c.url.endsWith('/PAGE/photos')).length;
+  await runDue(env);
+  await runDue(env);
+  assert.equal(calls.filter(c => c.url.endsWith('/PAGE/photos')).length, countBefore + 1);
+  assert.equal((await call('POST', path, { token: admin })).status, 409);
+  const scheduledAt = new Date(Date.now() + 3600e3).toISOString();
+  const video = (await call('POST', '/posts', { token: staff, body: { ...body, video: true, scheduledAt } })).data.post;
+  const base = '/posts/' + video.id;
+  assert.equal((await call('POST', base + '/approve', { token: admin })).status, 409);
+  assert.equal((await call('PUT', base + '/video', { token: staff, raw: mp4 })).data.post.status, 'pending');
+  assert.equal((await call('POST', base + '/approve', { token: admin })).data.post.status, 'approved');
+  await runDue(env);
+  assert.equal((await env.SOCIAL.get('post:' + video.id, 'json')).status, 'scheduled');
+  assert.equal((await call('PUT', base, { token: staff, body })).status, 403);
+  assert.equal((await call('PATCH', base, { token: staff, body: { scheduledAt } })).status, 403);
+});
+await t('published post statistics keep unavailable metrics separate from zero', async () => {
+  const body = { image: jpeg, platforms: ['instagram', 'facebook'] };
+  const post = (await call('POST', '/posts', { token: admin, body })).data.post;
+  const saved = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/IG1/insights?')) return Response.json({ data: [{ values: [{ value: 19 }] }] });
+    if (String(url).includes('/IG1?')) return Response.json({ like_count: 0, comments_count: 3 });
+    if (String(url).includes('/PAGE_123/reactions?') && new URL(url).searchParams.get('type') === 'LIKE') {
+      return Response.json({ data: [], summary: { total_count: 2 } });
+    }
+    if (String(url).includes('/PAGE_123/comments?')) return Response.json({ error: { code: 200 } }, { status: 403 });
+    return saved(url, init);
+  };
+  try {
+    const stats = await call('GET', '/posts/' + post.id + '/stats', { token: admin });
+    assert.deepEqual(stats.data.rows.instagram, { likes: 0, comments: 3, reach: 19 });
+    assert.equal(stats.data.rows.facebook.reach, null);
+    assert.equal(stats.data.rows.facebook.likes, 2);
+    assert.equal(stats.data.rows.facebook.comments, null);
+    assert.ok(stats.data.issues.some(e => e.platform === 'facebook' && e.metric === 'comments' && e.code === 200));
+  } finally { globalThis.fetch = saved; }
+});
+await t('statistics name the Meta permission a #10 refusal needs', async () => {
+  const post = (await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['instagram', 'facebook'] } })).data.post;
+  const saved = globalThis.fetch;
+  const refuse = () => Response.json({ error: { code: 10, message: '(#10) needs permission' } }, { status: 403 });
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/IG1/insights?') || u.includes('/PAGE_123/reactions?') || u.includes('/PAGE_123/comments?')) return refuse();
+    if (u.includes('/IG1?')) return Response.json({ like_count: 1, comments_count: 0 });
+    return saved(url, init);
+  };
+  try {
+    const { data } = await call('GET', '/posts/' + post.id + '/stats', { token: admin });
+    const need = (platform, metric) => data.issues.find(e => e.platform === platform && e.metric === metric)?.need;
+    assert.equal(need('facebook', 'likes'), 'pages_read_user_content');
+    assert.equal(need('facebook', 'comments'), 'pages_read_user_content');
+    assert.equal(need('instagram', 'reach'), 'instagram_manage_insights');
+    assert.deepEqual(data.rows.instagram, { likes: 1, comments: 0, reach: null });
+  } finally { globalThis.fetch = saved; }
+});
+await t('shared photos can be reused by another studio account and deduplicate by content', async () => {
+  const body = { name: 'Trainer', image: jpeg };
+  const staff = await idToken('social1');
+  const photo = (await call('POST', '/library', { token: staff, body })).data;
+  assert.equal((await call('POST', '/library', { token: admin, body })).data.id, photo.id);
+  assert.deepEqual((await call('GET', '/library', { token: admin })).data.photos, [photo]);
+  assert.equal((await call('GET', '/library/' + photo.id, { token: admin })).data.image, jpeg);
+  assert.equal((await call('GET', '/library/' + photo.id, { token: await idToken('content1') })).status, 403);
 });
 console.log(`\n${n} tests passed`);

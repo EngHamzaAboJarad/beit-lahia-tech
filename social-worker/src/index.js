@@ -95,6 +95,28 @@ async function route(req, env, ctx) {
     if (!isOwner(env, owner)) throw fail(403, 'ربط الحسابات لصاحب المنصة بس');
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : null;
     if (req.method === 'GET' && parts.length === 1) return json(await connectStatus(env));
+    if (req.method === 'POST' && parts[1] === 'oauth-start') {
+      const origin = req.headers.get('Origin');
+      if (!origin || !corsHeaders(req, env)['Access-Control-Allow-Origin']) throw fail(403, 'عنوان الاستوديو مش معتمد');
+      const saved = await getMeta(env);
+      const appId = env.META_APP_ID || saved?.appId;
+      const appSecret = env.META_APP_SECRET || saved?.appSecret;
+      if (!appId || !appSecret) throw fail(409, 'أضف META_APP_ID وMETA_APP_SECRET لإعدادات خدمة النشر');
+      const state = crypto.randomUUID();
+      const redirect = origin + '/social-callback.html';
+      await env.SOCIAL.put('oauth:' + state, JSON.stringify({ uid: owner.uid, redirect, appId, appSecret }), { expirationTtl: 600 });
+      const params = new URLSearchParams({ client_id: appId, redirect_uri: redirect, state, response_type: 'code', scope: [...SCOPES_NEEDED, ...STATS_SCOPES].join(',') });
+      if (env.META_LOGIN_CONFIG_ID) params.set('config_id', env.META_LOGIN_CONFIG_ID);
+      return json({ state, url: 'https://www.facebook.com/' + (env.GRAPH_VERSION || 'v23.0') + '/dialog/oauth?' + params });
+    }
+    if (req.method === 'POST' && parts[1] === 'oauth-finish') {
+      const key = 'oauth:' + body.state;
+      const flow = await env.SOCIAL.get(key, 'json');
+      if (!flow || flow.uid !== owner.uid || !body.code) throw fail(400, 'جلسة الربط انتهت. جرّب من جديد.');
+      await env.SOCIAL.delete(key);
+      const data = await graphGet(env, 'oauth/access_token', { client_id: flow.appId, client_secret: flow.appSecret, redirect_uri: flow.redirect, code: body.code });
+      return json({ pages: await connectPages(env, { ...flow, userToken: data.access_token }) });
+    }
     if (req.method === 'POST' && parts[1] === 'pages') return json({ pages: await connectPages(env, body) });
     if (req.method === 'POST' && parts[1] === 'select') return json(await connectSelect(env, body, owner));
     if (req.method === 'POST' && parts[1] === 'test') return json(await connectStatus(env, true));
@@ -115,6 +137,29 @@ async function route(req, env, ctx) {
     throw fail(405, 'طلب مش مدعوم');
   }
 
+  if (parts[0] === 'library') {
+    await requireAdmin(req, env, 'studio');
+    if (req.method === 'POST' && parts.length === 1) {
+      const body = await req.json().catch(() => null);
+      if (!body || typeof body.image !== 'string' || !body.image.startsWith('data:image/jpeg;base64,')) throw fail(400, 'اختار صورة JPEG');
+      const { image, name } = body;
+      const bytes = jpegFrom(image);
+      const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+      const id = Array.from(hash, x => x.toString(16).padStart(2, '0')).join('');
+      const label = String(name || 'صورة').slice(0, 100);
+      await env.SOCIAL.put('library:' + id, image, { metadata: { name: label } });
+      return json({ id, name: label });
+    }
+    if (req.method === 'GET' && parts.length === 1) {
+      const page = await env.SOCIAL.list({ prefix: 'library:', limit: 60, cursor: url.searchParams.get('cursor') || undefined });
+      return json({ photos: page.keys.map(k => ({ id: k.name.slice(8), name: k.metadata.name })), cursor: page.list_complete ? null : page.cursor });
+    }
+    if (req.method === 'GET' && /^[a-f0-9]{64}$/.test(parts[1])) {
+      const image = await env.SOCIAL.get('library:' + parts[1]);
+      if (image) return json({ image });
+    }
+    throw fail(404, 'الصورة مش موجودة');
+  }
   if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
   const user = await requireAdmin(req, env, 'studio');
 
@@ -123,7 +168,7 @@ async function route(req, env, ctx) {
   if (req.method === 'POST' && parts.length === 1) {
     const body = await req.json().catch(() => null);
     const post = await createPost(env, body, user);
-    if (post.status === 'uploading') return json({ post }, 201); // the video comes next (PUT …/video)
+    if (['pending', 'uploading'].includes(post.status)) return json({ post }, 201); // the video comes next (PUT …/video)
     if (!post.scheduledAt) {
       const done = await publishPost(env, post);
       return json({ post: done }, 201);
@@ -134,6 +179,22 @@ async function route(req, env, ctx) {
   const id = parts[1];
   const post = id && (await getPost(env, id));
   if (!post) throw fail(404, 'المنشور مش موجود');
+
+  const owner = isOwner(env, user);
+  if (!owner && req.method !== 'GET') {
+    const attachment = req.method === 'PUT' && ['video', 'design'].includes(parts[2]);
+    if (!attachment || post.preparedBy !== user.uid || !['pending', 'uploading'].includes(post.status)) {
+      throw fail(403, 'الموافقة وتعديل المنشورات الجاهزة للنشر لصاحب المنصة بس');
+    }
+  }
+  if (req.method === 'GET' && parts[2] === 'stats') return json(await postStats(env, post));
+  if (req.method === 'POST' && parts[2] === 'approve') {
+    if (post.status !== 'pending') throw fail(409, 'المنشور مش بانتظار الموافقة');
+    // An approval is a receipt. Double clicks and retried requests cannot publish a second copy.
+    const approvedAt = new Date().toISOString();
+    await env.SOCIAL.put('approval:' + id, approvedAt, { expirationTtl: post.keepFor || 120 * 86400 });
+    return json({ post: { ...post, status: 'approved', approvedAt } });
+  }
 
   if (req.method === 'PATCH' && parts.length === 2) {
     if (post.status !== 'scheduled') throw fail(409, 'بس المنشور المجدول بينقل لموعد ثاني');
@@ -153,7 +214,7 @@ async function route(req, env, ctx) {
     const text = await req.text();
     if (text.length > MAX_DESIGN || !text.startsWith('{')) throw fail(400, 'التصميم مش صالح');
     await env.SOCIAL.put(`des:${post.id}`, text, { expirationTtl: post.keepFor || 120 * 86400 });
-    if (!post.hasDesign) { post.hasDesign = true; await savePost(env, post); }
+    if (!post.preparedBy && !post.hasDesign) { post.hasDesign = true; await savePost(env, post); }
     return json({ ok: true, post });
   }
   if (req.method === 'GET' && parts[2] === 'design') {
@@ -199,12 +260,14 @@ async function route(req, env, ctx) {
     if (buf.byteLength < 1000 || String.fromCharCode(...head.slice(4, 8)) !== 'ftyp') throw fail(400, 'لازم الفيديو يكون MP4');
     if (buf.byteLength > MAX_VIDEO) throw fail(400, 'الفيديو أكبر من 24MB. قصّر مدة الموسيقى.');
     await env.SOCIAL.put(`vid:${post.id}`, buf, { expirationTtl: post.keepFor || 120 * 86400 });
+    if (post.preparedBy && !post.approvedAt) { post.status = 'pending'; await savePost(env, post); return json({ post }); }
     if (post.scheduledAt) { post.status = 'scheduled'; await savePost(env, post); return json({ post }); }
     return json({ post: await publishPost(env, post) });
   }
 
   if (req.method === 'POST' && parts[2] === 'publish') {
     if (post.status === 'uploading') throw fail(409, 'الفيديو لسا ما انرفع');
+    if (post.status === 'pending') throw fail(409, 'المنشور بحاجة لموافقة');
     if (post.status === 'published' || post.status === 'publishing') throw fail(409, 'المنشور انتشر أو عم ينتشر هلّق');
     return json({ post: await publishPost(env, post) });
   }
@@ -216,6 +279,7 @@ async function route(req, env, ctx) {
     await env.SOCIAL.delete(`img:${id}`);
     await env.SOCIAL.delete(`vid:${id}`);
     await env.SOCIAL.delete(`des:${id}`);
+    await env.SOCIAL.delete('approval:' + id);
     return json({ ok: true });
   }
   throw fail(405, 'طلب مش مدعوم');
@@ -270,7 +334,8 @@ async function createPost(env, body, user) {
     video,
     duration,
     music: video ? String(body.music || '').slice(0, 120) : '',
-    status: video ? 'uploading' : scheduledAt ? 'scheduled' : 'publishing',
+    preparedBy: isOwner(env, user) ? null : user.uid,
+    status: video ? 'uploading' : !isOwner(env, user) ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
     scheduledAt,
     createdAt: new Date().toISOString(),
     createdBy: user.email || user.uid,
@@ -283,6 +348,48 @@ async function createPost(env, body, user) {
   return post;
 }
 
+async function postStats(env, post) {
+  if (!['partial', 'published'].includes(post.status)) throw fail(409, 'الإحصائيات بتظهر بعد النشر');
+  const meta = await getMeta(env);
+  const token = meta?.pageToken;
+  if (!token) throw fail(409, 'اربط حساب ميتا لعرض الأرقام');
+  const rows = {};
+  const issues = [];
+  // which permission each number needs (when the saved connection doesn't have it, say so instead of a bare «#10»)
+  const NEED = { likes: 'pages_read_user_content', comments: 'pages_read_user_content', fbreach: 'read_insights', igreach: 'instagram_manage_insights' };
+  const granted = meta.scopes || [];
+  for (const platform of post.platforms) {
+    const result = post.results?.[platform];
+    if (!result?.id) continue;
+    const row = rows[platform] = { likes: null, comments: null, reach: null };
+    const fb = platform === 'facebook';
+    if (fb && result.story) continue;
+    const read = async (metric, path, params) => {
+      try { return await graphGet(env, path, { ...params, access_token: token }); }
+      catch (e) {
+        const need = NEED[metric === 'reach' ? (fb ? 'fbreach' : 'igreach') : metric] || null;
+        issues.push({ platform, metric, code: e.graphCode ?? null, need: e.graphCode === 10 && need ? need : null });
+        return null;
+      }
+    };
+    const [counts, comments, insights] = await Promise.all([
+      fb ? read('likes', result.id + '/reactions', { type: 'LIKE', limit: 0, summary: 'total_count' })
+        : read('engagement', result.id, { fields: 'like_count,comments_count' }),
+      fb ? read('comments', result.id + '/comments', { limit: 0, summary: 'true' }) : null,
+      read('reach', result.id + '/insights', { metric: fb ? 'post_total_media_view_unique' : 'reach' }),
+    ]);
+    row.likes = (fb ? counts?.summary?.total_count : counts?.like_count) ?? null;
+    row.comments = (fb ? comments?.summary?.total_count : counts?.comments_count) ?? null;
+    row.reach = insights?.data?.[0]?.values?.[0]?.value ?? insights?.data?.[0]?.total_value?.value ?? null;
+    // without read_insights Meta answers Facebook insights with an empty list, not an error
+    if (fb && insights && row.reach === null && granted.length && !granted.includes('read_insights')) {
+      issues.push({ platform, metric: 'reach', code: 10, need: 'read_insights' });
+    }
+  }
+  const missing = granted.length ? STATS_SCOPES.filter(x => !granted.includes(x)) : [];
+  return { rows, issues, missing };
+}
+
 async function savePost(env, post) {
   await env.SOCIAL.put(`post:${post.id}`, JSON.stringify(post), {
     metadata: { s: post.status, at: post.scheduledAt ? Date.parse(post.scheduledAt) : 0, c: Date.parse(post.createdAt) },
@@ -293,14 +400,19 @@ const getPost = (env, id) => (/^[a-z0-9-]{6,40}$/.test(id) ? env.SOCIAL.get(`pos
 async function listPosts(env, limit = 60) {
   const keys = await allKeys(env);
   keys.sort((a, b) => (b.metadata?.c || 0) - (a.metadata?.c || 0));
-  const posts = await Promise.all(keys.slice(0, limit).map((k) => env.SOCIAL.get(k.name, 'json')));
-  return posts.filter(Boolean);
+  const visible = keys.filter((key, i) => i < limit || key.metadata?.s === 'pending');
+  const posts = await Promise.all(visible.map((k) => env.SOCIAL.get(k.name, 'json')));
+  return Promise.all(posts.filter(Boolean).map(async post => {
+    if (post.status !== 'pending') return post;
+    const approvedAt = await env.SOCIAL.get('approval:' + post.id);
+    return approvedAt ? { ...post, approvedAt, status: 'approved' } : post;
+  }));
 }
-async function allKeys(env) {
+async function allKeys(env, prefix = 'post:') {
   const out = [];
   let cursor;
   do {
-    const page = await env.SOCIAL.list({ prefix: 'post:', cursor });
+    const page = await env.SOCIAL.list({ prefix, cursor });
     out.push(...page.keys);
     cursor = page.list_complete ? null : page.cursor;
   } while (cursor);
@@ -311,6 +423,8 @@ async function allKeys(env) {
 export async function runDue(env) {
   const now = Date.now();
   const keys = await allKeys(env);
+  // Only cron releases approved submissions. The approval endpoint never starts a second publisher.
+  const receipts = await allKeys(env, 'approval:');
   const due = keys.filter((k) => k.metadata?.s === 'scheduled' && k.metadata.at <= now);
   for (const k of due) {
     const post = await env.SOCIAL.get(k.name, 'json');
@@ -319,13 +433,32 @@ export async function runDue(env) {
       if (done.status === 'failed' || done.status === 'partial') await alertFailed(env, done).catch((e) => console.error('[notify]', e));
     }
   }
-  return due.length;
+  let released = 0;
+  for (const receipt of receipts) {
+    const post = await getPost(env, receipt.name.slice('approval:'.length));
+    if (!post || post.status !== 'pending') continue;
+    post.approvedAt = await env.SOCIAL.get(receipt.name);
+    if (!post.approvedAt) continue;
+    if (Date.parse(post.scheduledAt) > now) {
+      post.status = 'scheduled';
+      await savePost(env, post);
+    } else {
+      const done = await publishPost(env, post);
+      if (['failed', 'partial'].includes(done.status)) await alertFailed(env, done).catch(e => console.error('[notify]', e));
+    }
+    await env.SOCIAL.delete(receipt.name);
+    released++;
+  }
+  return due.length + released;
 }
 
 /* ---------------- the Meta connection ---------------- */
 const META_KEY = 'config:meta';
 const PENDING_KEY = 'config:pending';
 export const SCOPES_NEEDED = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish'];
+// only for the numbers under each post: Facebook likes and comments are «user content» on the page
+// (pages_read_user_content), Facebook reach is read_insights, Instagram reach is instagram_manage_insights
+export const STATS_SCOPES = ['pages_read_user_content', 'read_insights', 'instagram_manage_insights'];
 
 // saved from the admin panel (KV) — or, for a manual setup, from the Worker's variables/secrets
 async function getMeta(env) {
@@ -345,7 +478,11 @@ const isOwner = (env, user) => !!env.OWNER_EMAIL && (user.email || '').toLowerCa
 async function graphGet(env, path, params) {
   const res = await fetch(`${graph(env)}/${path}?${new URLSearchParams(params)}`);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) throw fail(400, `ميتا: ${data.error?.error_user_msg || data.error?.message || `HTTP ${res.status}`}`);
+  if (!res.ok || data.error) {
+    const error = fail(400, `ميتا: ${data.error?.error_user_msg || data.error?.message || `HTTP ${res.status}`}`);
+    error.graphCode = data.error?.code;
+    throw error;
+  }
   return data;
 }
 
@@ -436,6 +573,7 @@ async function connectStatus(env, check = false) {
     instagram: m.igId ? { id: m.igId, username: m.igUsername || '' } : null,
     connectedAt: m.connectedAt || null, connectedBy: m.connectedBy || '',
     expiresAt: m.expiresAt || 0,
+    missingInsightScopes: m.scopes?.length ? STATS_SCOPES.filter(x => !m.scopes.includes(x)) : [],
     missingScopes: m.scopes && m.scopes.length ? SCOPES_NEEDED.filter((x) => !m.scopes.includes(x)) : [],
   };
   if (check) {

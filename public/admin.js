@@ -6,8 +6,9 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
-import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=7';
-import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=1';
+import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=8';
+import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=3';
+import { withActivity, startActivity, logAction } from './admin-activity.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -62,7 +63,9 @@ function show(view) {
 
 /* =================== Auth =================== */
 const { auth, au } = await getAuth();
-const { db, fs } = await getDb();
+const { db, fs: fsPlain } = await getDb();
+// every write made from the panel shows up in the owner's activity log (admin-activity.js)
+const fs = withActivity(fsPlain);
 let booted = false;
 
 // perms = the sections this admin may open (admins/{uid}.perms); null = everything (owner, or an admin
@@ -124,7 +127,7 @@ au.onAuthStateChanged(auth, async (user) => {
   $('admin-email').textContent = user.email || '';
   try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
   show('view-app');
-  if (!booted) { booted = true; boot(); }
+  if (!booted) { booted = true; boot(); startActivity({ db, fs: fsPlain, user, tab: () => location.hash.slice(1) }); }
 });
 
 $('login-form').addEventListener('submit', async (e) => {
@@ -299,8 +302,8 @@ TABS.forEach((t, i) => {
 function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
-  if (can('studio')) initStudio({ h, toast, setBusy, db, fs, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
-  if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth });
+  if (can('studio')) initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
+  if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const hash = location.hash.slice(1);
   // a limited admin lands on their own first section (the overview has little for them)
   const home = isFull() ? 'overview' : TABS.find((t) => t !== 'overview' && tabAllowed(t)) || 'overview';
@@ -557,7 +560,7 @@ async function purgeOldTrash() {
   const old = allMembers.filter((m) => m.deletedAt?.toMillis?.() && m.deletedAt.toMillis() < cutoff);
   if (!old.length) return;
   try {
-    const batch = fs.writeBatch(db);
+    const batch = fsPlain.writeBatch(db);
     old.slice(0, 450).forEach((m) => batch.delete(fs.doc(db, 'members', m.id)));
     await batch.commit();
     const gone = new Set(old.slice(0, 450).map((m) => m.id));
@@ -1648,7 +1651,7 @@ async function migrateWorkshops() {
   if (!workshops.length) {
     const ref = fs.doc(fs.collection(db, 'workshops'));
     const data = { ...structuredClone(DEFAULT_WORKSHOP), status: 'draft', publishAt: null };
-    const batch = fs.writeBatch(db);
+    const batch = fsPlain.writeBatch(db);
     batch.set(ref, { ...data, createdAt: now, updatedAt: now });
     batch.set(fs.doc(db, 'site', 'settings'), { currentWorkshop: ref.id, updatedAt: now }, { merge: true });
     await batch.commit();
@@ -1665,7 +1668,7 @@ async function migrateWorkshops() {
     ...allCerts.filter((c) => !c.workshopId).map((c) => ['certificates', c]),
   ];
   for (let i = 0; i < ops.length; i += 400) {
-    const batch = fs.writeBatch(db);
+    const batch = fsPlain.writeBatch(db);
     ops.slice(i, i + 400).forEach(([col, x]) => batch.update(fs.doc(db, col, x.id), { workshopId: currentId }));
     await batch.commit();
     ops.slice(i, i + 400).forEach(([, x]) => { x.workshopId = currentId; });
@@ -2387,6 +2390,17 @@ function initPreview() {
   if (!previewFitted) { previewFitted = true; refitPreview = fitSheet(host); } // scale the A4 sheet to the box, once
   refreshPreview();
 }
+// wide screens: the settings form is exactly as tall as the preview next to it and scrolls inside,
+// so the panels under the preview (issue / issued certificates) come into view right away
+function matchCertForm() {
+  const preview = document.querySelector('#tab-cert .cert-preview-panel');
+  const layout = document.querySelector('#tab-cert .cert-layout');
+  if (!preview || !layout || !('ResizeObserver' in window)) return;
+  new ResizeObserver(() => {
+    if (preview.offsetHeight) layout.style.setProperty('--cert-h', preview.offsetHeight + 'px');
+  }).observe(preview);
+}
+matchCertForm();
 
 function refreshPreview() {
   const host = $('cert-preview');

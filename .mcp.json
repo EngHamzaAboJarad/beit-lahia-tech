@@ -3,6 +3,10 @@
     "beit-lahia": {
       "command": "node",
       "args": ["mcp/server.mjs"]
+    },
+    "meta_social_technologies": {
+      "type": "http",
+      "url": "https://mcp.facebook.com/devtools"
     }
   }
 }

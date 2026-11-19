@@ -1,7 +1,7 @@
 // Connecting Facebook / Instagram from the admin panel (owner only), against a fake Meta.
 // Run: node test/connect.test.mjs
 import assert from 'node:assert/strict';
-import worker from '../src/index.js';
+import worker, { runDue } from '../src/index.js';
 
 const PROJECT = 'demo-project';
 const { publicKey, privateKey } = await crypto.subtle.generateKey(
@@ -36,6 +36,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   const q = Object.fromEntries(new URL(url).searchParams);
   if (url.includes('/oauth/access_token')) {
+    if (q.code === 'owner-code' && q.redirect_uri === 'https://beitlahia.tech/social-callback.html') return ok({ access_token: 'SHORT_TOKEN_FROM_EXPLORER_xxxxxxxxxxxxx' });
     if (q.fb_exchange_token === 'GRANULAR_TOKEN_xxxxxxxxxxxxxxxxxxxxxxxxx') return ok({ access_token: 'LONG_GRANULAR' });
     return q.fb_exchange_token === 'SHORT_TOKEN_FROM_EXPLORER_xxxxxxxxxxxxx' && q.client_secret === 'a'.repeat(32) ? ok({ access_token: 'LONG_USER' }) : bad('Invalid OAuth access token');
   }
@@ -109,7 +110,10 @@ await t('publishing uses the saved page token', async () => {
   calls.length = 0;
   const jpeg = `data:image/jpeg;base64,${Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(3000)]).toString('base64')}`;
   const r = await call('POST', '/posts', soc, { image: jpeg, caption: 'hi', platforms: ['facebook', 'instagram'] });
-  assert.equal(r.data.post.status, 'published');
+  assert.equal(r.data.post.status, 'pending');
+  const approved = await call('POST', '/posts/' + r.data.post.id + '/approve', owner);
+  assert.equal(approved.data.post.status, 'approved');
+  await runDue(env);
   assert.equal(calls.find((c) => c.url.endsWith('/111/photos')).body.access_token, 'PAGE_TOKEN');
   assert.equal(calls.find((c) => c.url.endsWith('/999/media_publish')).body.access_token, 'PAGE_TOKEN');
 });
@@ -124,5 +128,25 @@ await t('disconnect forgets it', async () => {
   const r = await call('DELETE', '/connect', owner);
   assert.equal(r.data.connected, false);
   const h = await health(); assert.deepEqual([h.facebook, h.instagram], [false, false]);
+});
+await t('owner Facebook login exchanges a bound code and offers page selection', async () => {
+  Object.assign(env, { META_APP_ID: '123456789', META_APP_SECRET: 'a'.repeat(32), ALLOWED_ORIGINS: 'https://beitlahia.tech' });
+  const start = async token => worker.fetch(new Request('https://social.x/connect/oauth-start', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, Origin: 'https://beitlahia.tech' }
+  }), env, {});
+  assert.equal((await start(soc)).status, 403);
+  const flow = await (await start(owner)).json();
+  const query = new URL(flow.url).searchParams;
+  assert.equal(query.get('state'), flow.state);
+  assert.ok(query.get('scope').includes('read_insights'));
+  assert.ok(query.get('scope').includes('pages_read_user_content'));
+  assert.ok(query.get('scope').includes('instagram_manage_insights'));
+  const body = { state: flow.state, code: 'owner-code' };
+  assert.equal((await call('POST', '/connect/oauth-finish', soc, body)).status, 403);
+  const result = await call('POST', '/connect/oauth-finish', owner, body);
+  assert.equal(result.status, 200);
+  assert.equal(result.data.pages[0].id, '111');
+  assert.equal(result.data.pages[0].token, undefined);
+  assert.equal((await call('POST', '/connect/oauth-finish', owner, body)).status, 400);
 });
 console.log(`\n${n} connect tests passed`);

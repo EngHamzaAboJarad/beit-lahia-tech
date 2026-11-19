@@ -38,6 +38,7 @@ const KV = {
 
 const realFetch = globalThis.fetch;
 let n = 0;
+let statsCalls = 0;
 globalThis.fetch = async (url, init) => {
   url = String(url);
   const ok = (d) => new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json' } });
@@ -52,7 +53,7 @@ globalThis.fetch = async (url, init) => {
       { id: '1001', name: 'كميونتي تقني بيت لاهيا', access_token: 'PAGE_TOKEN', instagram_business_account: { id: '2002', username: 'beitlahia.tech' } },
       { id: '1002', name: 'صفحة تجربة', access_token: 'PAGE2' },
     ] });
-    if (url.includes('/debug_token')) return ok({ data: { is_valid: true, expires_at: 0, scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish'] } });
+    if (url.includes('/debug_token')) return ok({ data: { is_valid: true, expires_at: 0, scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish', 'pages_read_user_content', 'read_insights', 'instagram_manage_insights'] } });
     if (/\/100[12]\?/.test(url)) return ok({ name: q.access_token === 'PAGE_TOKEN' ? 'كميونتي تقني بيت لاهيا' : 'صفحة تجربة' });
     if (url.endsWith('/photos')) return ok({ id: `ph${++n}`, post_id: `1001_${n}` });
     if (url.endsWith('/photo_stories')) return ok({ success: true, post_id: `1001_s${++n}` });
@@ -62,6 +63,13 @@ globalThis.fetch = async (url, init) => {
     if (/\/C\d+\?/.test(url)) return ok({ status_code: 'FINISHED' });
     if (url.endsWith('/media_publish')) return ok({ id: `IG${++n}` });
     if (/fields=permalink/.test(url)) return ok({ permalink: 'https://www.instagram.com/' });
+    // post statistics: numbers that grow a little on every refresh
+    const tick = ++statsCalls;
+    if (/\/1001_[^/?]+\/reactions\?/.test(url)) return ok({ data: [], summary: { total_count: 40 + tick * 3 } });
+    if (/\/1001_[^/?]+\/comments\?/.test(url)) return ok({ data: [], summary: { total_count: 6 + tick } });
+    if (/\/1001_[^/?]+\/insights\?/.test(url)) return ok({ data: [{ values: [{ value: 1180 + tick * 25 }] }] });
+    if (/\/IG\d+\/insights\?/.test(url)) return ok({ data: [{ values: [{ value: 860 + tick * 12 }] }] });
+    if (/\/IG\d+\?/.test(url) && q.fields === 'like_count,comments_count') return ok({ like_count: 95 + tick * 2, comments_count: 11 });
   }
   if (url.startsWith('https://rupload.facebook.com/')) { console.log('[meta] video upload from', init?.headers?.file_url); return ok({ success: true }); }
   return realFetch(url, init);
@@ -82,6 +90,15 @@ const env = {
 };
 
 http.createServer(async (req, res) => {
+  if (req.url === '/__seed') { // a connected page + one published post, to try the post statistics right away
+    await KV.put('config:meta', JSON.stringify({ pageId: '1001', pageName: 'كميونتي تقني بيت لاهيا', pageToken: 'PAGE_TOKEN', igId: '2002', igUsername: 'beitlahia.tech',
+      scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish', 'pages_read_user_content', 'read_insights', 'instagram_manage_insights'], connectedAt: new Date().toISOString() }));
+    const at = new Date().toISOString();
+    const post = { id: 'seed-post-1', template: 'upload', title: 'من بيت لاهيا إلى العالم الرقمي', caption: '', platforms: ['facebook', 'instagram'], story: false, video: false,
+      status: 'published', createdAt: at, publishedAt: at, results: { facebook: { id: '1001_77', at }, instagram: { id: 'IG77', permalink: 'https://www.instagram.com/', at } } };
+    await KV.put('post:' + post.id, JSON.stringify(post), { metadata: { s: post.status, at: 0, c: Date.now() } });
+    res.writeHead(200, { 'Access-Control-Allow-Origin': '*' }); res.end('seeded'); return;
+  }
   if (req.url === '/__token') { res.writeHead(200, { 'Access-Control-Allow-Origin': '*' }); res.end(await token('dev-admin', env.OWNER_EMAIL)); return; }
   const chunks = []; for await (const c of req) chunks.push(c);
   const headers = { ...req.headers };

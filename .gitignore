@@ -7,3 +7,6 @@ firebase-export-*/
 
 # personal signature, kept local only
 design/signatures/signature-hamza-real.png
+
+# wrangler local cache
+.wrangler/

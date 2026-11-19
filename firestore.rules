@@ -359,6 +359,38 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    // ---------- نشاط المشرفين (صاحب المنصة بس بيشوفه) ----------
+    // كل أدمن بيضيف أسطر باسمه هو بس (دخل / عمل شي)، وما بيقدر يعدّلها أو يحذفها.
+    match /adminLog/{id} {
+      allow read, delete: if isOwner();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'type', 'text', 'tab', 'device', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.get('email', '')
+        && request.resource.data.type in ['login', 'action']
+        && isStr(request.resource.data.text, 1, 200)
+        && (!('tab' in request.resource.data) || isStr(request.resource.data.tab, 0, 30))
+        && (!('device' in request.resource.data) || isStr(request.resource.data.device, 0, 60))
+        && request.resource.data.at == request.time;
+    }
+    // سطر واحد لكل أدمن: آخر دخول، آخر ظهور، آخر شي عمله
+    match /adminSeen/{uid} {
+      allow read, delete: if isOwner();
+      allow create, update: if isAdmin() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['email', 'loginAt', 'seenAt', 'lastText', 'lastAt', 'tab', 'device'])
+        && request.resource.data.email == request.auth.token.get('email', '')
+        && request.resource.data.seenAt == request.time
+        && sameOrNow('loginAt') && sameOrNow('lastAt')
+        && (!('lastText' in request.resource.data) || isStr(request.resource.data.lastText, 0, 200))
+        && (!('tab' in request.resource.data) || isStr(request.resource.data.tab, 0, 30))
+        && (!('device' in request.resource.data) || isStr(request.resource.data.device, 0, 60));
+    }
+    // a time field is either kept as it was or set to now (no back-dating)
+    function sameOrNow(f) {
+      return !(f in request.resource.data) || request.resource.data[f] == request.time
+        || (resource != null && f in resource.data && request.resource.data[f] == resource.data[f]);
+    }
+
     // ---------- قوالب استوديو السوشيال (لوحة الإدارة) ----------
     // التصميم نفسه JSON نصّي (عناصر + صور مضغوطة)، والأدمن بس بيقرأ وبيكتب.
     match /socialTemplates/{id} {

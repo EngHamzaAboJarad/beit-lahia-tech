@@ -107,6 +107,22 @@ await t('invite for an existing account: claimed after email verification', asyn
   assert.equal(await del('adminInvites/inv@x.test', verified), OK);
   assert.equal(await get('members/m1', verified), NO);
 });
+await t('activity log: admins add their own lines, only the owner reads', async () => {
+  const line = (uid, email, extra = {}) => ({ uid, email, type: 'action', text: 'عدّل فعالية', ...extra });
+  assert.equal(await setWithTime('adminLog/a1', social, line('soc', 'soc@x.test'), 'at'), OK);
+  assert.equal(await setWithTime('adminLog/a2', social, line('sit', 'site@x.test'), 'at'), NO); // someone else's name
+  assert.equal(await setWithTime('adminLog/a3', social, line('soc', 'soc@x.test', { type: 'hack' }), 'at'), NO);
+  assert.equal(await setWithTime('adminLog/a4', stranger, line('str', 'str@x.test'), 'at'), NO); // not an admin
+  assert.equal(await set('adminLog/a5', social, { ...line('soc', 'soc@x.test'), at: 'NOW' }), NO); // the time is the server's
+  assert.equal(await get('adminLog/a1', social), NO);
+  assert.equal(await get('adminLog/a1', owner), OK);
+  assert.equal(await set('adminLog/a1', social, line('soc', 'soc@x.test', { text: 'ما عملت شي' })), NO); // no rewriting history
+  assert.equal(await del('adminLog/a1', social), NO);
+  assert.equal(await setWithTime('adminSeen/soc', social, { email: 'soc@x.test', tab: 'studio' }, 'seenAt'), OK);
+  assert.equal(await setWithTime('adminSeen/sit', social, { email: 'soc@x.test' }, 'seenAt'), NO);
+  assert.equal(await get('adminSeen/soc', social), NO);
+  assert.equal(await get('adminSeen/soc', owner), OK);
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

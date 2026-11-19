@@ -18,6 +18,8 @@ const STORE = 'blt-studio-v2';
 const SVGNS = 'http://www.w3.org/2000/svg';
 const PHOTOS = [['/img/beit-lahia-night.jpg', 'بيت لاهيا بالليل'], ['/img/beit-lahia-fields.jpg', 'حقول الفراولة']];
 const STATUS = {
+  approved: ['تمّت الموافقة · بانتظار خدمة النشر', 'st-scheduled'],
+  pending: ['بانتظار الموافقة', 'st-scheduled'],
   scheduled: ['مجدول', 'st-scheduled'], publishing: ['عم ينتشر', 'st-publishing'], published: ['انتشر', 'st-published'],
   partial: ['انتشر جزئياً', 'st-partial'], failed: ['فشل', 'st-failed'], uploading: ['عم ينرفع', 'st-publishing'],
 };
@@ -378,6 +380,7 @@ function propControl(e, [key, kind, label, options]) {
       return deps.h('div', { class: 'field span-2' }, deps.h('span', { class: 'field-label' }, label),
         deps.h('div', { class: 'studio-photo' }, file,
           deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, 'ارفع صورة'),
+          libraryButton(set),
           PHOTOS.map(([src, name]) => deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => set(src) }, name))));
     }
     default: return null;
@@ -410,6 +413,7 @@ function addElement(el) {
 function renderAdd() {
   const btn = (label, onclick, cls = 'btn btn-ghost-dark btn-sm') => deps.h('button', { type: 'button', class: cls, onclick }, label);
   $('el-add').replaceChildren(
+    libraryButton(src => addElement({ ...newElement('image', state.design), src })),
     ...Object.entries(TYPES).filter(([, t]) => !t.story && !t.noAdd).map(([k, t]) => btn(`+ ${t.name}`, () => addElement(newElement(k, state.design)))),
     deps.h('p', { class: 'el-add-title' }, 'ستوري (زي إنستغرام)'),
     ...Object.entries(STICKERS).map(([k, st]) => btn(`+ ${st.name}`, () => addElement({ ...newElement('sticker', state.design), kind: k, text: st.text, sub: st.sub || '' }), 'btn btn-ghost-dark btn-sm is-story')),
@@ -496,6 +500,59 @@ function refreshAll() {
 }
 
 /* =================== images =================== */
+function libraryButton(use) {
+  const h = deps.h;
+  return h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async () => {
+    const list = h('select', { 'aria-label': 'صور المكتبة', size: 6 });
+    const preview = h('img', { hidden: true, alt: 'معاينة الصورة' });
+    const status = h('p', { role: 'status' });
+    const apply = h('button', { type: 'button', class: 'btn btn-primary', disabled: true, onclick: () => {
+      use(preview.src); dialog.close();
+    } }, 'استخدم الصورة');
+    const file = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', hidden: true });
+    const dialog = h('dialog', { class: 'studio-library', 'aria-label': 'مكتبة الصور المشتركة' },
+      h('h2', {}, 'مكتبة الصور المشتركة'), list, preview, status, file,
+      h('div', { class: 'acc-actions' }, apply,
+        h('button', { type: 'button', class: 'btn btn-ghost-dark', onclick: () => file.click() }, 'ارفع للمكتبة'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark', onclick: () => dialog.close() }, 'سكّر')));
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    dialog.showModal();
+    list.onchange = async () => {
+      const id = list.value;
+      preview.hidden = true; apply.disabled = true; status.textContent = 'عم نحمّل الصورة…';
+      try {
+        const { image } = await api('/library/' + id);
+        if (list.value !== id) return;
+        preview.src = image; preview.hidden = false; apply.disabled = false; status.textContent = '';
+      } catch (e) { if (list.value === id) status.textContent = e.message; }
+    };
+    const option = p => new Option(p.name, p.id);
+    file.onchange = async () => {
+      const photo = file.files[0]; if (!photo) return;
+      try {
+        const image = await readPhoto(photo);
+        const saved = await api('/library', { method: 'POST', body: JSON.stringify({ name: photo.name, image }) });
+        if (![...list.options].some(o => o.value === saved.id)) list.add(option(saved));
+        list.value = saved.id; preview.src = image; preview.hidden = false; apply.disabled = false;
+        status.textContent = 'انحفظت بالمكتبة';
+      } catch (e) { status.textContent = e.message; }
+      file.value = '';
+    };
+    try {
+      let cursor;
+      do {
+        const page = await api('/library' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
+        if (!dialog.open) return;
+        for (const photo of page.photos) list.add(option(photo));
+        cursor = page.cursor;
+      } while (cursor);
+      if (list.length) { list.selectedIndex = 0; await list.onchange(); }
+      else status.textContent = 'المكتبة فاضية. ارفع أول صورة.';
+    } catch (e) { status.textContent = e.message; }
+  } }, 'مكتبة الصور');
+}
+
 // uploads: shrink to ≤ 1400px and keep as a JPEG data URL (fits in a saved template)
 function readPhoto(file) {
   return new Promise((resolve, reject) => {
@@ -829,7 +886,35 @@ async function api(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'خدمة النشر ما ردّت صح');
+  const method = (rest.method || 'GET').toUpperCase();
+  if (method !== 'GET') { const text = activityText(method, path, data); if (text) deps.log?.(text); }
   return data;
+}
+// the activity log (owner › «المشرفين»): one plain line per thing done in the studio
+const awaitingVideo = new Set(); // posts created with { video: true }: they really go out with PUT …/video
+function activityText(method, path, data) {
+  const post = data?.post;
+  const title = post ? `: ${post.title || 'منشور بدون عنوان'}` : '';
+  const st = post?.status;
+  const done = st === 'scheduled' ? 'جدول منشور' : st === 'pending' ? 'حضّر منشور للموافقة' : st === 'approved' ? 'وافق على منشور'
+    : st === 'failed' ? 'حاول ينشر منشور وفشل' : ['published', 'partial', 'publishing'].includes(st) ? 'نشر منشور' : '';
+  if (method === 'POST' && path === '/posts') {
+    if (st === 'uploading') { awaitingVideo.add(post.id); return ''; }
+    return done + title;
+  }
+  let m = /^\/posts\/([^/?]+)\/video$/.exec(path);
+  if (m) return awaitingVideo.delete(m[1]) && done ? done + title : '';
+  if (/^\/posts\/[^/?]+\/design$/.test(path)) return '';
+  if (method === 'PUT' && /^\/posts\/[^/?]+$/.test(path)) return 'عدّل منشور مجدول' + title;
+  if (method === 'PATCH' && path.startsWith('/posts/')) return 'غيّر موعد منشور' + title;
+  if (/^\/posts\/[^/?]+\/approve$/.test(path)) return 'وافق على منشور' + title;
+  if (/^\/posts\/[^/?]+\/publish$/.test(path)) return (done || 'نشر منشور') + title;
+  if (method === 'DELETE' && path.startsWith('/posts/')) return 'حذف أو ألغى منشور';
+  if (method === 'POST' && path === '/library') return 'أضاف صورة لمكتبة الصور';
+  if (path === '/connect/select') return 'ربط صفحة فيسبوك وإنستغرام';
+  if (method === 'DELETE' && path === '/connect') return 'فصل حسابات السوشيال';
+  if (method === 'POST' && path === '/notify') return 'عدّل إعدادات تنبيهات الإيميل';
+  return '';
 }
 async function checkConnection() {
   try {
@@ -858,7 +943,7 @@ function renderConn() {
 }
 
 /* =================== connecting Facebook / Instagram (owner only) =================== */
-const SCOPES = 'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management';
+
 const cn = { status: null, pages: null, form: false, loading: false };
 const dayFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -869,19 +954,25 @@ async function loadConnect() {
 function copyBtn(text, label = 'نسخ') {
   return deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async () => { try { await navigator.clipboard.writeText(text); deps.toast('انسخ ✓'); } catch { deps.toast('انسخه يدوي', true); } } }, label);
 }
-function metaGuide(open) {
-  const li = (...k) => deps.h('li', {}, ...k);
-  const a = (href, t) => deps.h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, t);
-  return deps.h('details', { class: 'meta-guide', open },
-    deps.h('summary', {}, 'شو بدك تجهّز من ميتا؟ (مرة وحدة، 5 دقايق)'),
-    deps.h('ol', {},
-      li('تأكد إنه حساب الإنستغرام ', deps.h('strong', {}, 'Business أو Creator'), ' ومربوط بصفحة الفيسبوك (من إعدادات الصفحة › الحسابات المرتبطة).'),
-      li('افتح ', a('https://developers.facebook.com/apps/', 'developers.facebook.com/apps'), ' › Create App › اختار حالة الاستخدام «إدارة كل شي على صفحتك» (أو نوع Business) وكمّل.'),
-      li('من التطبيق › App settings › Basic: انسخ ', deps.h('strong', {}, 'App ID'), ' و', deps.h('strong', {}, 'App Secret'), ' (اضغط Show).'),
-      li('افتح ', a('https://developers.facebook.com/tools/explorer/', 'Graph API Explorer'), '، اختار تطبيقك فوق، وبـ «User or Page» خليها User Token، وضيف هالصلاحيات:',
-        deps.h('div', { class: 'scope-row' }, deps.h('code', { dir: 'ltr' }, SCOPES), copyBtn(SCOPES))),
-      li('اضغط ', deps.h('strong', {}, 'Generate Access Token'), '، ووافق واختار صفحة المجتمع وحساب الإنستغرام. انسخ التوكن اللي بيطلع والصقه تحت.'),
-    ));
+async function startFacebook(btn) {
+  btn.disabled = true;
+  try {
+    const flow = await api('/connect/oauth-start', { method: 'POST' });
+    sessionStorage.setItem('studio-facebook-state', flow.state);
+    location.assign(flow.url);
+  } catch (e) { deps.toast(e.message, true); btn.disabled = false; }
+}
+async function finishFacebook() {
+  const result = sessionStorage.getItem('studio-facebook-result');
+  if (!result) return;
+  sessionStorage.removeItem('studio-facebook-result');
+  try {
+    const data = JSON.parse(result);
+    if (data.error) throw new Error(data.error);
+    cn.pages = (await api('/connect/oauth-finish', { method: 'POST', body: result })).pages;
+    cn.form = true;
+    renderConnect();
+  } catch (e) { deps.toast(e.message, true); }
 }
 
 function renderConnect() {
@@ -911,7 +1002,8 @@ function renderConnect() {
       st.connectedAt ? row('انربط', `${dayFmt.format(new Date(st.connectedAt))}${st.connectedBy ? ` · ${st.connectedBy}` : ''}`) : '',
       st.source === 'env' ? row('المصدر', 'إعدادات الخدمة (يدوي)') : ''));
     if (!st.instagram) parts.push(deps.h('p', { class: 'conn-warn' }, 'الصفحة ما إلها حساب إنستغرام Business مربوط، فالنشر رح يكون على فيسبوك بس. اربط الإنستغرام بالصفحة وبعدين اضغط «ربط من جديد».'));
-    if (st.missingScopes?.length) parts.push(deps.h('p', { class: 'conn-warn' }, `ناقص صلاحيات: ${st.missingScopes.join('، ')}. اعمل توكن جديد فيه كل الصلاحيات واضغط «ربط من جديد».`));
+    if (st.missingInsightScopes?.length) parts.push(deps.h('p', { class: 'conn-warn' }, 'إحصائيات المنشورات (الوصول والإعجابات والتعليقات) بدها صلاحيات مش موجودة بالربط الحالي: ' + st.missingInsightScopes.join('، ') + '. اضغط «ربط من جديد» ثم «ربط بفيسبوك» ووافق على كل الصلاحيات.'));
+    if (st.missingScopes?.length) parts.push(deps.h('p', { class: 'conn-warn' }, `ناقص صلاحيات: ${st.missingScopes.join('، ')}. راجع صلاحيات تطبيق ميتا واضغط «ربط من جديد».`));
     if (st.check) parts.push(deps.h('p', { class: st.check.ok ? 'conn-ok' : 'conn-err' }, st.check.ok ? `✓ الاتصال شغّال مع «${st.check.name}»` : `✗ ${st.check.error}`));
     parts.push(deps.h('div', { class: 'acc-actions' },
       deps.h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => connectAct(e.currentTarget, 'test') }, deps.h('span', { class: 'btn-label' }, 'اختبار الاتصال'), deps.h('span', { class: 'spinner', 'aria-hidden': 'true' })),
@@ -922,19 +1014,9 @@ function renderConnect() {
   }
 
   // the form: credentials → pages → choose one
-  parts.push(metaGuide(!st.connected));
   if (!cn.pages) {
-    const f = deps.h('form', { class: 'cn-form', novalidate: true, onsubmit: (e) => { e.preventDefault(); fetchPages(f); } },
-      deps.h('div', { class: 'acc-fields' },
-        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-app' }, 'App ID'), deps.h('input', { id: 'cn-app', name: 'appId', type: 'text', dir: 'ltr', inputmode: 'numeric', autocomplete: 'off', placeholder: '1234567890' })),
-        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-secret' }, 'App Secret'), deps.h('input', { id: 'cn-secret', name: 'appSecret', type: 'password', dir: 'ltr', autocomplete: 'new-password', 'data-lpignore': 'true', placeholder: 'الصق الـ App Secret' }))),
-      deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-token' }, 'التوكن من Graph API Explorer'),
-        deps.h('textarea', { id: 'cn-token', name: 'userToken', rows: 3, dir: 'ltr', autocomplete: 'off', placeholder: 'EAAB…' })),
-      deps.h('p', { class: 'muted small' }, 'هالمعلومات بتروح لخدمة النشر بس وبتنحفظ فيها، وما بترجع للمتصفح. التوكن بيتحوّل لتوكن صفحة ما بينتهي.'),
-      deps.h('div', { class: 'acc-actions' },
-        deps.h('button', { type: 'submit', class: 'btn btn-primary' }, deps.h('span', { class: 'btn-label' }, 'جيب صفحاتي'), deps.h('span', { class: 'spinner', 'aria-hidden': 'true' })),
-        st.connected ? deps.h('button', { type: 'button', class: 'btn btn-ghost-dark', onclick: () => { cn.form = false; renderConnect(); } }, 'إلغاء') : ''));
-    parts.push(f);
+    parts.push(deps.h('button', { type: 'button', class: 'btn btn-primary', onclick: e => startFacebook(e.currentTarget) }, 'ربط بفيسبوك'),
+      deps.h('p', { class: 'muted small' }, 'بتفتح نافذة فيسبوك عشان توافق على الصلاحيات، وبعدها بتختار الصفحة من هون.'));
   } else {
     const list = deps.h('div', { class: 'cn-pages', role: 'radiogroup', 'aria-label': 'صفحات الفيسبوك' }, cn.pages.map((p, i) => deps.h('label', { class: 'cn-page' },
       deps.h('input', { type: 'radio', name: 'cn-page', value: p.id, checked: i === 0 }),
@@ -947,16 +1029,6 @@ function renderConnect() {
   box.replaceChildren(...parts);
 }
 
-async function fetchPages(form) {
-  const btn = form.querySelector('[type="submit"]');
-  const body = { appId: form.appId.value.trim(), appSecret: form.appSecret.value.trim(), userToken: form.userToken.value.trim() };
-  if (!body.appId || !body.appSecret || !body.userToken) { deps.toast('عبّي الثلاث خانات', true); return; }
-  deps.setBusy(btn, true);
-  try {
-    cn.pages = (await api('/connect/pages', { method: 'POST', body: JSON.stringify(body) })).pages;
-    renderConnect();
-  } catch (e) { deps.toast(e.message, true); deps.setBusy(btn, false); }
-}
 async function selectPage(btn, list) {
   const pageId = list.querySelector('input:checked')?.value;
   if (!pageId) return;
@@ -1020,7 +1092,7 @@ function renderNotify() {
 function syncPublishUi() {
   const later = document.querySelector('input[name="studio-when"]:checked')?.value === 'later';
   $('studio-at').hidden = !later;
-  deps.setBusy($('studio-publish'), false, later ? 'جدول المنشور' : 'انشر الآن');
+  deps.setBusy($('studio-publish'), false, !deps.owner ? 'أرسل للموافقة' : later ? 'جدول المنشور' : 'انشر الآن');
   const c = state.conn || {};
   ['facebook', 'instagram'].forEach((k) => {
     const box = $(`pub-${k}`);
@@ -1067,7 +1139,7 @@ async function publish() {
   if (!formats.length) { deps.toast('اختار منشور أو ستوري', true); return; }
   const m = state.music;
   if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
-  const verb = later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
+  const verb = !deps.owner ? 'ينبعت لصاحب المنصة للموافقة' : later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
   const what = formats.map((f) => (f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
   if (!confirm(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}. أكمل؟`)) return;
   stopPlay();
@@ -1084,6 +1156,7 @@ async function publish() {
     }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
     if (bad.length) deps.toast(`${STATUS[bad[0].status][0]}: شوف التفاصيل بالقائمة`, true);
+    else if (done.some(p => p.status === 'pending')) deps.toast('انبعت للموافقة ✓');
     else deps.toast(done.every((p) => p.status === 'scheduled') ? 'تمت الجدولة ✓' : 'انتشر ✓');
   } catch (e) {
     console.error(e);
@@ -1102,7 +1175,7 @@ async function publishJob({ design, base = null, fmt, caption = '', platforms, s
     video = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion,
       onProgress: (k) => progress(`${name}: عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
   }
-  progress(`${name}: عم ${later ? 'نجدول' : 'ننشر'}…`);
+  progress(`${name}: عم ${!deps.owner ? 'نجهّز طلب الموافقة' : later ? 'نجدول' : 'ننشر'}…`);
   let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
     image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : caption, platforms, scheduledAt,
     template: template || slugOf(design), title: titleOf(design), story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: musicName,
@@ -1110,7 +1183,7 @@ async function publishJob({ design, base = null, fmt, caption = '', platforms, s
   upsertPost(post);
   await saveDesign(post.id, design);
   if (video) {
-    progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later ? '' : ' وننشره'}…`);
+    progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later || !deps.owner ? '' : ' وننشره'}…`);
     ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
     upsertPost(post);
   }
@@ -1130,10 +1203,10 @@ async function editPost(p) {
   if (dirty() && !(state.src.kind === 'post' && state.src.id === p.id) && !confirm('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح المنشور وتتركها؟')) return;
   let design;
   try {
-    if (p.hasDesign) design = await api(`/posts/${p.id}/design`);
+    if (p.hasDesign || p.preparedBy) design = await api(`/posts/${p.id}/design`);
   } catch (e) { console.warn('[studio] design', e); }
   if (!design || !Array.isArray(design.els)) design = await designFromImage(p);
-  const mode = p.status === 'scheduled' ? 'edit' : 'copy';
+  const mode = deps.owner && p.status === 'scheduled' ? 'edit' : 'copy';
   state.src = { kind: 'post', id: p.id }; state.design = design; state.base = JSON.stringify(design);
   state.sel = -1; state.undo = []; state.redo = [];
   state.editing = { post: p, mode, orig: clone(design) };
@@ -1277,18 +1350,18 @@ function renderCampaign() {
   box.replaceChildren(
     h('div', { class: 'studio-head' }, h('h2', {}, `حملة الورشة: ${c.title}`),
       h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { state.campaign = null; renderCampaign(); } }, 'سكّر')),
-    h('p', { class: 'muted small' }, 'جهّزتلك من بيانات الورشة: بوست إعلان، ستوري تذكير قبلها بيوم الساعة 6 المسا، وستوري «بلّشنا» وقت ما تبلّش. شوف كل واحد، عدّله بالمحرر إذا بدك، وبعدين اكبس «انشر وجدول».'),
+    h('p', { class: 'muted small' }, 'جهّزتلك من بيانات الورشة: بوست إعلان، ستوري تذكير قبلها بيوم الساعة 6 المسا، وستوري «بلّشنا» وقت ما تبلّش. شوف كل واحد، عدّله بالمحرر إذا بدك.'),
     h('div', { class: 'camp-photo' }, file,
       c.photo ? h('img', { src: c.photo, alt: 'صورة المدرّب', width: 56, height: 56 }) : h('span', { class: 'camp-photo-empty', 'aria-hidden': 'true' }, '?'),
       h('div', {}, h('strong', {}, 'صورة المدرّب'), h('p', { class: 'muted small' }, 'بتطلع بالدائرة بالبوست. صورة مربعة والوجه بالنص بتطلع أحلى.')),
-      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, c.photo ? 'غيّر الصورة' : 'ارفع صورة')),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, c.photo ? 'غيّر الصورة' : 'ارفع صورة'), libraryButton(setCampaignPhoto)),
     h('ul', { class: 'camp-list' }, rows),
     h('div', { class: 'field' }, h('label', { for: 'camp-caption' }, 'نص بوست الإعلان'),
       h('textarea', { id: 'camp-caption', rows: 7, maxlength: 2200, value: post.caption, oninput: (e) => { post.caption = e.target.value; } })),
     h('fieldset', { class: 'field studio-platforms' }, h('legend', {}, 'وين؟'),
       ['facebook', 'instagram'].map((k) => h('label', { class: 'studio-chk' }, h('input', { type: 'checkbox', checked: conn[k] && (c.platforms ? c.platforms.includes(k) : true), disabled: !conn[k], 'data-camp-pf': k, onchange: () => { c.platforms = [...box.querySelectorAll('[data-camp-pf]:checked')].map((x) => x.dataset.campPf); } }), h('span', {}, PLATFORM_NAME[k])))),
     h('div', { class: 'studio-actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'camp-go', onclick: (e) => runCampaign(e.currentTarget) },
-      h('span', { class: 'btn-label' }, 'انشر وجدول الحملة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
+      h('span', { class: 'btn-label' }, deps.owner ? 'انشر وجدول الحملة' : 'أرسل الحملة للموافقة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
     h('p', { class: 'muted small studio-progress', id: 'camp-progress', 'aria-live': 'polite', hidden: true }));
 }
 async function runCampaign(btn) {
@@ -1314,7 +1387,7 @@ async function runCampaign(btn) {
       it.on = false; it.sent = true;
     }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
-    deps.toast(bad.length ? 'في إشي ما انتشر: شوف التقويم' : 'تمّت الحملة ✓ شوفها بالتقويم', !!bad.length);
+    deps.toast(bad.length ? 'في إشي ما انتشر: شوف التقويم' : !deps.owner ? 'انبعتت الحملة للموافقة' : 'تمّت الحملة ✓ شوفها بالتقويم', !!bad.length);
     state.calMonth = monthStart(new Date(Math.max(...done.map((p) => Date.parse(p.scheduledAt || p.publishedAt || p.createdAt)))));
     setPostsView('cal');
   } catch (e) {
@@ -1375,13 +1448,13 @@ function renderCalendar() {
     const key = ymd(d); const list = byDay.get(key) || [];
     const future = key >= today;
     const cell = h('div', { class: `cal-day ${d.getMonth() !== month.getMonth() ? 'is-out' : ''} ${key === today ? 'is-today' : ''} ${list.length ? '' : 'is-empty'} ${future ? '' : 'is-past'}`, 'data-day': key,
-      ondragover: (e) => { if (future) { e.preventDefault(); cell.classList.add('is-drop'); } },
+      ondragover: (e) => { if (deps.owner && future) { e.preventDefault(); cell.classList.add('is-drop'); } },
       ondragleave: () => cell.classList.remove('is-drop'),
       ondrop: (e) => { e.preventDefault(); cell.classList.remove('is-drop'); const p = state.posts.find((x) => x.id === e.dataTransfer.getData('text/plain')); if (p) movePost(p, key); } },
     h('span', { class: 'cal-num' }, String(d.getDate())),
     ...list.slice(0, 4).map((p) => {
       const [label, cls] = STATUS[p.status] || [p.status, ''];
-      return h('button', { type: 'button', class: `cal-chip ${cls} ${p.story ? 'is-story' : ''}`, draggable: p.status === 'scheduled' ? 'true' : null,
+      return h('button', { type: 'button', class: `cal-chip ${cls} ${p.story ? 'is-story' : ''}`, draggable: deps.owner && p.status === 'scheduled' ? 'true' : null,
         title: `${label} · ${p.title || ''}`,
         ondragstart: (e) => { e.dataTransfer.setData('text/plain', p.id); e.dataTransfer.effectAllowed = 'move'; },
         onclick: () => { state.calSel = p.id; renderCalendar(); } },
@@ -1408,15 +1481,131 @@ function renderCalendar() {
 }
 function editBtn(p) {
   if (p.status === 'uploading' || p.status === 'publishing') return '';
-  const scheduled = p.status === 'scheduled';
+  const scheduled = deps.owner && p.status === 'scheduled';
   return deps.h('button', { type: 'button', class: `btn ${scheduled ? 'btn-primary' : 'btn-ghost-dark'} btn-sm`, title: scheduled ? 'افتحه بالمحرر وعدّله قبل ما ينزل' : 'المنتشر ما بينعدّل: افتح نسخة منه وانشرها من جديد',
     onclick: () => editPost(p) }, scheduled ? '✎ عدّل' : '✎ عدّل وانشر نسخة');
 }
+function reviewPost(p) {
+  if (p.status !== 'pending') return '';
+  const h = deps.h;
+  return h('details', {}, h('summary', {}, 'راجع المنشور'),
+    h('p', {}, 'جهّزه ' + p.createdBy),
+    h('p', {}, p.scheduledAt ? 'الموعد المطلوب: ' + whenFmt.format(new Date(p.scheduledAt)) : 'النشر بعد الموافقة'),
+    p.video ? h('video', { src: WORKER + '/vid/' + p.id + '.mp4', controls: true, preload: 'none', style: 'max-width:100%;max-height:400px' }) :
+      h('img', { src: WORKER + '/img/' + p.id + '.jpg', alt: 'معاينة المنشور', style: 'width:auto;max-width:100%;height:auto;max-height:400px' }),
+    h('p', {}, p.caption || ''),
+    deps.owner ? h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: e => postAct(e.currentTarget, p, 'approve') }, 'وافق على النشر') : '');
+}
+
+function statsPanel(p) {
+  if (!['partial', 'published'].includes(p.status)) return '';
+  const h = deps.h;
+  const METRICS = [['reach', 'الوصول'], ['likes', 'الإعجابات'], ['comments', 'التعليقات']];
+  const NAMES = { likes: 'الإعجابات', comments: 'التعليقات', engagement: 'الإعجابات والتعليقات', reach: 'الوصول' };
+  const num = new Intl.NumberFormat('en');
+  const timeFmt = new Intl.DateTimeFormat('ar', { hour: 'numeric', minute: '2-digit', numberingSystem: 'latn' });
+  const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const body = h('div', { class: 'sps-body', role: 'status', 'aria-live': 'polite' });
+  const stamp = h('span', { class: 'sps-stamp' });
+  const button = h('button', { type: 'button', class: 'sps-refresh', onclick: load },
+    h('span', { class: 'sps-spin', 'aria-hidden': 'true' }, '↻'), 'حدّث');
+  const peek = h('span', { class: 'sps-peek' });
+  const details = h('details', { class: 'sp-stats' },
+    h('summary', {}, h('span', { class: 'sps-title' }, 'إحصائيات المنشور'), peek, h('span', { class: 'sps-chev', 'aria-hidden': 'true' })),
+    body, h('div', { class: 'sps-foot' }, stamp, button));
+  let prev = null; // the last numbers, so a refresh counts up from them and shows what changed
+
+  const postLink = (k) => {
+    const r = p.results?.[k] || {};
+    return r.link || (k === 'facebook' && r.id && !r.story ? `https://www.facebook.com/${r.id}` : r.permalink || '');
+  };
+  function countUp(el, to, from) {
+    if (still() || from === to) { el.textContent = num.format(to); return; }
+    const t0 = performance.now(), span = 900;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / span);
+      el.textContent = num.format(Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    el.textContent = num.format(from);
+    requestAnimationFrame(step);
+    setTimeout(() => { el.textContent = num.format(to); }, span + 250); // a background tab pauses animation frames
+  }
+  const skeleton = () => h('div', { class: 'sps-grid' }, ...p.platforms.map((k, i) => h('div', { class: 'sps-card is-skel', 'data-platform': k, style: `--i:${i}`, 'aria-hidden': 'true' },
+    h('div', { class: 'sps-head' }, h('span', { class: 'sps-dot' }), PLATFORM_NAME[k] || k),
+    h('div', { class: 'sps-metrics' }, ...METRICS.map(() => h('div', { class: 'sps-metric' }, h('span', { class: 'sps-bone is-big' }), h('span', { class: 'sps-bone' })))))));
+
+  function card(platform, r, i) {
+    const before = prev?.[platform] || {};
+    const href = postLink(platform);
+    const metrics = METRICS.map(([k, label]) => {
+      const v = r[k];
+      if (v == null) return h('div', { class: 'sps-metric is-na', title: 'غير متاح من ميتا' }, h('dt', {}, label), h('dd', {}, '—'));
+      const value = h('span', {});
+      countUp(value, v, prev ? (before[k] ?? 0) : 0);
+      const diff = before[k] != null ? v - before[k] : 0;
+      return h('div', { class: 'sps-metric' }, h('dt', {}, label), h('dd', {}, value,
+        diff > 0 ? h('span', { class: 'sps-delta', title: 'زيادة من آخر تحديث' }, '+' + num.format(diff)) : ''));
+    });
+    const engaged = (r.likes ?? 0) + (r.comments ?? 0);
+    const rate = r.reach > 0 && (r.likes != null || r.comments != null) ? Math.min(100, (engaged / r.reach) * 100) : null;
+    const fill = h('span', { class: 'sps-bar-fill' });
+    if (rate != null) setTimeout(() => fill.style.setProperty('--w', rate.toFixed(1) + '%'), 60);
+    return h('div', { class: 'sps-card', 'data-platform': platform, style: `--i:${i}` },
+      h('div', { class: 'sps-head' }, h('span', { class: 'sps-dot', 'aria-hidden': 'true' }), PLATFORM_NAME[platform] || platform,
+        href ? h('a', { class: 'sps-open', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `افتح المنشور على ${PLATFORM_NAME[platform]}` }, 'افتح ↗') : ''),
+      h('dl', { class: 'sps-metrics' }, ...metrics),
+      rate != null ? h('div', { class: 'sps-rate', title: '(الإعجابات + التعليقات) ÷ الوصول' },
+        h('div', { class: 'sps-rate-top' }, h('span', {}, 'نسبة التفاعل'), h('strong', {}, (rate < 10 ? rate.toFixed(1) : Math.round(rate)) + '%')),
+        h('span', { class: 'sps-bar' }, fill)) : '');
+  }
+
+  async function load() {
+    if (button.disabled) return;
+    button.disabled = true;
+    details.classList.add('is-loading');
+    if (!prev) body.replaceChildren(skeleton());
+    try {
+      const data = await api('/posts/' + p.id + '/stats');
+      const rows = Object.entries(data.rows || {});
+      const notes = [];
+      for (const issue of data.issues || []) {
+        const reason = issue.need ? `بدها صلاحية ${issue.need}`
+          : [10, 200].includes(issue.code) ? 'ميتا رفضت صلاحية القراءة'
+          : issue.code === 190 ? 'انتهت صلاحية الربط أو أُلغيت' : 'تعذّرت القراءة من ميتا';
+        notes.push(h('li', {}, `${PLATFORM_NAME[issue.platform]} · ${NAMES[issue.metric]}: ${reason}${issue.code && !issue.need ? ' (' + issue.code + ')' : ''}`));
+      }
+      if (!notes.length && rows.some(([, r]) => Object.values(r).includes(null))) {
+        notes.push(h('li', {}, '— يعني الرقم مش متاح من ميتا لهاد المنشور (مثلاً ستوري فيسبوك).'));
+      }
+      body.classList.toggle('is-first', !prev);
+      body.replaceChildren(
+        rows.length ? h('div', { class: 'sps-grid' }, ...rows.map(([k, r], i) => card(k, r, i))) : h('p', { class: 'sps-note' }, 'ما في أرقام لهاد المنشور.'),
+        notes.length ? h('ul', { class: 'sps-notes' }, ...notes) : '',
+        data.missing?.length ? h('p', { class: 'conn-warn' }, 'الربط الحالي ناقصه صلاحيات الإحصائيات. ' + (deps.owner
+          ? 'من «الربط» اضغط «ربط من جديد» ثم «ربط بفيسبوك» ووافق على كل الصلاحيات.'
+          : 'صاحب المنصة لازم يعمل ربط من جديد بفيسبوك.')) : '');
+      prev = data.rows || {};
+      const total = (k) => rows.reduce((n, [, r]) => n + (r[k] ?? 0), 0);
+      peek.textContent = rows.length ? `${num.format(total('reach'))} وصول · ${num.format(total('likes'))} إعجاب` : '';
+      stamp.textContent = 'آخر تحديث ' + timeFmt.format(new Date());
+    } catch (e) {
+      if (!prev) body.replaceChildren(h('p', { class: 'conn-warn' }, e.message));
+      else stamp.textContent = e.message;
+    } finally {
+      button.disabled = false;
+      details.classList.remove('is-loading');
+    }
+  }
+  details.ontoggle = () => { if (details.open && !prev) load(); };
+  return details;
+}
+
 function calDetail(p) {
   const h = deps.h; const [label, cls] = STATUS[p.status] || [p.status, ''];
   const results = p.platforms.map((k) => { const r = p.results?.[k] || {}; return h('span', { class: `res ${r.id ? 'ok' : r.error ? 'err' : ''}` }, r.id ? `${PLATFORM_NAME[k]} ✓` : r.error ? `${PLATFORM_NAME[k]}: ${r.error}` : PLATFORM_NAME[k]); });
   const actions = [editBtn(p)];
-  if (p.status === 'scheduled') {
+  if (deps.owner && p.status === 'scheduled') {
     const at = h('input', { type: 'datetime-local', value: toLocal(new Date(p.scheduledAt)), 'aria-label': 'الموعد الجديد' });
     actions.push(at, h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async () => {
       const t = new Date(at.value);
@@ -1424,15 +1613,15 @@ function calDetail(p) {
       try { const { post } = await api(`/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ scheduledAt: t.toISOString() }) }); upsertPost(post); deps.toast('تغيّر الموعد ✓'); } catch (e) { deps.toast(e.message, true); }
     } }, 'احفظ الموعد'));
   }
-  if (['scheduled', 'failed', 'partial'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'publish') }, p.status === 'scheduled' ? 'انشر الآن' : 'جرّب كمان مرة'));
-  if (['scheduled', 'failed', 'uploading'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'delete') }, p.status === 'scheduled' ? 'إلغاء' : 'حذف'));
+  if (deps.owner && ['scheduled', 'failed', 'partial'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'publish') }, p.status === 'scheduled' ? 'انشر الآن' : 'جرّب كمان مرة'));
+  if (deps.owner && ['scheduled', 'failed', 'pending', 'uploading'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'delete') }, p.status === 'scheduled' ? 'إلغاء' : 'حذف'));
   return h('div', { class: 'cal-detail' },
     h('img', { src: `${WORKER}/img/${p.id}.jpg`, alt: '', width: 72, height: 90 }),
     h('div', {},
       h('div', { class: 'sp-top' }, h('span', { class: `st ${cls}` }, label), p.story ? h('span', { class: 'sp-badge' }, 'ستوري') : '', h('strong', {}, p.title || '')),
       h('p', { class: 'muted small' }, whenFmt.format(postWhen(p))),
       h('div', { class: 'sp-res' }, results),
-      h('div', { class: 'cal-actions' }, actions)),
+      reviewPost(p), h('div', { class: 'cal-actions' }, actions)),
     h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { state.calSel = null; renderCalendar(); }, 'aria-label': 'سكّر' }, '×'));
 }
 const toLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -1464,10 +1653,10 @@ function renderPosts() {
     });
     const actions = [];
     actions.push(editBtn(p));
-    if (['scheduled', 'failed', 'partial'].includes(p.status)) {
+    if (deps.owner && ['scheduled', 'failed', 'partial'].includes(p.status)) {
       actions.push(deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'publish') }, p.status === 'scheduled' ? 'انشر الآن' : 'جرّب كمان مرة'));
     }
-    if (['scheduled', 'failed'].includes(p.status)) {
+    if (deps.owner && ['scheduled', 'pending', 'failed', 'uploading'].includes(p.status)) {
       actions.push(deps.h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'delete') }, p.status === 'scheduled' ? 'إلغاء' : 'حذف'));
     }
     return deps.h('li', { class: 'studio-post' },
@@ -1477,23 +1666,25 @@ function renderPosts() {
           p.story ? deps.h('span', { class: 'sp-badge' }, 'ستوري') : '', p.video ? deps.h('span', { class: 'sp-badge is-music', title: p.music || '' }, p.story ? '♪ فيديو' : '♪ ريل') : '',
           deps.h('strong', {}, p.title || tname)),
         deps.h('p', { class: 'muted small' }, `${tname} · ${when}`),
-        deps.h('div', { class: 'sp-res' }, results)),
+        deps.h('div', { class: 'sp-res' }, results), reviewPost(p), statsPanel(p)),
       deps.h('div', { class: 'sp-actions' }, actions));
   }));
 }
 async function postAct(btn, p, what) {
   if (what === 'delete' && !confirm(p.status === 'scheduled' ? 'نلغي المنشور المجدول؟' : 'نحذف المنشور من القائمة؟')) return;
+  if (what === 'approve' && !confirm(Date.parse(p.scheduledAt) > Date.now() ? 'توافق على نشره بالموعد المحدد؟' : 'توافق على نشره بدورة النشر الجاية (خلال حوالي 5 دقايق)؟')) return;
   if (what === 'publish' && !confirm('ننشره هلّق؟')) return;
   btn.disabled = true;
   try {
     if (what === 'delete') { await api(`/posts/${p.id}`, { method: 'DELETE' }); state.posts = state.posts.filter((x) => x.id !== p.id); renderPosts(); deps.toast('تم'); }
-    else { const { post } = await api(`/posts/${p.id}/publish`, { method: 'POST' }); upsertPost(post); deps.toast(post.status === 'published' ? 'انتشر ✓' : STATUS[post.status]?.[0] || 'تم', post.status === 'failed'); }
+    else { const { post } = await api(`/posts/${p.id}/${what}`, { method: 'POST' }); upsertPost(post); deps.toast(post.status === 'published' ? 'انتشر ✓' : STATUS[post.status]?.[0] || 'تم', post.status === 'failed'); }
   } catch (e) { deps.toast(e.message, true); btn.disabled = false; }
 }
 
 /* =================== entry points (called from admin.js) =================== */
 export function initStudio(d) {
   deps = d;
+  if (deps.owner) finishFacebook();
   load();
   $('studio-caption').value = state.caption;
   const count = () => { $('studio-count').textContent = `${$('studio-caption').value.length} / 2200`; };
