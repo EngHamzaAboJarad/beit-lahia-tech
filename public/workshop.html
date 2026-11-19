@@ -24,9 +24,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/workshop.css?v=2">
+  <link rel="stylesheet" href="/workshop.css?v=3">
   <link rel="stylesheet" href="/brand.css?v=4">
-  <script type="module" src="/workshop.js?v=5"></script>
+  <script src="/vendor/qrcode.js" defer></script>
+  <script type="module" src="/workshop.js?v=6"></script>
   <link rel="modulepreload" href="/firebase-init.js">
   <link rel="modulepreload" href="/workshop-shared.js">
   <link rel="dns-prefetch" href="https://www.gstatic.com">
@@ -240,6 +241,12 @@
             <h2>انحجز مقعدك! ✦</h2>
             <p id="success-text">وصل تسجيلك. رح نتواصل معك على الواتساب قبل الورشة بتأكيد الموعد والتفاصيل.</p>
             <div class="ws-success-meta" id="success-meta"></div>
+            <div class="ws-pass" id="ws-pass" hidden>
+              <p class="ws-pass-title">بطاقة دخولك للورشة</p>
+              <a class="ws-pass-qr" id="ws-pass-qr" href="#" target="_blank" rel="noopener" aria-label="افتح بطاقة الدخول"></a>
+              <p class="ws-pass-tip">صوّر الشاشة أو افتح البطاقة واحفظها. يوم الورشة بنمسح هالرمز عالباب لنسجّل حضورك، والشهادة بتنصدر للي حضروا.</p>
+              <a class="btn btn-primary" id="ws-pass-link" href="#" target="_blank" rel="noopener">افتح بطاقة الدخول</a>
+            </div>
             <a class="btn btn-whatsapp" id="group-btn" href="#" target="_blank" rel="noopener noreferrer" hidden>
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M8.8 8.6c.2-.5.5-.5.8-.5h.5c.2 0 .4 0 .5.4l.7 1.6c.1.2 0 .4-.1.6l-.4.5c-.1.1-.2.3 0 .5.6 1 1.4 1.8 2.4 2.3.2.1.4.1.5 0l.6-.7c.1-.2.4-.2.6-.1l1.5.7c.2.1.4.2.4.4 0 .5-.2 1.2-.7 1.5-.5.3-1.4.5-2.8-.1a8.6 8.6 0 0 1-4-3.6c-.6-1-.8-2.2-.5-3z"/></svg>
               انضم لقروب الورشة

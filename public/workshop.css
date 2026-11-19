@@ -193,3 +193,10 @@
 .ws-past-meta { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px; }
 .ws-past-meta span { padding: 3px 10px; border-radius: 999px; background: var(--sand); font-size: 13px; font-weight: 600; color: var(--slate); }
 .ws-eyebrow.is-done .pixels i { background: var(--slate-400); }
+
+/* check-in pass shown after registering */
+.ws-pass { display: grid; justify-items: center; gap: 8px; width: min(100%, 340px); padding: 16px; border: 1px dashed var(--line); border-radius: 18px; background: var(--white); }
+.ws-pass-title { font-family: var(--font-head); font-weight: 700; color: var(--night) !important; }
+.ws-pass-qr { display: block; width: 200px; height: 200px; }
+.ws-pass-qr img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+.ws-pass-tip { font-size: 14px; }

@@ -5,6 +5,7 @@
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
 import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP, placeText } from './workshop-shared.js';
+import { passLink, qrPayload, qrDataUrl } from './checkin-shared.js';
 
 const $ = (id) => document.getElementById(id);
 const COLLECTION = 'workshopRegs';
@@ -363,10 +364,10 @@ form.addEventListener('submit', async (e) => {
   setLoading(true);
   try {
     const { db, fs } = await getDb();
-    await fs.addDoc(fs.collection(db, COLLECTION), { ...data, createdAt: fs.serverTimestamp() });
+    const ref = await fs.addDoc(fs.collection(db, COLLECTION), { ...data, createdAt: fs.serverTimestamp() });
     // the owner's daily e-mail digest (name only; best effort, never blocks the form)
     try { fetch('https://social.beitlahia.tech/notify/reg', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ kind: 'workshop', name: data.name, workshop: ws.titleAr || ws.title }) }).catch(() => {}); } catch { /* ignore */ }
-    showSuccess();
+    showSuccess(ref.id, data.name);
   } catch (err) {
     console.error('[workshop register]', err);
     statusEl.textContent = !navigator.onLine
@@ -378,7 +379,20 @@ form.addEventListener('submit', async (e) => {
   } finally { setLoading(false); }
 });
 
-function showSuccess() {
+// the registration id is the check-in code: show its QR (and a link to the full pass) right away
+function showPass(regId, name) {
+  const box = $('ws-pass');
+  box.hidden = !regId;
+  if (!regId) return;
+  const link = passLink(location.origin, regId, wid, name);
+  $('ws-pass-link').href = link;
+  $('ws-pass-qr').href = link;
+  const src = qrDataUrl(qrPayload(location.origin, regId, wid), 6, 2);
+  $('ws-pass-qr').replaceChildren(...(src ? [Object.assign(document.createElement('img'), { src, alt: 'رمز QR لتسجيل الحضور' })] : []));
+}
+
+function showSuccess(regId = '', name = '') {
+  showPass(regId, name);
   form.hidden = true;
   $('success').hidden = false;
   $('success').focus();

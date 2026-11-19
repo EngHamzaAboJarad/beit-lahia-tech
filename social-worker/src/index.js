@@ -31,6 +31,7 @@
 //   DELETE /posts/:id           admin: cancel a scheduled post / remove a failed one
 //   GET    /notify              owner: e-mail alert settings · POST /notify: save them · POST /notify/test
 //   POST   /notify/reg          public (site forms): { kind: member|workshop, name, workshop? } → the daily digest
+//   GET    /mail · POST /mail/workshop   admin «workshops»: e-mail registrants their check-in pass / certificate (mail.js)
 //
 // What goes out where:
 //   post  + image → Facebook page photo        · Instagram feed photo
@@ -39,6 +40,8 @@
 //   story + video → Facebook page video story  · Instagram story (video, with its music)
 // The video is made in the admin panel (the design + the chosen music, as MP4/H.264/AAC); the image
 // always comes along too (the thumbnail in the posts list).
+
+import { handleMail } from './mail.js';
 
 const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
 const MAX_DESIGN = 3 * 1024 * 1024; // a design with an uploaded photo inside is ~1–2 MB of JSON
@@ -160,6 +163,9 @@ async function route(req, env, ctx) {
     }
     throw fail(404, 'الصورة مش موجودة');
   }
+  // e-mails to workshop registrants (check-in pass / certificate): see mail.js
+  if (parts[0] === 'mail') return handleMail(req, env, parts, { requireAdmin, fail, json });
+
   if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
   const user = await requireAdmin(req, env, 'studio');
 

@@ -19,7 +19,7 @@ let lastBeat = 0;
 const NOUN = {
   members: 'تسجيل بالمجتمع', team: 'عضو بالفريق', events: 'فعالية', gallery: 'صورة بالمعرض', galleryFull: 'صورة بالمعرض',
   workshops: 'ورشة', workshopRegs: 'تسجيل بورشة', trainers: 'طلب مدرّب', topicSurveys: 'رد على الاستبيان',
-  certificates: 'شهادة', admins: 'مشرف', adminInvites: 'دعوة مشرف', socialTemplates: 'قالب سوشيال',
+  certificates: 'شهادة', memberNotes: 'ملاحظة عن عضو', admins: 'مشرف', adminInvites: 'دعوة مشرف', socialTemplates: 'قالب سوشيال',
 };
 const SITE = { content: 'محتوى الموقع', settings: 'الإعدادات', forms: 'إعدادات الفورمات' };
 const VERB = { add: 'أضاف', set: 'حفظ', update: 'عدّل', delete: 'حذف' };
@@ -40,6 +40,8 @@ function describe(kind, ref, data) {
   const noun = col === 'site' ? SITE[ref.id] || 'إعدادات الموقع' : NOUN[col] || col;
   const keys = data && typeof data === 'object' ? Object.keys(data) : [];
   if (kind === 'update' && keys.length && keys.every((k) => ['order', 'updatedAt'].includes(k))) return `رتّب ${noun}`;
+  if (kind === 'update' && keys.length && keys.every((k) => /MailedAt$/.test(k))) return ''; // bookkeeping after an e-mail
+  if (kind === 'update' && keys.includes('attended')) return data.attended ? 'سجّل حضور مشارك بورشة' : 'لغى حضور مشارك بورشة';
   if (kind === 'update' && keys.includes('deletedAt')) return data.deletedAt ? `نقل ${noun} لسلة المحذوفات` : `رجّع ${noun} من سلة المحذوفات`;
   const label = labelOf(data);
   return `${VERB[kind]} ${noun}${label ? `: ${label}` : ''}`;
