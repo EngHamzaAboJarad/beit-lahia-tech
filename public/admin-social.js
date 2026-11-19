@@ -9,6 +9,7 @@ import {
   renderDesign, moveElement, scaleElement, newElement, labelOf,
 } from './social-templates.js';
 import { videoSupported, decodeAudio, renderClip, makeVideo, MAX_SECONDS, fmtTime } from './story-video.js';
+import { workshopCampaign } from './social-campaign.js';
 import { SOCIAL_PLATFORMS } from './content-defaults.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,6 +36,11 @@ const state = {
   mine: [], caption: '', conn: null, posts: [],
   pen: { on: false, color: '#FFFFFF', width: 14, brush: 'pen' }, // drawing on the canvas
   music: null, // { file, name, audio: AudioBuffer, start, dur, vol, fade, motion } (memory only: the file is big)
+  campaign: null, // a workshop campaign being prepared (memory only)
+  postsView: (() => { try { return localStorage.getItem('blt-studio-view') || 'cal'; } catch { return 'cal'; } })(),
+  calMonth: null, calSel: null,
+  notify: null,
+  editing: null, // { post, mode: 'edit' | 'copy', orig } while a post from the list is open in the editor
 };
 
 /* =================== persistence (the working design survives a reload) =================== */
@@ -50,6 +56,10 @@ function load() {
 }
 let saveT;
 function persist() {
+  if (state.src.kind === 'campaign') {
+    const it = state.campaign?.items.find((x) => x.key === state.src.id);
+    if (it) { it.design = state.design; refreshCampaignThumbs(); }
+  }
   clearTimeout(saveT);
   saveT = setTimeout(() => {
     try { localStorage.setItem(STORE, JSON.stringify({ src: state.src, design: state.design, base: state.base, caption: state.caption })); } catch { /* too big / private */ }
@@ -105,6 +115,8 @@ function renderPickers() {
   $('tpl-save').hidden = cur.kind !== 'mine';
 }
 function sourceDesign(kind, id) {
+  if (kind === 'post') return state.editing && state.editing.post.id === id ? clone(state.editing.orig) : null;
+  if (kind === 'campaign') { const it = state.campaign?.items.find((x) => x.key === id); return it && clone(it.orig); }
   if (kind === 'mine') { const m = state.mine.find((x) => x.id === id); return m && clone(m.design); }
   const b = BUILTIN.find((x) => x.id === id); return b && clone(b);
 }
@@ -115,7 +127,7 @@ function openDesign(kind, id) {
   if (!d) return;
   state.src = { kind, id }; state.design = d; state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
-  refreshAll(); renderPickers(); autoFormats();
+  stopEditing(); refreshAll(); renderPickers(); autoFormats();
 }
 
 /* =================== content pane: quick text editing =================== */
@@ -535,6 +547,7 @@ async function uploadReady(file) {
     bg: { color: '#0B1020', grid: false },
     els: [{ type: 'image', src: pic.src, x: 0, y: 0, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }],
   };
+  stopEditing();
   state.src = { kind: 'upload', id: 'upload' }; state.design = d; state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
   setPane('content'); refreshAll(); renderPickers(); autoFormats();
@@ -563,8 +576,7 @@ async function rasterize(type = 'image/png', quality) {
   return toBlob(await rasterCanvas(), type, quality);
 }
 const toBlob = (c, type, quality) => new Promise((resolve) => c.toBlob(resolve, type, quality));
-async function rasterCanvas() {
-  const d = state.design;
+async function rasterCanvas(d = state.design) {
   const srcs = [...new Set(d.els.filter((e) => e.type === 'image' && e.src && !e.hidden).map((e) => e.src))];
   const [css, pairs] = await Promise.all([fontCss(), Promise.all(srcs.map(async (s) => [s, await toDataUrl(s)]))]);
   await fontsReady;
@@ -633,14 +645,14 @@ async function loadMusic(file) {
     // a music sticker that still says «اسم الأغنية» takes the song's name
     const [title, artist] = songName(file.name);
     state.design.els.filter((e) => e.type === 'music' && (!e.title || e.title === 'اسم الأغنية')).forEach((e) => { e.title = title; if (!e.artist || e.artist === 'الفنان') e.artist = artist; });
-    clearPreview(); renderStage(); renderMusic(); syncPublishUi();
+    clearPreview(); renderStage(); renderMusic(); syncPublishUi(); if (state.editing) renderEditing();
     deps.toast('انضافت الموسيقى ✓');
   } catch {
     setMusicBusy('');
     deps.toast('ما قدرنا نقرأ الملف. جرّب mp3 أو m4a أو wav.', true);
   }
 }
-function removeMusic() { stopPlay(); state.music = null; clearPreview(); renderMusic(); syncPublishUi(); }
+function removeMusic() { stopPlay(); state.music = null; clearPreview(); renderMusic(); syncPublishUi(); if (state.editing) renderEditing(); }
 function clearPreview() { if (preview) URL.revokeObjectURL(preview.url); preview = null; }
 async function togglePlay() {
   if (player) { stopPlay(); return; }
@@ -728,7 +740,10 @@ function renderMusic() {
       h('a', { class: 'btn btn-ghost-dark btn-sm', href: preview.url, download: `beitlahia-${preview.fmt}-${new Date().toISOString().slice(0, 10)}.mp4` }, `نزّل MP4 (${(preview.size / 1048576).toFixed(1)} MB)`)) : '');
 }
 const blobToBase64 = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
-const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : 'custom');
+const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : slugOf(state.design));
+const slugOf = (d) => (BUILTIN.some((b) => b.id === d.id) ? d.id : d.id === 'upload' ? 'upload' : 'custom');
+const titleOf = (d) => d.els.filter((e) => (e.type === 'text' || e.type === 'button') && !e.hidden && String(e.text || '').trim())
+  .map((e) => String(e.text).replace(/\n/g, ' ')).slice(0, 2).join(' · ') || d.name;
 
 async function download() {
   const btn = $('studio-download');
@@ -838,7 +853,8 @@ function renderConn() {
   else msg = `خدمة النشر شغّالة${c.page ? ` · الصفحة: ${c.page}` : ''}${c.instagramUser ? ` · إنستغرام: @${c.instagramUser}` : ''}`;
   box.className = `studio-conn ${c.up ? (c.facebook || c.instagram ? 'is-ok' : 'is-warn') : 'is-off'}`;
   box.replaceChildren(deps.h('p', {}, msg), c.up ? deps.h('div', { class: 'conn-chips' }, chip('facebook'), chip('instagram')) : '');
-  if (deps.owner) renderConnect();
+  if (state.campaign) renderCampaign();
+  if (deps.owner) { renderConnect(); if (c.up && !state.notify) loadNotify(); else renderNotify(); }
 }
 
 /* =================== connecting Facebook / Instagram (owner only) =================== */
@@ -960,6 +976,47 @@ async function connectAct(btn, what) {
     if (what === 'disconnect') { deps.toast('انفصلت'); await checkConnection(); } else renderConnect();
   } catch (e) { deps.toast(e.message, true); } finally { deps.setBusy(btn, false); }
 }
+/* =================== e-mail alerts (owner only) =================== */
+async function loadNotify() {
+  try { state.notify = await api('/notify'); } catch (e) { state.notify = { error: e.message }; }
+  renderNotify();
+}
+function renderNotify() {
+  const box = $('studio-notify'); const n = state.notify; const h = deps.h;
+  box.hidden = !deps.owner || !state.conn?.up;
+  if (box.hidden || !n) return;
+  const head = h('div', { class: 'studio-head' }, h('h2', {}, 'التنبيهات بالإيميل'), h('span', { class: 'muted small' }, 'إلك إنت بس'));
+  if (n.error) { box.replaceChildren(head, h('p', { class: 'conn-err' }, n.error)); return; }
+  const chk = (key, text, hint) => h('label', { class: 'studio-chk notify-opt' }, h('input', { type: 'checkbox', checked: n[key] !== false, 'data-notify': key }),
+    h('span', {}, h('strong', {}, text), h('span', { class: 'muted small' }, ` · ${hint}`)));
+  const to = h('input', { id: 'notify-to', type: 'email', dir: 'ltr', value: n.to || '', placeholder: 'name@gmail.com', autocomplete: 'email' });
+  const read = () => ({ to: to.value.trim(), ...Object.fromEntries([...box.querySelectorAll('[data-notify]')].map((x) => [x.dataset.notify, x.checked])) });
+  const last = n.last ? h('p', { class: `small ${n.last.ok ? 'conn-ok' : 'conn-err'}` },
+    `آخر إيميل: ${whenFmt.format(new Date(n.last.at))} · «${n.last.subject}» ${n.last.ok ? '✓ انبعت' : `✗ ما انبعت (${n.last.error || ''})`}`) : '';
+  box.replaceChildren(head,
+    h('p', { class: 'muted small' }, `بتوصلك الإيميلات من ${n.from} لحالها، بدون ما تفتح اللوحة.`),
+    chk('failed', 'منشور مجدول ما انتشر', 'أول ما يفشل، مع السبب'),
+    chk('conn', 'مشكلة بربط فيسبوك وإنستغرام', 'فحص كل يوم الصبح'),
+    chk('digest', 'ملخص التسجيلات اليومي', 'كل يوم الساعة 8 المسا، إذا في تسجيلات جديدة'),
+    h('div', { class: 'field' }, h('label', { for: 'notify-to' }, 'الإيميل اللي بتوصله التنبيهات'), to,
+      h('p', { class: 'muted small' }, 'لازم يكون متحقق منه بـ Cloudflare › Email Routing › Destination addresses (جيميل الإدارة اللي بيوصله info@ متحقق منه).')),
+    n.mail ? '' : h('p', { class: 'conn-warn' }, 'إرسال الإيميل مش مفعّل بخدمة النشر لسا (send_email). بيتفعّل مع الرفع الجاي للخدمة.'),
+    last,
+    h('div', { class: 'acc-actions' },
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: async (e) => {
+        const b = e.currentTarget; deps.setBusy(b, true);
+        try { state.notify = await api('/notify', { method: 'POST', body: JSON.stringify(read()) }); deps.toast('انحفظ ✓'); renderNotify(); } catch (err) { deps.toast(err.message, true); deps.setBusy(b, false); }
+      } }, h('span', { class: 'btn-label' }, 'احفظ'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async (e) => {
+        const b = e.currentTarget; deps.setBusy(b, true);
+        try {
+          await api('/notify', { method: 'POST', body: JSON.stringify(read()) });
+          state.notify = await api('/notify/test', { method: 'POST' });
+          deps.toast(`انبعت إيميل تجربة لـ ${state.notify.to} ✓`); renderNotify();
+        } catch (err) { deps.toast(err.message, true); await loadNotify(); }
+      } }, h('span', { class: 'btn-label' }, 'ابعت إيميل تجربة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))));
+}
+
 function syncPublishUi() {
   const later = document.querySelector('input[name="studio-when"]:checked')?.value === 'later';
   $('studio-at').hidden = !later;
@@ -1021,29 +1078,9 @@ async function publish() {
   try {
     const base = await rasterCanvas();
     const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
-    const title = d.els.filter((e) => (e.type === 'text' || e.type === 'button') && !e.hidden && String(e.text || '').trim())
-      .map((e) => String(e.text).replace(/\n/g, ' ')).slice(0, 2).join(' · ') || d.name;
     for (const fmt of formats) {
-      const name = fmt === 'story' ? 'الستوري' : 'المنشور';
-      const frame = frameFor(fmt, base, !!clip);
-      const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
-      let video = null;
-      if (clip) {
-        video = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion: m.motion,
-          onProgress: (k) => progress(`${name}: عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
-      }
-      progress(`${name}: عم ${later ? 'نجدول' : 'ننشر'}…`);
-      let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
-        image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : $('studio-caption').value, platforms, scheduledAt,
-        template: slug(), title, story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '',
-      }) });
-      upsertPost(post);
-      if (video) {
-        progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later ? '' : ' وننشره'}…`);
-        ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
-        upsertPost(post);
-      }
-      done.push(post);
+      done.push(await publishJob({ design: d, base, fmt, caption: $('studio-caption').value, platforms, scheduledAt,
+        template: slug(), clip, motion: m?.motion, musicName: m ? musicLabel(m) : '', progress }));
     }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
     if (bad.length) deps.toast(`${STATUS[bad[0].status][0]}: شوف التفاصيل بالقائمة`, true);
@@ -1053,6 +1090,352 @@ async function publish() {
     deps.toast(`${done.length ? 'جزء انتشر، والباقي ' : ''}${e.message || 'ما زبط النشر'}`, true);
   } finally { progress(''); deps.setBusy(btn, false); syncPublishUi(); }
 }
+
+// one design, one format (post / story), to the chosen platforms: now or at scheduledAt
+async function publishJob({ design, base = null, fmt, caption = '', platforms, scheduledAt = null, template, clip = null, motion = 'zoom-in', musicName = '', progress = () => {}, label = '' }) {
+  const name = label || (fmt === 'story' ? 'الستوري' : 'المنشور');
+  const later = !!scheduledAt;
+  const frame = frameFor(fmt, base || (await rasterCanvas(design)), !!clip);
+  const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
+  let video = null;
+  if (clip) {
+    video = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion,
+      onProgress: (k) => progress(`${name}: عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
+  }
+  progress(`${name}: عم ${later ? 'نجدول' : 'ننشر'}…`);
+  let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
+    image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : caption, platforms, scheduledAt,
+    template: template || slugOf(design), title: titleOf(design), story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: musicName,
+  }) });
+  upsertPost(post);
+  await saveDesign(post.id, design);
+  if (video) {
+    progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later ? '' : ' وننشره'}…`);
+    ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
+    upsertPost(post);
+  }
+  return post;
+}
+// the design goes along with every post, so it can be opened in the editor again (best effort)
+async function saveDesign(id, design) {
+  try {
+    const { post } = await api(`/posts/${id}/design`, { method: 'PUT', raw: new Blob([JSON.stringify(design)], { type: 'application/json' }) });
+    upsertPost(post);
+  } catch (e) { console.warn('[studio] design not kept', e); }
+}
+
+/* =================== editing a post from the posts list / calendar =================== */
+// scheduled → edit it in place (same post, same time unless changed) · already out → open a copy to publish anew
+async function editPost(p) {
+  if (dirty() && !(state.src.kind === 'post' && state.src.id === p.id) && !confirm('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح المنشور وتتركها؟')) return;
+  let design;
+  try {
+    if (p.hasDesign) design = await api(`/posts/${p.id}/design`);
+  } catch (e) { console.warn('[studio] design', e); }
+  if (!design || !Array.isArray(design.els)) design = await designFromImage(p);
+  const mode = p.status === 'scheduled' ? 'edit' : 'copy';
+  state.src = { kind: 'post', id: p.id }; state.design = design; state.base = JSON.stringify(design);
+  state.sel = -1; state.undo = []; state.redo = [];
+  state.editing = { post: p, mode, orig: clone(design) };
+  $('pub-story').checked = !!p.story; $('pub-post').checked = !p.story;
+  if (mode === 'copy' && !p.story) { $('studio-caption').value = p.caption || ''; state.caption = p.caption || ''; $('studio-caption').dispatchEvent(new Event('input')); }
+  setPane('content'); refreshAll(); renderPickers(); syncPublishUi(); renderEditing();
+  $('studio-editing').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// a post made before designs were kept: its picture becomes the design (you can add elements on top)
+function designFromImage(p) {
+  const src = `${WORKER}/img/${p.id}.jpg`;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ v: 1, id: 'upload', name: p.title || 'منشور', w: img.naturalWidth, h: img.naturalHeight, bg: { color: '#0B1020', grid: false },
+      els: [{ type: 'image', src, x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight, gray: false, fade: 'none', opacity: 1, rx: 0 }] });
+    img.onerror = () => resolve({ v: 1, id: 'upload', name: p.title || 'منشور', w: 1080, h: p.story ? 1920 : 1350, bg: { color: '#0B1020', grid: false }, els: [] });
+    img.src = src;
+  });
+}
+function stopEditing() { state.editing = null; renderEditing(); }
+function renderEditing() {
+  const box = $('studio-editing'); const ed = state.editing; const h = deps.h;
+  box.hidden = !ed;
+  if (!ed) { box.replaceChildren(); return; }
+  const p = state.posts.find((x) => x.id === ed.post.id) || ed.post;
+  const kind = p.story ? 'ستوري' : 'منشور';
+  if (ed.mode === 'copy') {
+    box.replaceChildren(
+      h('div', { class: 'ed-head' }, h('strong', {}, `✎ نسخة من ${kind} «${p.title || ''}»`), h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: stopEditing }, 'خلصت')),
+      h('p', { class: 'muted small' }, `هاد ال${kind} ${STATUS[p.status]?.[0] || ''}، وميتا ما بتسمح نعدّل ${p.story ? 'ستوري' : 'منشور'} بعد ما ينزل. عدّل التصميم هون وانشره كجديد من «النشر» تحت${p.story ? ' (الستوري القديم بيختفي لحاله بعد 24 ساعة)' : ''}.`));
+    return;
+  }
+  const at = h('input', { type: 'datetime-local', id: 'ed-at', value: toLocal(new Date(p.scheduledAt)), 'aria-label': 'الموعد' });
+  const cap = p.story ? null : h('textarea', { id: 'ed-caption', rows: 4, maxlength: 2200, value: p.caption || '' });
+  const m = state.music;
+  const musicNote = p.video
+    ? (m ? `كان فيه موسيقى «${p.music || ''}». رح يتعمل الفيديو من جديد بالموسيقى المختارة تحت: «${musicLabel(m)}».` : `كان فيه موسيقى «${p.music || ''}». الملف مش محمّل هون: اختاره من «موسيقى» تحت عشان يضل فيديو، وإلا بيصير ${kind} صورة.`)
+    : (m ? `رح ينضاف عليه الموسيقى المختارة تحت: «${musicLabel(m)}» (بيصير فيديو).` : '');
+  box.replaceChildren(
+    h('div', { class: 'ed-head' }, h('strong', {}, `✎ عم تعدّل ${kind} مجدول: «${p.title || ''}»`),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { if (!dirty() || confirm('تلغي التعديلات؟')) { stopEditing(); } } }, 'إلغاء')),
+    h('p', { class: 'muted small' }, 'غيّر التصميم بالمحرر (المحتوى أو التصميم)، وبعدين «احفظ التعديل». بيضل نفس ال' + kind + ' بنفس المنصات.'),
+    h('div', { class: 'field' }, h('label', { for: 'ed-at' }, 'بينزل'), at),
+    cap ? h('div', { class: 'field' }, h('label', { for: 'ed-caption' }, 'النص'), cap) : '',
+    musicNote ? h('p', { class: 'muted small' }, '♪ ', musicNote) : '',
+    h('div', { class: 'acc-actions' },
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', id: 'ed-save', onclick: (e) => saveEdit(e.currentTarget) },
+        h('span', { class: 'btn-label' }, 'احفظ التعديل'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
+    h('p', { class: 'muted small studio-progress', id: 'ed-progress', 'aria-live': 'polite', hidden: true }));
+}
+async function saveEdit(btn) {
+  const ed = state.editing; if (!ed || ed.mode !== 'edit') return;
+  const p = state.posts.find((x) => x.id === ed.post.id) || ed.post;
+  const t = new Date($('ed-at').value);
+  if (Number.isNaN(+t) || +t < Date.now() + 5 * 60e3) { deps.toast('الموعد لازم يكون بعد 5 دقايق على الأقل', true); return; }
+  const m = state.music;
+  if (p.video && !m && !confirm(`ال${p.story ? 'ستوري' : 'منشور'} كان فيه موسيقى، وهي مش محمّلة هون. تحفظه صورة بدون موسيقى؟`)) return;
+  if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
+  const progress = (x) => { const el = $('ed-progress'); if (el) { el.hidden = !x; el.textContent = x || ''; } };
+  deps.setBusy(btn, true); stopPlay();
+  try {
+    const fmt = p.story ? 'story' : 'post';
+    const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
+    const frame = frameFor(fmt, await rasterCanvas(), !!clip);
+    const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
+    const video = clip ? await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion: m.motion, onProgress: (k) => progress(`عم نعمل الفيديو… ${Math.round(k * 100)}%`) }) : null;
+    progress('عم نحفظ…');
+    let { post } = await api(`/posts/${p.id}`, { method: 'PUT', body: JSON.stringify({
+      image: await blobToBase64(jpeg), caption: $('ed-caption')?.value ?? p.caption, title: titleOf(state.design),
+      video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '', scheduledAt: t.toISOString(),
+    }) });
+    upsertPost(post);
+    await saveDesign(p.id, state.design);
+    if (video) { progress(`عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)…`); ({ post } = await api(`/posts/${p.id}/video`, { method: 'PUT', raw: video })); upsertPost(post); }
+    state.base = JSON.stringify(state.design); ed.orig = clone(state.design); ed.post = post;
+    persist();
+    deps.toast(`انحفظ التعديل ✓ بينزل ${whenFmt.format(new Date(post.scheduledAt))}`);
+    renderEditing();
+  } catch (e) {
+    console.error(e); deps.toast(e.message || 'ما زبط الحفظ', true);
+  } finally { progress(''); deps.setBusy(btn, false); }
+}
+
+/* =================== workshop campaign: post + two stories from a workshop =================== */
+// opened from «الورشات» › «اعمل بوست وستوري» (admin.js → openWorkshopCampaign)
+function campaignItem(key) { return state.campaign?.items.find((x) => x.key === key); }
+export function openWorkshopCampaign(w, opts = {}) {
+  const c = workshopCampaign(w, opts);
+  state.campaign = { ...c, workshop: w, opts, photo: opts.photo || '', items: c.items.map((it) => ({ ...it, on: !it.past, orig: clone(it.design) })) };
+  renderCampaign();
+  $('studio-campaign').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+let thumbT = 0;
+function refreshCampaignThumbs() {
+  clearTimeout(thumbT);
+  thumbT = setTimeout(() => {
+    document.querySelectorAll('[data-camp-art]').forEach((el) => {
+      const it = campaignItem(el.dataset.campArt);
+      if (it) el.innerHTML = renderDesign(it.design, { measure }); // escaped renderer output
+    });
+  }, 250);
+}
+function setCampaignPhoto(src) {
+  const c = state.campaign; if (!c) return;
+  c.photo = src;
+  c.items.forEach((it) => { it.design.els.filter((e) => e.slot === 'photo').forEach((e) => { e.src = src; }); });
+  if (state.src.kind === 'campaign') renderStage();
+  renderCampaign();
+}
+function editCampaignItem(key) {
+  const it = campaignItem(key); if (!it) return;
+  if (dirty() && state.src.kind !== 'campaign' && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح تصميم الحملة وتتركها؟')) return;
+  stopEditing();
+  state.src = { kind: 'campaign', id: key }; state.design = it.design; state.base = JSON.stringify(it.orig);
+  state.sel = -1; state.undo = []; state.redo = [];
+  setPane('content'); refreshAll(); renderPickers(); autoFormats();
+  $('studio-stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  deps.toast(`فتحت «${it.label}» بالمحرر. التعديلات بتنحفظ بالحملة لحالها.`);
+}
+function renderCampaign() {
+  const box = $('studio-campaign'); const c = state.campaign; const h = deps.h;
+  box.hidden = !c;
+  if (!c) { box.replaceChildren(); return; }
+  const file = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', hidden: true,
+    onchange: async (ev) => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; try { setCampaignPhoto(await readPhoto(f)); } catch { deps.toast('ما قدرنا نقرأ الصورة', true); } } });
+  const conn = state.conn || {};
+  const rows = c.items.map((it) => {
+    const art = h('span', { class: 'camp-art', 'data-camp-art': it.key, 'aria-hidden': 'true' });
+    art.innerHTML = renderDesign(it.design, { measure }); // escaped renderer output
+    const at = h('input', { type: 'datetime-local', value: it.at, 'aria-label': `موعد ${it.label}`, onchange: (e) => { it.at = e.target.value; it.past = !!it.at && +new Date(it.at) < Date.now() + 5 * 60e3; renderCampaign(); } });
+    return h('li', { class: `camp-item ${it.on ? '' : 'is-off'} ${it.fmt === 'story' ? 'is-story' : ''}` },
+      h('label', { class: 'studio-chk camp-check' }, h('input', { type: 'checkbox', checked: it.on, onchange: (e) => { it.on = e.target.checked; renderCampaign(); } }), h('strong', {}, it.label)),
+      art,
+      h('div', { class: 'camp-when' },
+        h('span', { class: 'muted small' }, it.key === 'post' ? 'متى؟ (فاضي = هلّق)' : 'متى؟'), at,
+        it.past ? h('span', { class: 'conn-warn small' }, 'الموعد فات أو قريب كتير: غيّره أو شيل الإشارة') : '',
+        !it.at && it.key !== 'post' ? h('span', { class: 'conn-warn small' }, 'حط تاريخ للورشة (أو موعد هون) عشان يتجدول') : ''),
+      h('div', { class: 'camp-actions' }, h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => editCampaignItem(it.key) }, state.src.kind === 'campaign' && state.src.id === it.key ? 'مفتوح بالمحرر' : 'عدّل بالمحرر')));
+  });
+  const post = campaignItem('post');
+  box.replaceChildren(
+    h('div', { class: 'studio-head' }, h('h2', {}, `حملة الورشة: ${c.title}`),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { state.campaign = null; renderCampaign(); } }, 'سكّر')),
+    h('p', { class: 'muted small' }, 'جهّزتلك من بيانات الورشة: بوست إعلان، ستوري تذكير قبلها بيوم الساعة 6 المسا، وستوري «بلّشنا» وقت ما تبلّش. شوف كل واحد، عدّله بالمحرر إذا بدك، وبعدين اكبس «انشر وجدول».'),
+    h('div', { class: 'camp-photo' }, file,
+      c.photo ? h('img', { src: c.photo, alt: 'صورة المدرّب', width: 56, height: 56 }) : h('span', { class: 'camp-photo-empty', 'aria-hidden': 'true' }, '?'),
+      h('div', {}, h('strong', {}, 'صورة المدرّب'), h('p', { class: 'muted small' }, 'بتطلع بالدائرة بالبوست. صورة مربعة والوجه بالنص بتطلع أحلى.')),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, c.photo ? 'غيّر الصورة' : 'ارفع صورة')),
+    h('ul', { class: 'camp-list' }, rows),
+    h('div', { class: 'field' }, h('label', { for: 'camp-caption' }, 'نص بوست الإعلان'),
+      h('textarea', { id: 'camp-caption', rows: 7, maxlength: 2200, value: post.caption, oninput: (e) => { post.caption = e.target.value; } })),
+    h('fieldset', { class: 'field studio-platforms' }, h('legend', {}, 'وين؟'),
+      ['facebook', 'instagram'].map((k) => h('label', { class: 'studio-chk' }, h('input', { type: 'checkbox', checked: conn[k] && (c.platforms ? c.platforms.includes(k) : true), disabled: !conn[k], 'data-camp-pf': k, onchange: () => { c.platforms = [...box.querySelectorAll('[data-camp-pf]:checked')].map((x) => x.dataset.campPf); } }), h('span', {}, PLATFORM_NAME[k])))),
+    h('div', { class: 'studio-actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'camp-go', onclick: (e) => runCampaign(e.currentTarget) },
+      h('span', { class: 'btn-label' }, 'انشر وجدول الحملة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
+    h('p', { class: 'muted small studio-progress', id: 'camp-progress', 'aria-live': 'polite', hidden: true }));
+}
+async function runCampaign(btn) {
+  const c = state.campaign; if (!c) return;
+  const platforms = [...document.querySelectorAll('[data-camp-pf]:checked')].map((x) => x.dataset.campPf);
+  if (!platforms.length) { deps.toast('اختار فيسبوك أو إنستغرام (لازم يكونوا مربوطين)', true); return; }
+  const items = c.items.filter((it) => it.on);
+  if (!items.length) { deps.toast('أشّر على إشي واحد على الأقل', true); return; }
+  for (const it of items) {
+    if (it.past) { deps.toast(`موعد «${it.label}» فات. غيّره أو شيل الإشارة عنه.`, true); return; }
+    if (it.key !== 'post' && !it.at) { deps.toast(`«${it.label}» بده موعد`, true); return; }
+  }
+  if (items.some((it) => it.design.els.some((e) => e.slot === 'photo' && !e.src && !e.hidden)) && !confirm('ما رفعت صورة المدرّب، فالبوست بيطلع فيه «صورة المدرّب» فاضية. تكمّل هيك؟')) return;
+  const lines = items.map((it) => `• ${it.label}: ${it.at ? whenFmt.format(new Date(it.at)) : 'هلّق'}`).join('\n');
+  if (!confirm(`حملة «${c.title}» على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}:\n${lines}\n\nأكمل؟`)) return;
+  const progress = (t) => { const p = $('camp-progress'); if (p) { p.hidden = !t; p.textContent = t || ''; } };
+  deps.setBusy(btn, true);
+  const done = [];
+  try {
+    for (const it of items) {
+      const scheduledAt = it.at ? new Date(it.at).toISOString() : null;
+      done.push(await publishJob({ design: it.design, fmt: it.fmt, caption: it.caption, platforms, scheduledAt, label: it.label, progress }));
+      it.on = false; it.sent = true;
+    }
+    const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
+    deps.toast(bad.length ? 'في إشي ما انتشر: شوف التقويم' : 'تمّت الحملة ✓ شوفها بالتقويم', !!bad.length);
+    state.calMonth = monthStart(new Date(Math.max(...done.map((p) => Date.parse(p.scheduledAt || p.publishedAt || p.createdAt)))));
+    setPostsView('cal');
+  } catch (e) {
+    console.error(e); deps.toast(`${done.length ? `انعمل ${done.length} من ${items.length}، والباقي: ` : ''}${e.message || 'ما زبط'}`, true);
+  } finally { progress(''); deps.setBusy(btn, false); renderCampaign(); }
+}
+
+/* =================== content calendar =================== */
+const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const monthFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { month: 'long', year: 'numeric' });
+const timeFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { hour: 'numeric', minute: '2-digit' });
+const WEEK = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']; // the week starts on Saturday
+const postWhen = (p) => new Date(p.status === 'scheduled' || p.status === 'uploading' ? p.scheduledAt || p.createdAt : p.publishedAt || p.scheduledAt || p.createdAt);
+function setPostsView(v) {
+  state.postsView = v;
+  try { localStorage.setItem('blt-studio-view', v); } catch { /* private mode */ }
+  $('sv-cal').setAttribute('aria-selected', String(v === 'cal'));
+  $('sv-list').setAttribute('aria-selected', String(v === 'list'));
+  $('studio-cal').hidden = v !== 'cal';
+  $('studio-posts').hidden = v !== 'list';
+  $('studio-empty').hidden = v !== 'list' || state.posts.length > 0;
+  if (v === 'cal') renderCalendar();
+}
+async function movePost(p, toDay) {
+  const old = new Date(p.scheduledAt);
+  const [y, m, d] = toDay.split('-').map(Number);
+  const at = new Date(y, m - 1, d, old.getHours(), old.getMinutes());
+  if (+at < Date.now() + 5 * 60e3) { deps.toast('ما بنقدر ننقله لوقت فات', true); return; }
+  if (ymd(old) === toDay) return;
+  try {
+    const { post } = await api(`/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ scheduledAt: at.toISOString() }) });
+    upsertPost(post); deps.toast(`انتقل لـ ${whenFmt.format(at)} ✓`);
+  } catch (e) { deps.toast(e.message, true); }
+}
+function planDay(day) {
+  // an empty future day: prepare the publish form for it (18:00 that day)
+  document.querySelector('input[name="studio-when"][value="later"]').checked = true;
+  $('studio-at').value = `${day}T18:00`;
+  syncPublishUi();
+  $('studio-publish').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  deps.toast('جهّزتلك النشر على هاليوم الساعة 6 المسا. صمّم واكبس «جدول المنشور».');
+}
+function renderCalendar() {
+  const box = $('studio-cal'); const h = deps.h;
+  const month = state.calMonth || monthStart(new Date());
+  state.calMonth = month;
+  const first = new Date(month); const lead = (first.getDay() + 1) % 7; // days before the 1st, from Saturday
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - lead);
+  const today = ymd(new Date());
+  const byDay = new Map();
+  state.posts.forEach((p) => { const k = ymd(postWhen(p)); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(p); });
+  byDay.forEach((l) => l.sort((a, b) => postWhen(a) - postWhen(b)));
+  const inMonth = state.posts.filter((p) => { const d = postWhen(p); return d.getMonth() === month.getMonth() && d.getFullYear() === month.getFullYear(); });
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const key = ymd(d); const list = byDay.get(key) || [];
+    const future = key >= today;
+    const cell = h('div', { class: `cal-day ${d.getMonth() !== month.getMonth() ? 'is-out' : ''} ${key === today ? 'is-today' : ''} ${list.length ? '' : 'is-empty'} ${future ? '' : 'is-past'}`, 'data-day': key,
+      ondragover: (e) => { if (future) { e.preventDefault(); cell.classList.add('is-drop'); } },
+      ondragleave: () => cell.classList.remove('is-drop'),
+      ondrop: (e) => { e.preventDefault(); cell.classList.remove('is-drop'); const p = state.posts.find((x) => x.id === e.dataTransfer.getData('text/plain')); if (p) movePost(p, key); } },
+    h('span', { class: 'cal-num' }, String(d.getDate())),
+    ...list.slice(0, 4).map((p) => {
+      const [label, cls] = STATUS[p.status] || [p.status, ''];
+      return h('button', { type: 'button', class: `cal-chip ${cls} ${p.story ? 'is-story' : ''}`, draggable: p.status === 'scheduled' ? 'true' : null,
+        title: `${label} · ${p.title || ''}`,
+        ondragstart: (e) => { e.dataTransfer.setData('text/plain', p.id); e.dataTransfer.effectAllowed = 'move'; },
+        onclick: () => { state.calSel = p.id; renderCalendar(); } },
+      h('span', { class: 'cal-time' }, timeFmt.format(postWhen(p))), ' ', p.story ? '◯' : '▢', ' ', String(p.title || '').slice(0, 22));
+    }),
+    list.length > 4 ? h('span', { class: 'cal-more' }, `+${list.length - 4}`) : '',
+    !list.length && future ? h('button', { type: 'button', class: 'cal-add', title: 'جدول منشور بهاليوم', 'aria-label': `جدول منشور يوم ${d.getDate()}`, onclick: () => planDay(key) }, '+') : '');
+    cells.push(cell);
+  }
+  const sel = state.posts.find((p) => p.id === state.calSel);
+  const shift = (n) => { state.calMonth = new Date(month.getFullYear(), month.getMonth() + n, 1); renderCalendar(); };
+  const counts = { scheduled: 0, published: 0, failed: 0 };
+  inMonth.forEach((p) => { if (p.status === 'scheduled') counts.scheduled++; else if (p.status === 'published') counts.published++; else if (p.status === 'failed' || p.status === 'partial') counts.failed++; });
+  box.replaceChildren(
+    h('div', { class: 'cal-head' },
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => shift(-1), 'aria-label': 'الشهر اللي قبل' }, '›'),
+      h('strong', {}, monthFmt.format(month)),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => shift(1), 'aria-label': 'الشهر الجاي' }, '‹'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { state.calMonth = monthStart(new Date()); renderCalendar(); } }, 'اليوم'),
+      h('span', { class: 'muted small cal-sum' }, `هالشهر: ${counts.scheduled} مجدول · ${counts.published} انتشر${counts.failed ? ` · ${counts.failed} فيه مشكلة` : ''}`)),
+    h('div', { class: 'cal-grid', role: 'grid' }, WEEK.map((w) => h('span', { class: 'cal-wd' }, w)), cells),
+    h('p', { class: 'muted small' }, 'اسحب أي منشور مجدول ليوم ثاني عشان تغيّر موعده (بيضل نفس الساعة). اضغط على منشور لتفاصيله، أو على «+» بيوم فاضي لتجدول فيه. ◯ ستوري · ▢ منشور'),
+    sel ? calDetail(sel) : '');
+}
+function editBtn(p) {
+  if (p.status === 'uploading' || p.status === 'publishing') return '';
+  const scheduled = p.status === 'scheduled';
+  return deps.h('button', { type: 'button', class: `btn ${scheduled ? 'btn-primary' : 'btn-ghost-dark'} btn-sm`, title: scheduled ? 'افتحه بالمحرر وعدّله قبل ما ينزل' : 'المنتشر ما بينعدّل: افتح نسخة منه وانشرها من جديد',
+    onclick: () => editPost(p) }, scheduled ? '✎ عدّل' : '✎ عدّل وانشر نسخة');
+}
+function calDetail(p) {
+  const h = deps.h; const [label, cls] = STATUS[p.status] || [p.status, ''];
+  const results = p.platforms.map((k) => { const r = p.results?.[k] || {}; return h('span', { class: `res ${r.id ? 'ok' : r.error ? 'err' : ''}` }, r.id ? `${PLATFORM_NAME[k]} ✓` : r.error ? `${PLATFORM_NAME[k]}: ${r.error}` : PLATFORM_NAME[k]); });
+  const actions = [editBtn(p)];
+  if (p.status === 'scheduled') {
+    const at = h('input', { type: 'datetime-local', value: toLocal(new Date(p.scheduledAt)), 'aria-label': 'الموعد الجديد' });
+    actions.push(at, h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async () => {
+      const t = new Date(at.value);
+      if (Number.isNaN(+t) || +t < Date.now() + 5 * 60e3) { deps.toast('اختار موعد بعد 5 دقايق على الأقل', true); return; }
+      try { const { post } = await api(`/posts/${p.id}`, { method: 'PATCH', body: JSON.stringify({ scheduledAt: t.toISOString() }) }); upsertPost(post); deps.toast('تغيّر الموعد ✓'); } catch (e) { deps.toast(e.message, true); }
+    } }, 'احفظ الموعد'));
+  }
+  if (['scheduled', 'failed', 'partial'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'publish') }, p.status === 'scheduled' ? 'انشر الآن' : 'جرّب كمان مرة'));
+  if (['scheduled', 'failed', 'uploading'].includes(p.status)) actions.push(h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'delete') }, p.status === 'scheduled' ? 'إلغاء' : 'حذف'));
+  return h('div', { class: 'cal-detail' },
+    h('img', { src: `${WORKER}/img/${p.id}.jpg`, alt: '', width: 72, height: 90 }),
+    h('div', {},
+      h('div', { class: 'sp-top' }, h('span', { class: `st ${cls}` }, label), p.story ? h('span', { class: 'sp-badge' }, 'ستوري') : '', h('strong', {}, p.title || '')),
+      h('p', { class: 'muted small' }, whenFmt.format(postWhen(p))),
+      h('div', { class: 'sp-res' }, results),
+      h('div', { class: 'cal-actions' }, actions)),
+    h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { state.calSel = null; renderCalendar(); }, 'aria-label': 'سكّر' }, '×'));
+}
+const toLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 /* =================== posts list =================== */
 async function loadPosts() {
@@ -1065,7 +1448,8 @@ function upsertPost(p) {
 }
 function renderPosts() {
   const list = $('studio-posts');
-  $('studio-empty').hidden = state.posts.length > 0;
+  $('studio-empty').hidden = state.postsView !== 'list' || state.posts.length > 0;
+  if (state.postsView === 'cal') renderCalendar();
   list.replaceChildren(...state.posts.map((p) => {
     const [label, cls] = STATUS[p.status] || [p.status, ''];
     const tname = p.template === 'upload' ? 'صورة جاهزة' : BUILTIN.find((t) => t.id === p.template)?.name || 'قالب خاص';
@@ -1079,6 +1463,7 @@ function renderPosts() {
         : deps.h('span', { class: `res ${r.error ? 'err' : ''}` }, txt);
     });
     const actions = [];
+    actions.push(editBtn(p));
     if (['scheduled', 'failed', 'partial'].includes(p.status)) {
       actions.push(deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => postAct(e.currentTarget, p, 'publish') }, p.status === 'scheduled' ? 'انشر الآن' : 'جرّب كمان مرة'));
     }
@@ -1120,6 +1505,8 @@ export function initStudio(d) {
   }));
   ['facebook', 'instagram', 'post', 'story'].forEach((k) => $(`pub-${k}`).addEventListener('change', syncPublishUi));
   $('tb-draw').addEventListener('click', () => setPen(!state.pen.on));
+  $('sv-cal').addEventListener('click', () => setPostsView('cal'));
+  $('sv-list').addEventListener('click', () => setPostsView('list'));
   $('st-tab-content').addEventListener('click', () => setPane('content'));
   $('st-tab-design').addEventListener('click', () => setPane('design'));
   $('tpl-reset').addEventListener('click', resetToSource);
@@ -1160,7 +1547,7 @@ export function initStudio(d) {
 export function showStudio() {
   if (started) { renderStage(); return; }
   started = true;
-  renderPickers(); renderAdd(); setPane('content'); renderStage(); renderMusic(); autoFormats(); persist();
+  renderPickers(); renderAdd(); setPane('content'); renderStage(); renderMusic(); autoFormats(); persist(); setPostsView(state.postsView);
   fontsReady.then(() => { renderPickers(); renderStage(); }); // re-fit the texts once the real fonts are in
   loadMine();
   checkConnection();

@@ -251,6 +251,8 @@ form.addEventListener('submit', async (e) => {
   try {
     const { db, fs } = await getDb();
     await fs.addDoc(fs.collection(db, COLLECTION), { ...data, createdAt: fs.serverTimestamp() });
+    // the owner's daily e-mail digest (name only; best effort, never blocks the form)
+    try { fetch('https://social.beitlahia.tech/notify/reg', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ kind: 'member', name: data.name }) }).catch(() => {}); } catch { /* ignore */ }
     showSuccess();
   } catch (err) {
     console.error('[register]', err);

@@ -6,7 +6,7 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
-import { initStudio, showStudio } from './admin-social.js?v=6';
+import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=7';
 import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=1';
 
 const $ = (id) => document.getElementById(id);
@@ -298,6 +298,7 @@ TABS.forEach((t, i) => {
 
 function boot() {
   // modules first: the first selectTab may open their section right away
+  $('wsa-social').hidden = !can('studio');
   if (can('studio')) initStudio({ h, toast, setBusy, db, fs, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth });
   const hash = location.hash.slice(1);
@@ -2019,6 +2020,14 @@ $('wsa-form').addEventListener('submit', async (e) => {
 });
 
 $('wsa-copy-link').addEventListener('click', () => { if (selId) copyText(wsUrl(selId), 'انسخ رابط الورشة'); });
+// «اعمل بوست وستوري»: the studio prepares the workshop's campaign (post + reminder story + «we've started» story)
+$('wsa-social').addEventListener('click', () => {
+  if (!selId) return;
+  if (wsaDirty && !confirm('في تعديلات على الورشة ما انحفظت. الحملة بتاخد آخر نسخة محفوظة. تكمّل؟')) return;
+  const url = selId === currentId ? 'https://beitlahia.tech/workshop' : `https://beitlahia.tech/workshop?w=${encodeURIComponent(selId)}`;
+  selectTab('studio');
+  openWorkshopCampaign(ws, { id: selId, url, shortUrl: 'beitlahia.tech/workshop' });
+});
 
 /* ---------- registrations ---------- */
 async function loadRegs() {

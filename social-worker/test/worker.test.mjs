@@ -226,4 +226,102 @@ await t('a scheduled post with music is scheduled once its video is in', async (
   assert.equal((await call('DELETE', `/posts/${r.data.post.id}`, { token: admin })).status, 200);
   assert.equal(await env.SOCIAL.get(`vid:${r.data.post.id}`), null);
 });
+await t('a scheduled post can be moved (calendar drag); others cannot', async () => {
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], scheduledAt: new Date(Date.now() + 3600e3).toISOString() } });
+  const to = new Date(Date.now() + 2 * 864e5).toISOString();
+  const m = await call('PATCH', `/posts/${r.data.post.id}`, { token: admin, body: { scheduledAt: to } });
+  assert.equal(m.status, 200); assert.equal(m.data.post.scheduledAt, to);
+  assert.equal((await env.SOCIAL.m.get(`post:${r.data.post.id}`)).metadata.at, Date.parse(to));
+  assert.equal((await call('PATCH', `/posts/${r.data.post.id}`, { token: admin, body: { scheduledAt: new Date(Date.now() - 1000).toISOString() } })).status, 400);
+  const pub = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'] } });
+  assert.equal((await call('PATCH', `/posts/${pub.data.post.id}`, { token: admin, body: { scheduledAt: to } })).status, 409);
+  await call('DELETE', `/posts/${r.data.post.id}`, { token: admin });
+});
+await t('e-mail alerts: settings are owner-only, a test mail goes out', async () => {
+  env.OWNER_EMAIL = 'admin1@x.test'; env.MAIL = { sent: [], async send(m) { this.sent.push(m); } };
+  assert.equal((await call('GET', '/notify', { token: await idToken('social1') })).status, 403);
+  const s = await call('GET', '/notify', { token: admin });
+  assert.equal(s.data.to, 'admin1@x.test'); assert.equal(s.data.mail, true); assert.equal(s.data.digest, true);
+  assert.equal((await call('POST', '/notify', { token: admin, body: { to: 'nope' } })).status, 400);
+  const saved = await call('POST', '/notify', { token: admin, body: { to: 'me@x.test', failed: true, conn: false, digest: true } });
+  assert.equal(saved.data.to, 'me@x.test'); assert.equal(saved.data.conn, false);
+  const test = await call('POST', '/notify/test', { token: admin });
+  assert.equal(test.status, 200);
+  const m = env.MAIL.sent.pop();
+  assert.equal(m.to, 'me@x.test'); assert.equal(m.from, 'notify@beitlahia.tech');
+  assert.match(m.raw, /Subject: =\?UTF-8\?B\?/); assert.match(m.raw, /Message-ID: </);
+});
+await t('a scheduled post that fails sends an alert', async () => {
+  failInstagram = true; env.MAIL.sent.length = 0;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['instagram'], title: 'إعلان', scheduledAt: new Date(Date.now() + 3600e3).toISOString() } });
+  const st = await env.SOCIAL.get(`post:${r.data.post.id}`, 'json');
+  await env.SOCIAL.put(`post:${st.id}`, JSON.stringify(st), { metadata: { s: 'scheduled', at: Date.now() - 1, c: Date.now() } });
+  await runDue(env);
+  failInstagram = false;
+  assert.equal(env.MAIL.sent.length, 1);
+  const body = Buffer.from(env.MAIL.sent[0].raw.split('\r\n\r\n')[1].replace(/\r\n/g, ''), 'base64').toString();
+  assert.match(body, /إعلان/); assert.match(body, /bad image/);
+});
+await t('site forms feed the daily digest, sent once in the evening', async () => {
+  env.MAIL.sent.length = 0;
+  const reg = (b, origin = 'https://beitlahia.tech') => worker.fetch(new Request('https://social.example/notify/reg', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'text/plain' }, body: JSON.stringify(b) }), env, ctx);
+  assert.equal((await reg({ kind: 'member', name: 'سارة' })).status, 200);
+  assert.equal((await reg({ kind: 'workshop', name: 'أحمد <b>', workshop: 'المبرمج المعزّز' })).status, 200);
+  assert.equal((await reg({ kind: 'member', name: 'x' }, 'https://evil.test')).status, 403);
+  assert.equal((await reg({ kind: 'spam' })).status, 400);
+  const { dailyJobs, gazaClock } = await import('../src/index.js');
+  const day = gazaClock().day;
+  const at = (h) => new Date(`${day}T${String(h).padStart(2, '0')}:30:00+02:00`);
+  await dailyJobs(env, at(12)); // noon: not yet (connection check is off in these settings)
+  assert.equal(env.MAIL.sent.length, 0);
+  await dailyJobs(env, at(21));
+  assert.equal(env.MAIL.sent.length, 1);
+  const body = Buffer.from(env.MAIL.sent[0].raw.split('\r\n\r\n')[1].replace(/\r\n/g, ''), 'base64').toString();
+  assert.match(body, /أعضاء جدد بالمجتمع: 1/); assert.match(body, /سارة/); assert.match(body, /المبرمج المعزّز/); assert.ok(!body.includes('<b>'));
+  await dailyJobs(env, at(22)); // once a day
+  assert.equal(env.MAIL.sent.length, 1);
+});
+await t('daily connection check alerts when Meta refuses the token', async () => {
+  await call('POST', '/notify', { token: admin, body: { to: 'me@x.test', failed: true, conn: true, digest: false } });
+  env.MAIL.sent.length = 0;
+  const { dailyJobs } = await import('../src/index.js');
+  const tomorrow = new Date(Date.now() + 864e5);
+  tomorrow.setUTCHours(8, 0, 0, 0); // 10:00 in Gaza
+  const saved = globalThis.fetch;
+  globalThis.fetch = async (u, i) => (String(u).includes('/PAGE?') ? new Response(JSON.stringify({ error: { message: 'Session has expired' } }), { status: 400 }) : saved(u, i));
+  await dailyJobs(env, tomorrow);
+  globalThis.fetch = saved;
+  assert.equal(env.MAIL.sent.length, 1);
+  const body = Buffer.from(env.MAIL.sent[0].raw.split('\r\n\r\n')[1].replace(/\r\n/g, ''), 'base64').toString();
+  assert.match(body, /Session has expired/);
+  delete env.MAIL; delete env.OWNER_EMAIL;
+});
+await t('a scheduled story keeps its design and can be edited before it goes out', async () => {
+  const when = new Date(Date.now() + 3600e3).toISOString();
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['instagram'], story: true, title: 'قديم', scheduledAt: when } });
+  const id = r.data.post.id;
+  const design = JSON.stringify({ v: 1, w: 1080, h: 1920, els: [{ type: 'text', text: 'مرحبا' }] });
+  const put = await worker.fetch(new Request(`https://social.example/posts/${id}/design`, { method: 'PUT', headers: { Authorization: `Bearer ${admin}`, Origin: 'https://beitlahia.tech' }, body: design }), env, ctx);
+  assert.equal(put.status, 200);
+  assert.equal((await env.SOCIAL.get(`post:${id}`, 'json')).hasDesign, true);
+  const got = await call('GET', `/posts/${id}/design`, { token: admin });
+  assert.equal(JSON.stringify(got.data), design);
+  // edit: new picture and title, same time
+  const jpeg2 = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(3000, 9)]).toString('base64');
+  const ed = await call('PUT', `/posts/${id}`, { token: admin, body: { image: jpeg2, title: 'جديد', caption: 'ignored for a story' } });
+  assert.equal(ed.status, 200); assert.equal(ed.data.post.status, 'scheduled'); assert.equal(ed.data.post.title, 'جديد');
+  assert.equal(ed.data.post.caption, ''); assert.equal(ed.data.post.scheduledAt, when); assert.ok(ed.data.post.editedAt);
+  const img = await call('GET', `/img/${id}.jpg`);
+  assert.equal(Buffer.from(img.data)[5], 9);
+  // edit with music: waits for the video, then it is scheduled again
+  const ed2 = await call('PUT', `/posts/${id}`, { token: admin, body: { image: jpeg2, video: true, duration: 10 } });
+  assert.equal(ed2.data.post.status, 'uploading');
+  const up = await call('PUT', `/posts/${id}/video`, { token: admin, raw: mp4 });
+  assert.equal(up.data.post.status, 'scheduled'); assert.equal(up.data.post.video, true);
+  // a published post cannot be edited; deleting a scheduled one removes its design too
+  const pub = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'] } });
+  assert.equal((await call('PUT', `/posts/${pub.data.post.id}`, { token: admin, body: { image: jpeg2 } })).status, 409);
+  await call('DELETE', `/posts/${id}`, { token: admin });
+  assert.equal(await env.SOCIAL.get(`des:${id}`), null);
+});
 console.log(`\n${n} tests passed`);

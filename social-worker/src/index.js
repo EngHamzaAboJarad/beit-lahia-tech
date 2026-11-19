@@ -24,8 +24,13 @@
 //   GET    /posts               admin: latest posts (scheduled, published, failed)
 //   POST   /posts               admin: { image, video?: true, duration?, music?, caption, platforms[], scheduledAt?, template, title, story? }
 //   PUT    /posts/:id/video     admin: the MP4 of a post made with { video: true } (raw bytes) → publish/schedule
+//   PATCH  /posts/:id           admin: { scheduledAt } move a scheduled post (the studio calendar)
+//   PUT    /posts/:id           admin: edit a scheduled post { image, caption?, title?, video?, scheduledAt? }
+//   PUT|GET /posts/:id/design   admin: the post's editable design (studio JSON), to open it again in the editor
 //   POST   /posts/:id/publish   admin: publish now (a scheduled post, or retry a failed one)
 //   DELETE /posts/:id           admin: cancel a scheduled post / remove a failed one
+//   GET    /notify              owner: e-mail alert settings · POST /notify: save them · POST /notify/test
+//   POST   /notify/reg          public (site forms): { kind: member|workshop, name, workshop? } → the daily digest
 //
 // What goes out where:
 //   post  + image → Facebook page photo        · Instagram feed photo
@@ -36,6 +41,7 @@
 // always comes along too (the thumbnail in the posts list).
 
 const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
+const MAX_DESIGN = 3 * 1024 * 1024; // a design with an uploaded photo inside is ~1–2 MB of JSON
 const MAX_VIDEO = 24 * 1024 * 1024; // below KV's 25 MiB value limit (a 60 s story is ~10–18 MB)
 const MAX_CAPTION = 2200;          // Instagram's caption limit
 const MAX_AHEAD = 75 * 864e5;      // schedule at most ~75 days ahead
@@ -56,7 +62,7 @@ export default {
     }
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(runDue(env));
+    ctx.waitUntil(runDue(env).then(() => dailyJobs(env)).catch((e) => console.error('[cron]', e)));
   },
 };
 
@@ -96,6 +102,19 @@ async function route(req, env, ctx) {
     throw fail(405, 'طلب مش مدعوم');
   }
 
+  if (parts[0] === 'notify') {
+    if (req.method === 'POST' && parts[1] === 'reg') return json(await noteRegistration(req, env));
+    const owner = await requireAdmin(req, env);
+    if (!isOwner(env, owner)) throw fail(403, 'التنبيهات لصاحب المنصة بس');
+    if (req.method === 'GET' && parts.length === 1) return json(await notifyStatus(env));
+    if (req.method === 'POST' && parts.length === 1) return json(await saveNotify(env, await req.json().catch(() => ({}))));
+    if (req.method === 'POST' && parts[1] === 'test') {
+      await sendMail(env, 'تجربة تنبيهات بيت لاهيا تيك ✓', 'وصلك هاد الإيميل من خدمة النشر. يعني التنبيهات شغّالة.\n\nلوحة الإدارة: https://beitlahia.tech/admin', true);
+      return json({ ok: true, ...(await notifyStatus(env)) });
+    }
+    throw fail(405, 'طلب مش مدعوم');
+  }
+
   if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
   const user = await requireAdmin(req, env, 'studio');
 
@@ -115,6 +134,62 @@ async function route(req, env, ctx) {
   const id = parts[1];
   const post = id && (await getPost(env, id));
   if (!post) throw fail(404, 'المنشور مش موجود');
+
+  if (req.method === 'PATCH' && parts.length === 2) {
+    if (post.status !== 'scheduled') throw fail(409, 'بس المنشور المجدول بينقل لموعد ثاني');
+    const body = await req.json().catch(() => ({}));
+    const t = Date.parse(body.scheduledAt);
+    if (Number.isNaN(t)) throw fail(400, 'موعد النشر مش صالح');
+    if (t < Date.now() + 60e3) throw fail(400, 'الموعد لازم يكون بالمستقبل');
+    if (t > Date.now() + MAX_AHEAD) throw fail(400, 'ما بنقدر نجدول لأبعد من 75 يوم');
+    post.scheduledAt = new Date(t).toISOString();
+    await savePost(env, post);
+    return json({ post });
+  }
+
+  // the editable design (studio JSON), kept so a post can be opened again in the editor
+  if (req.method === 'PUT' && parts[2] === 'design') {
+    if (Number(req.headers.get('Content-Length') || 0) > MAX_DESIGN) throw fail(400, 'التصميم كبير كتير');
+    const text = await req.text();
+    if (text.length > MAX_DESIGN || !text.startsWith('{')) throw fail(400, 'التصميم مش صالح');
+    await env.SOCIAL.put(`des:${post.id}`, text, { expirationTtl: post.keepFor || 120 * 86400 });
+    if (!post.hasDesign) { post.hasDesign = true; await savePost(env, post); }
+    return json({ ok: true, post });
+  }
+  if (req.method === 'GET' && parts[2] === 'design') {
+    const text = await env.SOCIAL.get(`des:${post.id}`);
+    if (!text) throw fail(404, 'ما في تصميم محفوظ لهالمنشور');
+    return new Response(text, { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+  }
+
+  // edit a scheduled post: new picture (+ caption / time); a video, if any, follows with PUT …/video
+  if (req.method === 'PUT' && parts.length === 2) {
+    if (post.status !== 'scheduled') throw fail(409, 'بس المنشور المجدول بيتعدّل. المنتشر ما بينعدّل، انشر نسخة جديدة منه.');
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') throw fail(400, 'الطلب فاضي');
+    const bytes = jpegFrom(body.image);
+    const caption = typeof body.caption === 'string' ? body.caption.trim() : post.caption;
+    if (caption.length > MAX_CAPTION) throw fail(400, `النص أطول من ${MAX_CAPTION} حرف`);
+    if (body.scheduledAt) {
+      const t = Date.parse(body.scheduledAt);
+      if (Number.isNaN(t) || t < Date.now() + 60e3) throw fail(400, 'الموعد لازم يكون بالمستقبل');
+      if (t > Date.now() + MAX_AHEAD) throw fail(400, 'ما بنقدر نجدول لأبعد من 75 يوم');
+      post.scheduledAt = new Date(t).toISOString();
+    }
+    post.keepFor = Math.ceil(Math.max(0, Date.parse(post.scheduledAt) - Date.now()) / 1000 + 120 * 86400);
+    await env.SOCIAL.put(`img:${post.id}`, bytes, { expirationTtl: post.keepFor });
+    await env.SOCIAL.delete(`vid:${post.id}`);
+    post.caption = post.story ? '' : caption;
+    if (typeof body.title === 'string' && body.title.trim()) post.title = body.title.slice(0, 120);
+    post.video = body.video === true;
+    post.duration = post.video ? Math.max(0, Math.min(90, Number(body.duration) || 0)) : 0;
+    post.music = post.video ? String(body.music || '').slice(0, 120) : '';
+    post.status = post.video ? 'uploading' : 'scheduled';
+    post.results = {};
+    post.editedAt = new Date().toISOString();
+    await savePost(env, post);
+    return json({ post });
+  }
 
   if (req.method === 'PUT' && parts[2] === 'video') {
     if (post.status !== 'uploading') throw fail(409, 'الفيديو انرفع من قبل');
@@ -140,12 +215,22 @@ async function route(req, env, ctx) {
     await env.SOCIAL.delete(`post:${id}`);
     await env.SOCIAL.delete(`img:${id}`);
     await env.SOCIAL.delete(`vid:${id}`);
+    await env.SOCIAL.delete(`des:${id}`);
     return json({ ok: true });
   }
   throw fail(405, 'طلب مش مدعوم');
 }
 
 /* ---------------- posts ---------------- */
+function jpegFrom(image) {
+  const b64 = typeof image === 'string' ? image.replace(/^data:image\/jpeg;base64,/, '') : '';
+  let bytes;
+  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { throw fail(400, 'الصورة مش صالحة'); }
+  if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw fail(400, 'لازم الصورة تكون JPEG');
+  if (bytes.length > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
+  return bytes;
+}
+
 async function createPost(env, body, user) {
   if (!body || typeof body !== 'object') throw fail(400, 'الطلب فاضي');
   const platforms = Array.isArray(body.platforms) ? [...new Set(body.platforms)].filter((p) => PLATFORMS.includes(p)) : [];
@@ -157,11 +242,7 @@ async function createPost(env, body, user) {
   const caption = typeof body.caption === 'string' ? body.caption.trim() : '';
   if (caption.length > MAX_CAPTION) throw fail(400, `النص أطول من ${MAX_CAPTION} حرف`);
 
-  const b64 = typeof body.image === 'string' ? body.image.replace(/^data:image\/jpeg;base64,/, '') : '';
-  let bytes;
-  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { throw fail(400, 'الصورة مش صالحة'); }
-  if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw fail(400, 'لازم الصورة تكون JPEG');
-  if (bytes.length > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
+  const bytes = jpegFrom(body.image);
 
   // optional: the same design as an MP4 with music. It comes in a second request (PUT /posts/:id/video,
   // raw bytes): decoding megabytes of base64 here would blow the Worker's CPU budget.
@@ -233,7 +314,10 @@ export async function runDue(env) {
   const due = keys.filter((k) => k.metadata?.s === 'scheduled' && k.metadata.at <= now);
   for (const k of due) {
     const post = await env.SOCIAL.get(k.name, 'json');
-    if (post && post.status === 'scheduled') await publishPost(env, post);
+    if (post && post.status === 'scheduled') {
+      const done = await publishPost(env, post);
+      if (done.status === 'failed' || done.status === 'partial') await alertFailed(env, done).catch((e) => console.error('[notify]', e));
+    }
   }
   return due.length;
 }
@@ -366,6 +450,118 @@ async function connectStatus(env, check = false) {
     } catch (e) { out.check = { ok: false, error: e.message }; }
   }
   return out;
+}
+
+/* ---------------- e-mail alerts (Cloudflare Email Routing › send_email) ---------------- */
+// Sent from MAIL_FROM (on beitlahia.tech) to the owner, or to the address saved in the panel. Cloudflare only
+// delivers to addresses verified under Email Routing › Destination addresses (the Gmail that info@ forwards to is).
+const NOTIFY_KEY = 'config:notify';
+const NOTIFY_DEFAULT = { failed: true, conn: true, digest: true, to: '' };
+async function getNotify(env) { return { ...NOTIFY_DEFAULT, ...((await env.SOCIAL.get(NOTIFY_KEY, 'json')) || {}) }; }
+async function notifyStatus(env) {
+  const n = await getNotify(env);
+  return { ...n, to: n.to || env.OWNER_EMAIL || '', mail: !!env.MAIL, from: mailFrom(env), last: await env.SOCIAL.get('notify:last', 'json') };
+}
+async function saveNotify(env, b) {
+  const to = String(b?.to || '').trim().toLowerCase();
+  if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw fail(400, 'الإيميل مش صحيح');
+  await env.SOCIAL.put(NOTIFY_KEY, JSON.stringify({ failed: b?.failed !== false, conn: b?.conn !== false, digest: b?.digest !== false, to }));
+  return notifyStatus(env);
+}
+const mailFrom = (env) => env.MAIL_FROM || 'notify@beitlahia.tech';
+const b64 = (s) => { let bin = ''; new TextEncoder().encode(s).forEach((c) => { bin += String.fromCharCode(c); }); return btoa(bin); };
+let EmailMessageCls;
+async function emailMessage(from, to, raw) {
+  if (EmailMessageCls === undefined) { try { ({ EmailMessage: EmailMessageCls } = await import('cloudflare:email')); } catch { EmailMessageCls = null; } }
+  return EmailMessageCls ? new EmailMessageCls(from, to, raw) : { from, to, raw }; // plain object: tests / local dev
+}
+export async function sendMail(env, subject, text, throwOnError = false) {
+  const n = await getNotify(env);
+  const to = n.to || env.OWNER_EMAIL;
+  if (!env.MAIL || !to) {
+    if (throwOnError) throw fail(400, 'إرسال الإيميل مش مفعّل بخدمة النشر (send_email بـ wrangler.toml).');
+    return false;
+  }
+  const from = mailFrom(env);
+  const raw = [
+    `From: Beit Lahia Tech <${from}>`, `To: <${to}>`, `Subject: =?UTF-8?B?${b64(subject)}?=`,
+    `Message-ID: <${crypto.randomUUID()}@beitlahia.tech>`, `Date: ${new Date().toUTCString()}`,
+    'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '',
+    b64(text).replace(/.{76}/g, '$&\r\n'),
+  ].join('\r\n');
+  try {
+    await env.MAIL.send(await emailMessage(from, to, raw));
+    await env.SOCIAL.put('notify:last', JSON.stringify({ at: new Date().toISOString(), subject, ok: true }));
+    return true;
+  } catch (e) {
+    const msg = String(e.message || e).slice(0, 200);
+    await env.SOCIAL.put('notify:last', JSON.stringify({ at: new Date().toISOString(), subject, ok: false, error: msg }));
+    if (throwOnError) throw fail(400, `ما وصل الإيميل (${msg}). تأكد إنه ${to} متحقق منه بـ Cloudflare › Email Routing › Destination addresses.`);
+    return false;
+  }
+}
+
+async function alertFailed(env, post) {
+  if (!(await getNotify(env)).failed) return;
+  const lines = post.platforms.map((p) => `• ${nameOf(p)}: ${post.results?.[p]?.id ? 'انتشر ✓' : `فشل: ${post.results?.[p]?.error || 'خطأ مش معروف'}`}`);
+  await sendMail(env, `منشور مجدول ما انتشر: ${post.title || 'بدون عنوان'}`,
+    `المنشور المجدول «${post.title || 'بدون عنوان'}»${post.story ? ' (ستوري)' : ''} ${post.status === 'partial' ? 'انتشر على منصة وحدة بس' : 'ما انتشر'}:\n${lines.join('\n')}\n\n`
+    + 'افتح استوديو السوشيال وكبس «جرّب كمان مرة» جنبه:\nhttps://beitlahia.tech/admin#studio');
+}
+
+// Gaza's calendar day and hour (the cron runs in UTC)
+export function gazaClock(d = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Gaza', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
+}
+
+// once a day: check the Meta connection (morning) and send the registrations digest (evening)
+export async function dailyJobs(env, now = new Date()) {
+  if (!env.MAIL) return;
+  const n = await getNotify(env);
+  const { day, hour } = gazaClock(now);
+  const key = `notify:done:${day}`;
+  const done = (await env.SOCIAL.get(key, 'json')) || {};
+  const todo = { conn: n.conn && !done.conn && hour >= 9, digest: n.digest && !done.digest && hour >= 20 };
+  if (!todo.conn && !todo.digest) return;
+  await env.SOCIAL.put(key, JSON.stringify({ ...done, ...(todo.conn ? { conn: true } : {}), ...(todo.digest ? { digest: true } : {}) }), { expirationTtl: 3 * 86400 });
+  if (todo.conn) {
+    const st = await connectStatus(env, true);
+    const problem = !st.connected ? '' : st.check && !st.check.ok ? st.check.error : st.missingScopes?.length ? `ناقص صلاحيات: ${st.missingScopes.join('، ')}` : '';
+    if (problem) {
+      await sendMail(env, 'ربط فيسبوك وإنستغرام فيه مشكلة',
+        `فحص الربط اليومي لقى مشكلة:\n${problem}\n\nالمنشورات المجدولة ممكن ما تنتشر لحد ما تصلّحها. من استوديو السوشيال › «ربط فيسبوك وإنستغرام» › «ربط من جديد»:\nhttps://beitlahia.tech/admin#studio`);
+    }
+  }
+  if (todo.digest) {
+    const list = (await env.SOCIAL.get(`digest:${day}`, 'json')) || [];
+    if (list.length) {
+      const members = list.filter((x) => x.k === 'member'); const ws = list.filter((x) => x.k === 'workshop');
+      const names = list.slice(0, 40).map((x) => `- ${x.n || 'بدون اسم'}${x.k === 'workshop' ? ` (ورشة${x.w ? `: ${x.w}` : ''})` : ' (عضو جديد)'}`);
+      await sendMail(env, `${list.length} تسجيل جديد اليوم`,
+        `وصل اليوم ${day}:\n• أعضاء جدد بالمجتمع: ${members.length}\n• تسجيلات بالورشات: ${ws.length}\n\n${names.join('\n')}${list.length > 40 ? `\n… و${list.length - 40} كمان` : ''}\n\n`
+        + 'التفاصيل الكاملة بلوحة الإدارة:\nhttps://beitlahia.tech/admin');
+    }
+  }
+}
+
+// the site's forms tell us about a new registration (no personal data beyond the name; capped per visitor)
+async function noteRegistration(req, env) {
+  const origin = req.headers.get('Origin') || '';
+  const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim());
+  if (!allowed.includes(origin)) throw fail(403, 'مش مسموح');
+  const b = JSON.parse(await req.text().catch(() => '{}') || '{}');
+  const k = b.kind === 'workshop' ? 'workshop' : b.kind === 'member' ? 'member' : '';
+  if (!k) throw fail(400, 'نوع مش معروف');
+  const clean = (v, n) => String(v || '').replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+  const ipHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(req.headers.get('CF-Connecting-IP') || 'local')))]
+    .slice(0, 4).map((x) => x.toString(16).padStart(2, '0')).join('');
+  const key = `digest:${gazaClock().day}`;
+  const list = (await env.SOCIAL.get(key, 'json')) || [];
+  if (list.length >= 300 || list.filter((x) => x.i === ipHash).length >= 20) return { ok: true }; // quietly ignore floods
+  list.push({ k, n: clean(b.name, 60), w: clean(b.workshop, 80), i: ipHash, t: Date.now() });
+  await env.SOCIAL.put(key, JSON.stringify(list), { expirationTtl: 3 * 86400 });
+  return { ok: true };
 }
 
 /* ---------------- Meta Graph API ---------------- */
@@ -541,7 +737,7 @@ function corsHeaders(req, env) {
   const h = { Vary: 'Origin' };
   if (allowed.includes(origin)) {
     h['Access-Control-Allow-Origin'] = origin;
-    h['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    h['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
     h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
     h['Access-Control-Max-Age'] = '86400';
   }

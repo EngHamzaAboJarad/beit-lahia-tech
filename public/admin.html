@@ -488,6 +488,7 @@
           <div class="form-actions">
             <a class="btn btn-ghost-dark btn-sm" id="wsa-open-page" href="/workshop" target="_blank" rel="noopener">افتح صفحة الورشة ↗</a>
             <button class="btn btn-ghost-dark btn-sm" type="button" id="wsa-copy-link">انسخ رابط التسجيل</button>
+            <button class="btn btn-primary btn-sm" type="button" id="wsa-social" hidden>اعمل بوست وستوري</button>
           </div>
         </div>
         <div class="stats" id="wsa-stats"></div>
@@ -1004,8 +1005,11 @@
         </div>
         <div class="studio-conn" id="studio-conn" aria-live="polite"></div>
         <div class="panel studio-connect" id="studio-connect" hidden></div>
+        <div class="panel studio-notify" id="studio-notify" hidden></div>
+        <div class="panel studio-campaign" id="studio-campaign" hidden></div>
         <div class="studio">
           <div class="panel studio-form">
+            <div class="studio-editing" id="studio-editing" aria-live="polite" hidden></div>
             <div class="studio-head tpl-head">
               <h2>القوالب</h2>
               <label class="btn btn-ghost-dark btn-sm tpl-upload">
@@ -1103,9 +1107,14 @@
         <div class="panel">
           <div class="studio-head">
             <h2>المنشورات</h2>
+            <div class="studio-views" role="tablist" aria-label="عرض المنشورات">
+              <button type="button" role="tab" id="sv-cal" aria-selected="true" aria-controls="studio-cal">التقويم</button>
+              <button type="button" role="tab" id="sv-list" aria-selected="false" aria-controls="studio-posts">القائمة</button>
+            </div>
             <button class="btn btn-ghost-dark btn-sm" type="button" id="studio-refresh">تحديث</button>
           </div>
-          <ul class="studio-posts" id="studio-posts"></ul>
+          <div class="studio-cal" id="studio-cal" role="tabpanel" aria-labelledby="sv-cal"></div>
+          <ul class="studio-posts" id="studio-posts" role="tabpanel" aria-labelledby="sv-list" hidden></ul>
           <p class="empty" id="studio-empty">ما في منشورات لسا.</p>
         </div>
       </section>

@@ -16,6 +16,11 @@ crons = ["*/5 * * * *"]
 binding = "SOCIAL"
 id = "287cc8b0f7bd4b4791b4237427ce8410"
 
+# e-mail alerts (failed scheduled post, Meta connection problem, daily registrations digest) go out through
+# Cloudflare Email Routing; the recipient must be a verified destination address there
+[[send_email]]
+name = "MAIL"
+
 [vars]
 FIREBASE_PROJECT_ID = "flutter-app-distribution-a4166"
 PUBLIC_BASE_URL = "https://social.beitlahia.tech"
@@ -23,4 +28,5 @@ ALLOWED_ORIGINS = "https://beitlahia.tech,https://www.beitlahia.tech,https://bei
 GRAPH_VERSION = "v23.0"
 # only this account may connect Facebook / Instagram (admin panel › استوديو السوشيال › الربط)
 OWNER_EMAIL = "habojarad305@gmail.com"
+MAIL_FROM = "notify@beitlahia.tech"
 # the connection itself is saved from the admin panel (KV › config:meta) — nothing to fill in here
