@@ -51,24 +51,45 @@ window.addEventListener('scroll', onScrollHeader, { passive: true });
 })();
 
 /* ---------- Hero: the pixel strawberry assembles itself ---------- */
-const GRID = ['..g..g..', '.gggggg.', 'rrrrrrrr', 'rrhrrhrr', 'rrrrrrrr', '.rrhrrr.', '.rrrrhr.', '..rrrr..', '...rr...'];
-const FILL = { g: '#34D399', r: '#F43F5E', h: '#FDA4AF' };
+// the brand strawberry, sampled from the approved social designs on a half-cell grid (14 × 16).
+// "." = the night showing through: seeds, leaf notches and the V under the stem
+// "k" = seeds and the gaps inside the shape: dark, not clickable
+const GRID = [
+  '......MM......', '......MM......', '..GGL.kk.LGG..', '..GGLLkkLLGD..',
+  '....GGTTDD....', 'RRRRkkTTkkRRQQ', 'RRRRkkTTkkRRQQ', 'RRSSPPkkPPSSQQ',
+  'RRkkPPkkPPkkQQ', 'RRkkPPSSPPkkQQ', '..RRSSRRSSQQ..', '..RRSSRRSSQQ..',
+  '....RRkkQQ....', '....RRkkQQ....', '......RQ......', '......RQ......',
+];
+const FILL = {
+  M: '#35F0B4', G: '#1AC08E', L: '#A0F6D9', D: '#0E8A70', T: '#E45C7E',
+  R: '#F22865', Q: '#DE1D5A', P: '#FF5A8A', S: '#C3134C',
+};
+const CELL = 15;
 (function heroPixels() {
   const heroLogo = document.getElementById('hero-logo');
   if (!heroLogo) return;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 236 266');
+  svg.setAttribute('viewBox', `0 0 ${GRID[0].length * CELL} ${GRID.length * CELL}`);
   svg.setAttribute('class', 'art-logo is-pixels');
   svg.setAttribute('aria-hidden', 'true');
   const pixels = [];
   GRID.forEach((row, y) => [...row].forEach((ch, x) => {
-    if (ch === '.') return;
+    if (ch === 'k') { // a seed: drawn first-class but never a message pixel
+      const s = document.createElementNS(NS, 'rect');
+      s.setAttribute('x', x * CELL); s.setAttribute('y', y * CELL);
+      s.setAttribute('width', CELL); s.setAttribute('height', CELL);
+      s.setAttribute('class', 'seed'); s.setAttribute('fill', '#0B1020');
+      s.style.setProperty('--delay', `${y * 40 + 200}ms`);
+      svg.appendChild(s);
+      return;
+    }
+    if (!FILL[ch]) return;
     const r = document.createElementNS(NS, 'rect');
-    r.setAttribute('x', x * 30); r.setAttribute('y', y * 30);
-    r.setAttribute('width', 26); r.setAttribute('height', 26); r.setAttribute('rx', 5);
+    r.setAttribute('x', x * CELL); r.setAttribute('y', y * CELL);
+    r.setAttribute('width', CELL); r.setAttribute('height', CELL);
     r.setAttribute('fill', FILL[ch]);
-    r.style.setProperty('--delay', `${y * 70 + Math.round(Math.random() * 140)}ms`);
+    r.style.setProperty('--delay', `${y * 40 + Math.round(Math.random() * 140)}ms`);
     r.style.setProperty('--from', `${-60 - Math.round(Math.random() * 60)}px`);
     r.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 40)}deg`);
     r.dataset.i = pixels.length; // each pixel owns one motivational line
@@ -81,6 +102,28 @@ const FILL = { g: '#34D399', r: '#F43F5E', h: '#FDA4AF' };
     svg.parentElement.classList.add('is-floating'); // the stage floats, so the ghost cursor moves with it
   }, 1500);
   motivationCard(svg, pixels);
+})();
+
+/* ---------- Pixel mosaics (brand decoration): <svg data-mosaic="m.n|bdn"> → squares ----------
+   m mint · b strawberry · n / d night shades · . empty. A few tiles breathe; data-seq lights the
+   columns one after another (the </> art in «الورشات»). */
+(function mosaics() {
+  const NS = 'http://www.w3.org/2000/svg';
+  document.querySelectorAll('svg[data-mosaic]').forEach((svg) => {
+    const rows = svg.dataset.mosaic.split('|');
+    const w = Math.max(...rows.map((r) => r.length));
+    const seq = svg.hasAttribute('data-seq');
+    svg.setAttribute('viewBox', `0 0 ${w * 10} ${rows.length * 10}`);
+    rows.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', x * 10); r.setAttribute('y', y * 10);
+      r.setAttribute('width', seq ? 9 : 10); r.setAttribute('height', seq ? 9 : 10);
+      r.setAttribute('class', `t-${ch}${!seq && Math.random() < 0.45 ? ' tw' : ''}`);
+      r.style.setProperty('--t', seq ? `${x * 110}ms` : `${-Math.round(Math.random() * 7000)}ms`);
+      svg.appendChild(r);
+    }));
+  });
 })();
 
 /* ---------- Code card: every pixel types its own motivational line ---------- */

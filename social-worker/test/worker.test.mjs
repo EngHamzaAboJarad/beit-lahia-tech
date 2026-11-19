@@ -1,0 +1,169 @@
+// End-to-end test of the Worker with fake Google/Firestore/Meta servers (no network, no accounts).
+// Run: node test/worker.test.mjs
+import assert from 'node:assert/strict';
+import worker, { runDue } from '../src/index.js';
+
+const PROJECT = 'demo-project';
+
+/* ---- a Firebase-like ID token signed with our own key ---- */
+const { publicKey, privateKey } = await crypto.subtle.generateKey(
+  { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const jwk = { ...(await crypto.subtle.exportKey('jwk', publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
+const b64url = (buf) => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function idToken(uid, { aud = PROJECT, exp = 3600 } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const h = b64url(JSON.stringify({ alg: 'RS256', kid: 'k1', typ: 'JWT' }));
+  const p = b64url(JSON.stringify({ sub: uid, aud, iss: `https://securetoken.google.com/${aud}`, iat: now, exp: now + exp, email: `${uid}@x.test` }));
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, new TextEncoder().encode(`${h}.${p}`));
+  return `${h}.${p}.${b64url(sig)}`;
+}
+
+/* ---- fake KV ---- */
+function kv() {
+  const m = new Map();
+  return {
+    m,
+    async get(k, type) {
+      const v = m.get(k); if (!v) return null;
+      if (type === 'json') return JSON.parse(v.value);
+      if (type === 'arrayBuffer') return v.value.buffer ?? v.value;
+      return v.value;
+    },
+    async put(k, value, opts = {}) { m.set(k, { value, metadata: opts.metadata }); },
+    async delete(k) { m.delete(k); },
+    async list({ prefix }) { return { keys: [...m].filter(([k]) => k.startsWith(prefix)).map(([name, v]) => ({ name, metadata: v.metadata })), list_complete: true }; },
+  };
+}
+
+/* ---- fake network ---- */
+const calls = [];
+let failInstagram = false;
+globalThis.fetch = async (url, init = {}) => {
+  url = String(url);
+  const body = init.body ? Object.fromEntries(new URLSearchParams(String(init.body))) : null;
+  calls.push({ url, body });
+  const ok = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (url.includes('securetoken@system')) return ok({ keys: [jwk] });
+  if (url.includes('firestore.googleapis.com')) {
+    if (url.endsWith('/admins/admin1')) return new Response('{}', { status: 200 }); // no perms list = everything
+    if (url.endsWith('/admins/social1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'studio' }] } } } }), { status: 200 });
+    if (url.endsWith('/admins/content1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'site' }] } } } }), { status: 200 });
+    return new Response('{}', { status: 403 });
+  }
+  if (url.includes('graph.facebook.com')) {
+    if (url.endsWith('/PAGE/photos')) return ok({ id: 'ph1', post_id: 'PAGE_123' });
+    if (url.endsWith('/IGU/media')) return failInstagram ? new Response(JSON.stringify({ error: { message: 'bad image' } }), { status: 400 }) : ok({ id: 'C1' });
+    if (url.includes('/C1?')) return ok({ status_code: 'FINISHED' });
+    if (url.endsWith('/IGU/media_publish')) return ok({ id: 'IG1' });
+    if (url.includes('/IG1?')) return ok({ permalink: 'https://instagram.com/p/x' });
+  }
+  return new Response('not found', { status: 404 });
+};
+
+const env = {
+  SOCIAL: kv(), FIREBASE_PROJECT_ID: PROJECT, PUBLIC_BASE_URL: 'https://social.example',
+  ALLOWED_ORIGINS: 'https://beitlahia.tech', GRAPH_VERSION: 'v23.0', META_PAGE_TOKEN: 'secret', FB_PAGE_ID: 'PAGE', IG_USER_ID: 'IGU',
+};
+const ctx = { waitUntil: (p) => p };
+const jpeg = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(3000, 7)]).toString('base64');
+async function call(method, path, { token, body, origin = 'https://beitlahia.tech' } = {}) {
+  const headers = { Origin: origin };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await worker.fetch(new Request(`https://social.example${path}`, { method, headers, body: body && JSON.stringify(body) }), env, ctx);
+  return { status: res.status, data: res.headers.get('Content-Type')?.includes('json') ? await res.json() : await res.arrayBuffer(), res };
+}
+
+const admin = await idToken('admin1');
+const stranger = await idToken('someone');
+let n = 0; const t = async (name, fn) => { await fn(); n++; console.log('ok -', name); };
+
+await t('health is public and reports connections', async () => {
+  const r = await call('GET', '/health');
+  assert.equal(r.status, 200); assert.deepEqual([r.data.facebook, r.data.instagram], [true, true]);
+  assert.equal(r.res.headers.get('Access-Control-Allow-Origin'), 'https://beitlahia.tech');
+});
+await t('CORS refuses other origins', async () => {
+  const r = await call('GET', '/health', { origin: 'https://evil.test' });
+  assert.equal(r.res.headers.get('Access-Control-Allow-Origin'), null);
+});
+await t('posts need a valid admin token', async () => {
+  assert.equal((await call('GET', '/posts')).status, 401);
+  assert.equal((await call('GET', '/posts', { token: 'x.y.z' })).status, 401);
+  assert.equal((await call('GET', '/posts', { token: stranger })).status, 403);
+  assert.equal((await call('GET', '/posts', { token: await idToken('admin1', { aud: 'other' }) })).status, 401);
+  assert.equal((await call('GET', '/posts', { token: await idToken('admin1', { exp: -10 }) })).status, 401);
+  assert.equal((await call('GET', '/posts', { token: admin })).status, 200);
+});
+await t('permissions: studio may publish, other sections may not', async () => {
+  assert.equal((await call('GET', '/posts', { token: await idToken('social1') })).status, 200);
+  const r = await call('GET', '/posts', { token: await idToken('content1') });
+  assert.equal(r.status, 403); assert.match(r.data.error, /صلاحية النشر/);
+});
+await t('rejects bad input', async () => {
+  assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: [] } })).status, 400);
+  assert.equal((await call('POST', '/posts', { token: admin, body: { image: 'data:image/jpeg;base64,AAAA', platforms: ['facebook'] } })).status, 400);
+  assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], caption: 'x'.repeat(2300) } })).status, 400);
+});
+await t('publish now goes to Facebook and Instagram', async () => {
+  calls.length = 0;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'مرحبا', platforms: ['facebook', 'instagram'], template: 'intro', title: 'معاً' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.post.status, 'published');
+  assert.equal(r.data.post.results.facebook.id, 'PAGE_123');
+  assert.equal(r.data.post.results.instagram.permalink, 'https://instagram.com/p/x');
+  const fb = calls.find((c) => c.url.endsWith('/PAGE/photos'));
+  assert.equal(fb.body.caption, 'مرحبا'); assert.equal(fb.body.access_token, 'secret');
+  assert.match(fb.body.url, /^https:\/\/social\.example\/img\/.+\.jpg$/);
+  const img = await call('GET', new URL(fb.body.url).pathname);
+  assert.equal(img.status, 200); assert.equal(img.res.headers.get('Content-Type'), 'image/jpeg');
+});
+await t('schedule, then the cron publishes it when due', async () => {
+  const when = new Date(Date.now() + 3600e3).toISOString();
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'later', platforms: ['facebook'], scheduledAt: when } });
+  assert.equal(r.data.post.status, 'scheduled');
+  assert.equal(await runDue(env), 0); // not yet
+  const id = r.data.post.id;
+  const stored = await env.SOCIAL.get(`post:${id}`, 'json');
+  stored.scheduledAt = new Date(Date.now() - 1000).toISOString();
+  await env.SOCIAL.put(`post:${id}`, JSON.stringify(stored), { metadata: { s: 'scheduled', at: Date.now() - 1000, c: Date.now() } });
+  assert.equal(await runDue(env), 1);
+  assert.equal((await env.SOCIAL.get(`post:${id}`, 'json')).status, 'published');
+});
+await t('a failed platform can be retried without re-posting the other', async () => {
+  failInstagram = true;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'x', platforms: ['facebook', 'instagram'] } });
+  assert.equal(r.data.post.status, 'partial');
+  assert.equal(r.data.post.results.instagram.error, 'bad image');
+  failInstagram = false; calls.length = 0;
+  const again = await call('POST', `/posts/${r.data.post.id}/publish`, { token: admin });
+  assert.equal(again.data.post.status, 'published');
+  assert.equal(again.data.post.results.facebook.id, 'PAGE_123');
+  assert.equal(calls.filter((c) => c.url.endsWith('/PAGE/photos')).length, 0); // Facebook not posted twice
+  assert.equal(calls.filter((c) => c.url.endsWith('/IGU/media_publish')).length, 1);
+});
+await t('failed post: retry publishes; scheduled post: can be cancelled', async () => {
+  failInstagram = true;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'x', platforms: ['instagram'] } });
+  assert.equal(r.data.post.status, 'failed');
+  failInstagram = false;
+  const again = await call('POST', `/posts/${r.data.post.id}/publish`, { token: admin });
+  assert.equal(again.data.post.status, 'published');
+  const s = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], scheduledAt: new Date(Date.now() + 864e5).toISOString() } });
+  assert.equal((await call('DELETE', `/posts/${s.data.post.id}`, { token: admin })).status, 200);
+  assert.equal(await env.SOCIAL.get(`img:${s.data.post.id}`), null);
+  assert.equal((await call('DELETE', `/posts/${again.data.post.id}`, { token: admin })).status, 409);
+});
+await t('listing returns newest first', async () => {
+  const r = await call('GET', '/posts', { token: admin });
+  assert.ok(r.data.posts.length >= 4);
+  const c = r.data.posts.map((p) => Date.parse(p.createdAt));
+  assert.deepEqual([...c].sort((a, b) => b - a), c);
+});
+await t('not connected yet: clear message', async () => {
+  const saved = env.IG_USER_ID; env.IG_USER_ID = '';
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['instagram'] } });
+  assert.equal(r.status, 400); assert.match(r.data.error, /إنستغرام مش مربوط/);
+  env.IG_USER_ID = saved;
+});
+console.log(`\n${n} tests passed`);

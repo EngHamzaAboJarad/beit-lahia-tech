@@ -1,0 +1,25 @@
+# Beit Lahia Tech — social publishing service (see README.md › «استوديو السوشيال»)
+name = "beitlahia-social"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# every 5 minutes: publish the scheduled posts whose time has come
+[triggers]
+crons = ["*/5 * * * *"]
+
+# posts + images (create it once: npx wrangler kv namespace create SOCIAL, then paste the id here)
+[[kv_namespaces]]
+binding = "SOCIAL"
+id = "PASTE_KV_NAMESPACE_ID_HERE"
+
+# the Worker answers on its own sub-domain of beitlahia.tech (Cloudflare creates the DNS record)
+routes = [{ pattern = "social.beitlahia.tech", custom_domain = true }]
+
+[vars]
+FIREBASE_PROJECT_ID = "flutter-app-distribution-a4166"
+PUBLIC_BASE_URL = "https://social.beitlahia.tech"
+ALLOWED_ORIGINS = "https://beitlahia.tech,https://www.beitlahia.tech,https://beit-lahia-tech.web.app,http://localhost:5000,http://localhost:5055"
+GRAPH_VERSION = "v23.0"
+# only this account may connect Facebook / Instagram (admin panel › استوديو السوشيال › الربط)
+OWNER_EMAIL = "habojarad305@gmail.com"
+# the connection itself is saved from the admin panel (KV › config:meta) — nothing to fill in here

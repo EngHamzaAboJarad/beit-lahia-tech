@@ -6,6 +6,8 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
+import { initStudio, showStudio } from './admin-social.js?v=5';
+import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -63,16 +65,62 @@ const { auth, au } = await getAuth();
 const { db, fs } = await getDb();
 let booted = false;
 
+// perms = the sections this admin may open (admins/{uid}.perms); null = everything (owner, or an admin
+// added before permissions existed). Firestore rules enforce the same thing on the data itself.
+const me = { owner: false, perms: null };
+const can = (p) => me.owner || me.perms === null || me.perms.includes(p);
+const isFull = () => me.owner || me.perms === null;
+function tabAllowed(t) {
+  if (t === 'admins') return me.owner;
+  if (t === 'overview') return true;
+  if (t === 'total') return can('members') && can('workshops');
+  const hit = PERMS.find(([, , tabs]) => tabs.includes(t));
+  return hit ? can(hit[0]) : isFull();
+}
+
+// an invite (adminInvites/{email}) becomes access on the first sign-in with a verified email
+async function claimInvite(user) {
+  const email = (user.email || '').toLowerCase();
+  if (!email) return null;
+  let inv;
+  try { inv = await fs.getDoc(fs.doc(db, 'adminInvites', email)); } catch { return null; }
+  if (!inv.exists()) return null;
+  try { await user.reload(); } catch { /* offline: keep what we have */ }
+  if (!auth.currentUser.emailVerified) {
+    try { await au.sendEmailVerification(auth.currentUser); } catch { /* sent recently */ }
+    return { pending: true };
+  }
+  await auth.currentUser.getIdToken(true); // the rules need email_verified in the token
+  const d = inv.data();
+  const data = { email, name: d.name || '', perms: d.perms || [], ...(d.addedBy ? { addedBy: d.addedBy } : {}), createdAt: fs.serverTimestamp() };
+  await fs.setDoc(fs.doc(db, 'admins', user.uid), data);
+  await fs.deleteDoc(inv.ref).catch(() => {});
+  return { data };
+}
+
 au.onAuthStateChanged(auth, async (user) => {
   if (!user) { show('view-login'); return; }
-  let isAdmin = false;
-  try { isAdmin = (await fs.getDoc(fs.doc(db, 'admins', user.uid))).exists(); } catch { isAdmin = false; }
-  if (!isAdmin) {
+  let data = null;
+  try { const snap = await fs.getDoc(fs.doc(db, 'admins', user.uid)); if (snap.exists()) data = snap.data(); } catch { data = null; }
+  let note = '';
+  if (!data) {
+    try {
+      const c = await claimInvite(user);
+      if (c?.data) data = c.data;
+      else if (c?.pending) note = `عندك دعوة للوحة الإدارة. بعتنالك إيميل تأكيد على ${user.email}: افتح الرابط اللي فيه، وبعدين ارجع لهون وحدّث الصفحة.`;
+    } catch (e) { console.warn('[invite]', e); }
+  }
+  if (!data) {
     $('denied-email').textContent = user.email || '';
     $('denied-uid').textContent = user.uid;
+    $('denied-note').textContent = note;
+    $('denied-note').hidden = !note;
     show('view-denied');
     return;
   }
+  me.owner = (user.email || '').toLowerCase() === OWNER_EMAIL;
+  me.perms = Array.isArray(data.perms) && !me.owner ? data.perms : null;
+  applyPerms();
   $('admin-email').textContent = user.email || '';
   try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
   show('view-app');
@@ -138,7 +186,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['overview', 'members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'stats', 'settings']; // same order as the sidebar
+const TABS = ['overview', 'members', 'team', 'total', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'studio', 'stats', 'settings', 'admins']; // same order as the sidebar
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // Page-head title per tab: the section's own first heading (hidden in place), else the sidebar label.
@@ -173,6 +221,7 @@ function enterPanel(sec) {
 }
 
 function selectTab(name, focus = false) {
+  if (!tabAllowed(name)) name = 'overview';
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
     const on = t === name;
@@ -182,6 +231,7 @@ function selectTab(name, focus = false) {
     if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
     if (on && t === 'total') renderTotal();
     if (on && t === 'overview') renderOverview(true);
+    if (on && t === 'studio') showStudio();
     if (on && focus) btn.focus();
   });
   $('ph-title').textContent = TAB_META[name].title;
@@ -192,6 +242,23 @@ function selectTab(name, focus = false) {
   moveIndicator();
   setDrawer(false);
   history.replaceState(null, '', `#${name}`);
+}
+
+// sidebar, shortcuts and overview panels follow the permissions
+function applyPerms() {
+  TABS.forEach((t) => { $(`tab-btn-${t}`).hidden = !tabAllowed(t); });
+  document.querySelectorAll('.admin-tabs .tab-group').forEach((g) => { // a group label with nothing under it goes too
+    let n = g.nextElementSibling; let any = false;
+    while (n && !n.classList.contains('tab-group')) { if (n.getAttribute('role') === 'tab' && !n.hidden) any = true; n = n.nextElementSibling; }
+    g.hidden = !any;
+  });
+  document.querySelectorAll('#ov-quick [data-goto], #tab-overview .ov-panel-head [data-goto]').forEach((b) => { b.hidden = !tabAllowed(b.dataset.goto); });
+  document.querySelector('.ov-chart-panel').hidden = !can('members') && !can('workshops');
+  document.querySelector('.ov-latest-panel').hidden = !can('members') && !can('workshops');
+  $('ov-ws').hidden = !can('workshops');
+  const backup = $('backup-btn')?.closest('.set-card');
+  if (backup) backup.hidden = !isFull(); // a full backup reads every collection
+  moveIndicator();
 }
 
 /* mobile: the sidebar is a drawer */
@@ -211,7 +278,7 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); }
 // any [data-goto="tab"] button jumps to that tab
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-goto]');
-  if (b && TABS.includes(b.dataset.goto)) { selectTab(b.dataset.goto); scrollTo({ top: 0, behavior: reduceMotion.matches ? 'auto' : 'smooth' }); }
+  if (b && TABS.includes(b.dataset.goto) && tabAllowed(b.dataset.goto)) { selectTab(b.dataset.goto); scrollTo({ top: 0, behavior: reduceMotion.matches ? 'auto' : 'smooth' }); }
 });
 
 $('ph-date').textContent = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
@@ -221,26 +288,31 @@ TABS.forEach((t, i) => {
   btn.addEventListener('keydown', (e) => {
     // RTL: ArrowLeft moves to the next tab
     const dir = ['ArrowLeft', 'ArrowDown'].includes(e.key) ? 1 : ['ArrowRight', 'ArrowUp'].includes(e.key) ? -1 : 0;
-    if (dir) { e.preventDefault(); selectTab(TABS[(i + dir + TABS.length) % TABS.length], true); }
+    if (dir) {
+      e.preventDefault();
+      const open = TABS.filter(tabAllowed); // skip the sections this admin can't open
+      selectTab(open[(open.indexOf(t) + dir + open.length) % open.length], true);
+    }
   });
 });
 
 function boot() {
+  // modules first: the first selectTab may open their section right away
+  if (can('studio')) initStudio({ h, toast, setBusy, db, fs, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
+  if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth });
   const hash = location.hash.slice(1);
-  selectTab(TABS.includes(hash) ? hash : 'overview');
+  // a limited admin lands on their own first section (the overview has little for them)
+  const home = isFull() ? 'overview' : TABS.find((t) => t !== 'overview' && tabAllowed(t)) || 'overview';
+  selectTab(TABS.includes(hash) && tabAllowed(hash) ? hash : home);
   requestAnimationFrame(moveIndicator);
   document.fonts?.ready.then(moveIndicator);
-  loadMembers();
-  loadTraffic();
-  loadContent();
-  loadEvents();
-  loadGallery();
-  loadTeam();
-  loadSettings();
-  loadWorkshopAll();
-  loadTrainers();
-  loadSurveys();
-  loadFormsCfg();
+  if (can('members')) loadMembers();
+  if (can('stats')) loadTraffic();
+  if (can('site')) { loadContent(); loadEvents(); loadGallery(); }
+  if (can('team')) loadTeam();
+  loadSettings(); // site/settings is public
+  if (can('workshops')) loadWorkshopAll();
+  if (can('forms')) { loadTrainers(); loadSurveys(); loadFormsCfg(); }
 }
 
 /* =================== Overview =================== */
@@ -312,7 +384,7 @@ function renderOverview(enter = false) {
     chips.push(h('button', { type: 'button', class: `ov-chip ${open ? 'is-on' : 'is-off'}`, 'data-goto': 'workshop' }, h('i'), `${wsName(cur)}: ${open ? 'التسجيل مفتوح' : 'التسجيل مسكّر'}`));
   }
   if (newWeek) chips.push(h('button', { type: 'button', class: 'ov-chip is-new', 'data-goto': 'members' }, h('i'), `${num(newWeek)} تسجيل جديد هالأسبوع`));
-  $('ov-chips').replaceChildren(...chips);
+  $('ov-chips').replaceChildren(...chips.filter((c) => tabAllowed(c.dataset.goto)));
 
   // KPI cards (clickable, jump to their tab)
   const diff = newWeek - newPrev;
@@ -326,7 +398,7 @@ function renderOverview(enter = false) {
     { tab: 'survey', label: 'ردود الاستبيان', value: surveys.length, ready: loaded.has('surveys'), sub: 'على المواضيع المطلوبة' },
     { tab: 'stats', label: 'زيارات آخر 7 أيام', value: visits7, ready: loaded.has('traffic'), sub: 'للصفحة الرئيسية' },
     { tab: 'total', label: 'الإجمالي بدون تكرار', value: mergePeople().people.length, ready: loaded.has('members') && loaded.has('workshops'), sub: 'المجتمع + الورشات' },
-  ];
+  ].filter((k) => tabAllowed(k.tab));
   const box = $('ov-kpis');
   if (box.children.length !== kpis.length) {
     box.replaceChildren(...kpis.map((k, i) => h('button', { type: 'button', class: `kpi${k.accent ? ' kpi-accent' : ''}`, 'data-goto': k.tab, style: `--i:${i}` },

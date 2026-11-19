@@ -9,12 +9,12 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=31">
+  <link rel="stylesheet" href="/admin.css?v=35">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=32"></script>
+  <script type="module" src="/admin.js?v=39"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -63,6 +63,7 @@
       <svg width="48" height="54" aria-hidden="true"><use href="#logo"/></svg>
       <h1>الحساب مش أدمن</h1>
       <p class="muted">سجّلت دخول بـ <bdi id="denied-email"></bdi>، بس هاد الحساب مش مضاف كأدمن.</p>
+      <p class="denied-note" id="denied-note" hidden></p>
       <p class="muted">لإضافته: من Firebase Console › Firestore اعمل document بالـ collection <code>admins</code> اسمه (Document ID) هاد الرقم:</p>
       <div class="uid-row">
         <code id="denied-uid" dir="ltr"></code>
@@ -105,9 +106,12 @@
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>الفعاليات</span></button>
         <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4.5 4.5"/></svg><span>المعرض</span></button>
         <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.5L3.5 20.5l1.1-4.2A8.5 8.5 0 1 1 20.5 12Z"/></svg><span>التواصل</span></button>
+        <span class="tab-group" role="presentation">السوشيال ميديا</span>
+        <button role="tab" type="button" id="tab-btn-studio" aria-controls="tab-studio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 15l3-3 2 2 3-4"/><circle cx="8.5" cy="8.5" r="1.3"/></svg><span>استوديو السوشيال</span></button>
         <span class="tab-group" role="presentation">عام</span>
         <button role="tab" type="button" id="tab-btn-stats" aria-controls="tab-stats" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg><span>الزيارات</span></button>
         <button role="tab" type="button" id="tab-btn-settings" aria-controls="tab-settings" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>الإعدادات</span></button>
+        <button role="tab" type="button" id="tab-btn-admins" aria-controls="tab-admins" aria-selected="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.5-3.6"/></svg><span>المشرفين</span></button>
       </nav>
     </header>
 
@@ -993,6 +997,125 @@
       </section>
 
       <!-- Settings -->
+      <section id="tab-studio" role="tabpanel" aria-labelledby="tab-btn-studio" hidden>
+        <div class="tab-intro">
+          <h2>استوديو السوشيال</h2>
+          <p class="muted">اختار قالب، عدّل نصوصه وتصميمه (حرّك، كبّر، لوّن، ضيف أو احذف عناصر)، احفظه كقالب إلك، وبعدين نزّله أو انشره على فيسبوك وإنستغرام هلّق أو بموعد.</p>
+        </div>
+        <div class="studio-conn" id="studio-conn" aria-live="polite"></div>
+        <div class="panel studio-connect" id="studio-connect" hidden></div>
+        <div class="studio">
+          <div class="panel studio-form">
+            <h2>القوالب</h2>
+            <div class="tpl-picker" id="tpl-picker" role="radiogroup" aria-label="القوالب"></div>
+            <div class="tpl-mine" id="tpl-mine-wrap" hidden>
+              <h3>قوالبي</h3>
+              <div class="tpl-picker" id="tpl-mine" role="radiogroup" aria-label="قوالبي"></div>
+            </div>
+
+            <div class="studio-tabs" role="tablist" aria-label="تعديل القالب">
+              <button type="button" role="tab" id="st-tab-content" aria-selected="true" aria-controls="st-pane-content">المحتوى</button>
+              <button type="button" role="tab" id="st-tab-design" aria-selected="false" aria-controls="st-pane-design">التصميم</button>
+            </div>
+            <div id="st-pane-content" role="tabpanel" aria-labelledby="st-tab-content">
+              <div class="tpl-fields" id="tpl-fields"></div>
+            </div>
+            <div id="st-pane-design" role="tabpanel" aria-labelledby="st-tab-design" hidden>
+              <div class="el-props" id="el-props"></div>
+              <h3>ضيف عنصر</h3>
+              <div class="el-add" id="el-add"></div>
+              <h3>الطبقات <span class="muted small">(الأعلى فوق)</span></h3>
+              <ul class="el-layers" id="el-layers"></ul>
+              <h3>الخلفية والمقاس</h3>
+              <div class="design-bg" id="design-bg"></div>
+            </div>
+
+            <div class="studio-save">
+              <span class="studio-dirty" id="studio-dirty" hidden>فيه تعديلات ما انحفظت</span>
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="tpl-save"><span class="btn-label">احفظ التعديلات</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="tpl-save-new"><span class="btn-label">احفظ كقالب جديد</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark btn-sm" type="button" id="tpl-reset">رجّع الأصل</button>
+              <button class="btn btn-danger btn-sm" type="button" id="tpl-delete" hidden>احذف القالب</button>
+            </div>
+
+            <h2 class="studio-sep">النشر</h2>
+            <div class="field">
+              <label for="studio-caption">نص المنشور (الكابشن)</label>
+              <textarea id="studio-caption" rows="4" maxlength="2200" placeholder="اكتب النص اللي بيطلع مع الصورة، والهاشتاقات…"></textarea>
+              <div class="field-foot"><span class="muted small">بيطلع تحت الصورة بفيسبوك وإنستغرام</span><span class="muted small" id="studio-count">0 / 2200</span></div>
+            </div>
+            <fieldset class="field studio-platforms">
+              <legend>وين ينتشر؟</legend>
+              <label class="studio-chk"><input type="checkbox" id="pub-facebook" checked><span>فيسبوك</span></label>
+              <label class="studio-chk"><input type="checkbox" id="pub-instagram" checked><span>إنستغرام</span></label>
+            </fieldset>
+            <fieldset class="field">
+              <legend>متى؟</legend>
+              <div class="studio-when">
+                <label class="studio-chk"><input type="radio" name="studio-when" value="now" checked><span>هلّق</span></label>
+                <label class="studio-chk"><input type="radio" name="studio-when" value="later"><span>بموعد</span></label>
+                <input type="datetime-local" id="studio-at" aria-label="موعد النشر" hidden>
+              </div>
+            </fieldset>
+            <div class="studio-actions">
+              <button class="btn btn-ghost-dark" type="button" id="studio-download"><span class="btn-label">نزّل PNG</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-primary" type="button" id="studio-publish"><span class="btn-label">انشر الآن</span><span class="spinner" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <div class="panel studio-preview">
+            <div class="studio-toolbar" role="toolbar" aria-label="أدوات التصميم">
+              <button type="button" class="tb-btn" id="tb-undo" title="تراجع (Ctrl+Z)" aria-label="تراجع (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+              <button type="button" class="tb-btn" id="tb-redo" title="إعادة (Ctrl+Y)" aria-label="إعادة (Ctrl+Y)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+              <span class="tb-sep" aria-hidden="true"></span>
+              <button type="button" class="tb-btn" id="tb-dup" title="نسخ العنصر (Ctrl+D)" aria-label="نسخ العنصر (Ctrl+D)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+              <button type="button" class="tb-btn" id="tb-up" title="لقدّام" aria-label="لقدّام"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+              <button type="button" class="tb-btn" id="tb-down" title="لورا" aria-label="لورا"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
+              <button type="button" class="tb-btn" id="tb-center" title="بالنص أفقياً" aria-label="بالنص أفقياً"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 8h10M5 16h14"/></svg></button>
+              <button type="button" class="tb-btn" id="tb-del" title="احذف العنصر (Delete)" aria-label="احذف العنصر (Delete)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
+            </div>
+            <div class="studio-stage" id="studio-stage" tabindex="0" aria-label="لوحة التصميم: اضغط على عنصر لتحديده"></div>
+            <p class="muted small" id="studio-size"></p>
+            <p class="muted small studio-hint">اضغط على أي عنصر لتحدده، اسحبه لتحرّكه، واسحب المربع الأخضر بالزاوية لتكبّره أو تصغّره. الأسهم بتحرّك بدقة.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="studio-head">
+            <h2>المنشورات</h2>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="studio-refresh">تحديث</button>
+          </div>
+          <ul class="studio-posts" id="studio-posts"></ul>
+          <p class="empty" id="studio-empty">ما في منشورات لسا.</p>
+        </div>
+      </section>
+
+      <section id="tab-admins" role="tabpanel" aria-labelledby="tab-btn-admins" hidden>
+        <div class="tab-intro">
+          <h2>المشرفين</h2>
+          <p class="muted">ضيف أشخاص للوحة الإدارة وحدّد لكل واحد شو بيقدر يفتح. مثلاً اللي ماسك السوشيال بتعطيه «استوديو السوشيال» بس. هالقسم بيظهر إلك إنت بس.</p>
+        </div>
+        <form class="panel acc-add" id="acc-form" novalidate>
+          <h2>ضيف مشرف</h2>
+          <div class="acc-fields">
+            <div class="field"><label for="acc-name">الاسم</label><input type="text" id="acc-name" maxlength="80" placeholder="مثلاً: محمد — السوشيال"></div>
+            <div class="field"><label for="acc-email">الإيميل <span class="req">*</span></label><input type="email" id="acc-email" dir="ltr" maxlength="120" required placeholder="name@example.com"></div>
+          </div>
+          <fieldset class="field">
+            <legend>الصلاحيات <button type="button" class="link-btn" id="acc-all">اختار الكل</button></legend>
+            <div id="acc-perms"></div>
+          </fieldset>
+          <p class="muted small">بننشئله حساب وبيوصله إيميل يحط فيه كلمة السر بنفسه. إذا الإيميل إله حساب من قبل، بتنبعت دعوة بتتفعّل أول ما يسجّل دخول ويأكّد إيميله.</p>
+          <button class="btn btn-primary" type="submit" id="acc-add"><span class="btn-label">ضيف المشرف</span><span class="spinner" aria-hidden="true"></span></button>
+        </form>
+        <div class="panel">
+          <div class="studio-head">
+            <h2>اللي عندهم دخول</h2>
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="acc-refresh">تحديث</button>
+          </div>
+          <ul class="acc-list" id="acc-list"></ul>
+          <p class="empty" id="acc-empty" hidden>ما في حدا لسا.</p>
+        </div>
+      </section>
+
       <section id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings" hidden>
         <div class="set-grid">
           <!-- Community registration -->

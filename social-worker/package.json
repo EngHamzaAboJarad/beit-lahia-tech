@@ -1,0 +1,11 @@
+{
+  "name": "beitlahia-social",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/worker.test.mjs && node test/connect.test.mjs",
+    "setup": "node setup.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

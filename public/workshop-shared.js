@@ -21,6 +21,7 @@ export const placeText = (w) => [WS_MODES[w.mode], w.place].filter(Boolean).join
 /** optional registration fields; each workshop turns them on/off (name, WhatsApp and consent are always asked) */
 export const FORM_FIELDS = [
   { key: 'email', label: 'الإيميل' },
+  { key: 'major', label: 'التخصص الجامعي' },
   { key: 'status', label: 'الحالة (توجيهي / جامعة / خريج)' },
   { key: 'level', label: 'مستواه بالبرمجة' },
   { key: 'laptop', label: 'عنده لابتوب؟' },

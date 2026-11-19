@@ -244,7 +244,7 @@ form.addEventListener('change', (e) => {
 const fieldBox = (key) => (key === 'aiTools' ? $('tool-chips').closest('.field') : fieldOf(key));
 const isOff = (key) => ws.form && ws.form[key] === false;
 function applyFormFields() {
-  ['email', 'status', 'level', 'laptop', 'aiTools', 'expectations'].forEach((key) => {
+  ['email', 'major', 'status', 'level', 'laptop', 'aiTools', 'expectations'].forEach((key) => {
     const box = fieldBox(key);
     box.hidden = isOff(key);
     box.querySelectorAll('input, textarea').forEach((i) => { i.disabled = isOff(key); });
@@ -280,7 +280,9 @@ const rules = {
   },
   whatsapp: (v) => (!String(v).trim() ? 'اكتب رقم الواتساب عشان نقدر نتواصل معك'
     : normalizePhone(v) ? '' : 'الرقم مش صحيح. مثال: 0591234567 أو ‎+970591234567'),
-  email: (v) => (!String(v).trim() || normalizeEmail(v) ? '' : 'الإيميل مش صحيح. مثال: name@example.com'),
+  email: (v) => (!String(v).trim() ? 'اكتب إيميلك'
+    : normalizeEmail(v) ? '' : 'الإيميل مش صحيح. مثال: name@example.com'),
+  major: (v) => (clean(v).length > 80 ? 'التخصص طويل (80 حرف كحد أقصى)' : ''),
   status: (v) => (['tawjihi', 'student', 'graduate', 'other'].includes(v) ? '' : 'اختار حالتك'),
   level: (v) => (['beginner', 'intermediate', 'advanced'].includes(v) ? '' : 'اختار مستواك بالبرمجة'),
   laptop: (v) => (['yes', 'no'].includes(v) ? '' : 'خبّرنا إذا عندك لابتوب'),
@@ -353,6 +355,8 @@ form.addEventListener('submit', async (e) => {
   if (!isOff('aiTools')) data.aiTools = [...form.querySelectorAll('input[name="aiTools"]:checked')].map((b) => b.value);
   const email = isOff('email') ? '' : normalizeEmail(f.email.value);
   if (email) data.email = email;
+  const major = isOff('major') ? '' : clean(f.major.value).slice(0, 80);
+  if (major) data.major = major;
   const expectations = isOff('expectations') ? '' : exp.value.trim().slice(0, 500);
   if (expectations) data.expectations = expectations;
 

@@ -1,0 +1,430 @@
+// Beit Lahia Tech — social publishing service (Cloudflare Worker).
+//
+// The admin panel sends a finished post (JPEG + caption + platforms + optional time). This Worker
+// keeps it in KV, publishes it to the Facebook Page and/or Instagram account through the Meta Graph
+// API — right away, or from the cron trigger when its time comes — and serves the image at a public
+// URL (Instagram only accepts images it can download).
+//
+// Who may call it: a signed-in Firebase user who has a document in admins/{uid} (same rule as the
+// admin panel) with the «studio» permission. The Meta page token never leaves this Worker.
+//
+// Connecting Facebook / Instagram happens from the admin panel (owner only): the owner pastes the Meta
+// App ID + App Secret + a user token from the Graph API Explorer; the Worker turns it into a long-lived
+// token, lists the pages, and keeps the chosen page's token (it never expires) in KV › config:meta.
+//
+// Routes
+//   GET    /health              public: is the service up, which platforms are connected
+//   GET    /connect             owner: connection details (never the token)
+//   POST   /connect/pages       owner: { appId, appSecret, userToken } → the pages that token manages
+//   POST   /connect/select      owner: { pageId } → keep that page (+ its Instagram account)
+//   POST   /connect/test        owner: check the saved connection against Meta right now
+//   DELETE /connect             owner: forget the connection
+//   GET    /img/:id.jpg         public: the post image (Instagram/Facebook download it from here)
+//   GET    /posts               admin: latest posts (scheduled, published, failed)
+//   POST   /posts               admin: { image, caption, platforms[], scheduledAt?, template, title, story? }
+//   POST   /posts/:id/publish   admin: publish now (a scheduled post, or retry a failed one)
+//   DELETE /posts/:id           admin: cancel a scheduled post / remove a failed one
+
+const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
+const MAX_CAPTION = 2200;          // Instagram's caption limit
+const MAX_AHEAD = 75 * 864e5;      // schedule at most ~75 days ahead
+const PLATFORMS = ['facebook', 'instagram'];
+
+export default {
+  async fetch(req, env, ctx) {
+    const cors = corsHeaders(req, env);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    try {
+      const res = await route(req, env, ctx);
+      Object.entries(cors).forEach(([k, v]) => res.headers.set(k, v));
+      return res;
+    } catch (e) {
+      const status = e.status || 500;
+      if (status === 500) console.error(e);
+      return json({ error: e.expose ? e.message : 'خطأ داخلي بالخدمة' }, status, cors);
+    }
+  },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runDue(env));
+  },
+};
+
+/* ---------------- routing ---------------- */
+async function route(req, env, ctx) {
+  const url = new URL(req.url);
+  const parts = url.pathname.split('/').filter(Boolean);
+
+  if (req.method === 'GET' && parts[0] === 'health') {
+    const m = await getMeta(env);
+    return json({ ok: true, ...(await connected(env)), page: m?.pageName || '', instagramUser: m?.igUsername || '' });
+  }
+  if (req.method === 'GET' && parts[0] === 'img' && parts[1]) {
+    const id = parts[1].replace(/\.jpe?g$/, '');
+    if (!/^[a-z0-9-]{6,40}$/.test(id)) throw fail(404, 'مش موجود');
+    const bytes = await env.SOCIAL.get(`img:${id}`, 'arrayBuffer');
+    if (!bytes) throw fail(404, 'مش موجود');
+    return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600' } });
+  }
+
+  if (parts[0] === 'connect') {
+    const owner = await requireAdmin(req, env);
+    if (!isOwner(env, owner)) throw fail(403, 'ربط الحسابات لصاحب المنصة بس');
+    const body = req.method === 'POST' ? await req.json().catch(() => ({})) : null;
+    if (req.method === 'GET' && parts.length === 1) return json(await connectStatus(env));
+    if (req.method === 'POST' && parts[1] === 'pages') return json({ pages: await connectPages(env, body) });
+    if (req.method === 'POST' && parts[1] === 'select') return json(await connectSelect(env, body, owner));
+    if (req.method === 'POST' && parts[1] === 'test') return json(await connectStatus(env, true));
+    if (req.method === 'DELETE' && parts.length === 1) { await env.SOCIAL.delete(META_KEY); await env.SOCIAL.delete(PENDING_KEY); return json(await connectStatus(env)); }
+    throw fail(405, 'طلب مش مدعوم');
+  }
+
+  if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
+  const user = await requireAdmin(req, env, 'studio');
+
+  if (req.method === 'GET' && parts.length === 1) return json({ posts: await listPosts(env) });
+
+  if (req.method === 'POST' && parts.length === 1) {
+    const body = await req.json().catch(() => null);
+    const post = await createPost(env, body, user);
+    if (!post.scheduledAt) {
+      const done = await publishPost(env, post);
+      return json({ post: done }, 201);
+    }
+    return json({ post }, 201);
+  }
+
+  const id = parts[1];
+  const post = id && (await getPost(env, id));
+  if (!post) throw fail(404, 'المنشور مش موجود');
+
+  if (req.method === 'POST' && parts[2] === 'publish') {
+    if (post.status === 'published' || post.status === 'publishing') throw fail(409, 'المنشور انتشر أو عم ينتشر هلّق');
+    return json({ post: await publishPost(env, post) });
+  }
+  if (req.method === 'DELETE' && parts.length === 2) {
+    if (post.status === 'published' || post.status === 'partial' || post.status === 'publishing') {
+      throw fail(409, 'ما بنقدر نحذف منشور انتشر. احذفه من فيسبوك أو إنستغرام نفسهم.');
+    }
+    await env.SOCIAL.delete(`post:${id}`);
+    await env.SOCIAL.delete(`img:${id}`);
+    return json({ ok: true });
+  }
+  throw fail(405, 'طلب مش مدعوم');
+}
+
+/* ---------------- posts ---------------- */
+async function createPost(env, body, user) {
+  if (!body || typeof body !== 'object') throw fail(400, 'الطلب فاضي');
+  const platforms = Array.isArray(body.platforms) ? [...new Set(body.platforms)].filter((p) => PLATFORMS.includes(p)) : [];
+  if (!platforms.length) throw fail(400, 'اختار فيسبوك أو إنستغرام أو الاثنين');
+  const conn = await connected(env);
+  const missing = platforms.filter((p) => !conn[p]);
+  if (missing.length) throw fail(400, `${missing.map(nameOf).join(' و')} مش مربوط بخدمة النشر لسا`);
+
+  const caption = typeof body.caption === 'string' ? body.caption.trim() : '';
+  if (caption.length > MAX_CAPTION) throw fail(400, `النص أطول من ${MAX_CAPTION} حرف`);
+
+  const b64 = typeof body.image === 'string' ? body.image.replace(/^data:image\/jpeg;base64,/, '') : '';
+  let bytes;
+  try { bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); } catch { throw fail(400, 'الصورة مش صالحة'); }
+  if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw fail(400, 'لازم الصورة تكون JPEG');
+  if (bytes.length > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
+
+  let scheduledAt = null;
+  if (body.scheduledAt) {
+    const t = Date.parse(body.scheduledAt);
+    if (Number.isNaN(t)) throw fail(400, 'موعد النشر مش صالح');
+    if (t > Date.now() + 60e3) {
+      if (t > Date.now() + MAX_AHEAD) throw fail(400, 'ما بنقدر نجدول لأبعد من 75 يوم');
+      scheduledAt = new Date(t).toISOString();
+    }
+  }
+
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+  const post = {
+    id,
+    template: String(body.template || '').slice(0, 40),
+    title: String(body.title || '').slice(0, 120),
+    caption,
+    platforms,
+    story: body.story === true,
+    status: scheduledAt ? 'scheduled' : 'publishing',
+    scheduledAt,
+    createdAt: new Date().toISOString(),
+    createdBy: user.email || user.uid,
+    results: {},
+  };
+  const keepFor = Math.max(0, (scheduledAt ? Date.parse(scheduledAt) : Date.now()) - Date.now()) / 1000 + 120 * 86400;
+  await env.SOCIAL.put(`img:${id}`, bytes, { expirationTtl: Math.ceil(keepFor) });
+  await savePost(env, post);
+  return post;
+}
+
+async function savePost(env, post) {
+  await env.SOCIAL.put(`post:${post.id}`, JSON.stringify(post), {
+    metadata: { s: post.status, at: post.scheduledAt ? Date.parse(post.scheduledAt) : 0, c: Date.parse(post.createdAt) },
+  });
+}
+const getPost = (env, id) => (/^[a-z0-9-]{6,40}$/.test(id) ? env.SOCIAL.get(`post:${id}`, 'json') : null);
+
+async function listPosts(env, limit = 60) {
+  const keys = await allKeys(env);
+  keys.sort((a, b) => (b.metadata?.c || 0) - (a.metadata?.c || 0));
+  const posts = await Promise.all(keys.slice(0, limit).map((k) => env.SOCIAL.get(k.name, 'json')));
+  return posts.filter(Boolean);
+}
+async function allKeys(env) {
+  const out = [];
+  let cursor;
+  do {
+    const page = await env.SOCIAL.list({ prefix: 'post:', cursor });
+    out.push(...page.keys);
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+  return out;
+}
+
+// cron: publish every scheduled post whose time has come
+export async function runDue(env) {
+  const now = Date.now();
+  const keys = await allKeys(env);
+  const due = keys.filter((k) => k.metadata?.s === 'scheduled' && k.metadata.at <= now);
+  for (const k of due) {
+    const post = await env.SOCIAL.get(k.name, 'json');
+    if (post && post.status === 'scheduled') await publishPost(env, post);
+  }
+  return due.length;
+}
+
+/* ---------------- the Meta connection ---------------- */
+const META_KEY = 'config:meta';
+const PENDING_KEY = 'config:pending';
+export const SCOPES_NEEDED = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish'];
+
+// saved from the admin panel (KV) — or, for a manual setup, from the Worker's variables/secrets
+async function getMeta(env) {
+  const saved = await env.SOCIAL.get(META_KEY, 'json');
+  if (saved && saved.pageToken) return { ...saved, source: 'platform' };
+  if (env.META_PAGE_TOKEN && (env.FB_PAGE_ID || env.IG_USER_ID)) {
+    return { pageToken: env.META_PAGE_TOKEN, pageId: env.FB_PAGE_ID || '', igId: env.IG_USER_ID || '', source: 'env' };
+  }
+  return null;
+}
+async function connected(env) {
+  const m = await getMeta(env);
+  return { facebook: !!(m && m.pageToken && m.pageId), instagram: !!(m && m.pageToken && m.igId) };
+}
+const isOwner = (env, user) => !!env.OWNER_EMAIL && (user.email || '').toLowerCase() === env.OWNER_EMAIL.toLowerCase();
+
+async function graphGet(env, path, params) {
+  const res = await fetch(`${graph(env)}/${path}?${new URLSearchParams(params)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw fail(400, `ميتا: ${data.error?.error_user_msg || data.error?.message || `HTTP ${res.status}`}`);
+  return data;
+}
+
+async function connectPages(env, body) {
+  const appId = String(body?.appId || '').trim();
+  const appSecret = String(body?.appSecret || '').trim();
+  const userToken = String(body?.userToken || '').trim();
+  if (!/^\d{5,25}$/.test(appId)) throw fail(400, 'الـ App ID لازم يكون أرقام بس (من إعدادات التطبيق › Basic)');
+  if (!/^[a-f0-9]{32}$/i.test(appSecret)) throw fail(400, 'الـ App Secret مش صحيح (32 حرف ورقم، من إعدادات التطبيق › Basic)');
+  if (userToken.length < 30) throw fail(400, 'الصق التوكن كامل من Graph API Explorer');
+  // a token from the Explorer lasts ~1 hour: swap it for a long-lived one (pages derived from it don't expire)
+  const ex = await graphGet(env, 'oauth/access_token', { grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: userToken });
+  const pages = await graphGet(env, 'me/accounts', { fields: 'id,name,access_token,instagram_business_account{id,username}', limit: '100', access_token: ex.access_token });
+  const list = (pages.data || []).filter((p) => p.access_token).map((p) => ({
+    id: String(p.id), name: p.name || '', token: p.access_token,
+    ig: p.instagram_business_account ? { id: String(p.instagram_business_account.id), username: p.instagram_business_account.username || '' } : null,
+  }));
+  if (!list.length) throw fail(400, 'ما لقينا صفحات فيسبوك بهاد الحساب. تأكد إنك أدمن على الصفحة وإنك اخترت صلاحية pages_show_list وأنت بتعمل التوكن.');
+  await env.SOCIAL.put(PENDING_KEY, JSON.stringify({ appId, appSecret, pages: list }), { expirationTtl: 1800 });
+  return list.map(({ token, ...p }) => p);
+}
+
+async function connectSelect(env, body, user) {
+  const pending = await env.SOCIAL.get(PENDING_KEY, 'json');
+  if (!pending) throw fail(400, 'انتهت مهلة الربط (30 دقيقة). ابدأ من جديد.');
+  const page = pending.pages.find((p) => p.id === String(body?.pageId || ''));
+  if (!page) throw fail(400, 'اختار صفحة من القائمة');
+  const info = await inspectToken(env, pending.appId, pending.appSecret, page.token);
+  if (!info.valid) throw fail(400, 'ميتا بتقول التوكن مش صالح. اعمل توكن جديد وجرّب.');
+  await env.SOCIAL.put(META_KEY, JSON.stringify({
+    pageId: page.id, pageName: page.name, pageToken: page.token,
+    igId: page.ig?.id || '', igUsername: page.ig?.username || '',
+    appId: pending.appId, appSecret: pending.appSecret,
+    scopes: info.scopes, expiresAt: info.expiresAt,
+    connectedAt: new Date().toISOString(), connectedBy: user.email || user.uid,
+  }));
+  await env.SOCIAL.delete(PENDING_KEY);
+  return connectStatus(env);
+}
+
+async function inspectToken(env, appId, appSecret, token) {
+  try {
+    const d = (await graphGet(env, 'debug_token', { input_token: token, access_token: `${appId}|${appSecret}` })).data || {};
+    return { valid: d.is_valid !== false, scopes: d.scopes || [], expiresAt: d.expires_at ? d.expires_at * 1000 : 0 };
+  } catch {
+    return { valid: true, scopes: [], expiresAt: 0, unknown: true }; // couldn't check: don't block
+  }
+}
+
+async function connectStatus(env, check = false) {
+  const m = await getMeta(env);
+  if (!m) return { connected: false };
+  const out = {
+    connected: true, source: m.source,
+    page: m.pageId ? { id: m.pageId, name: m.pageName || '' } : null,
+    instagram: m.igId ? { id: m.igId, username: m.igUsername || '' } : null,
+    connectedAt: m.connectedAt || null, connectedBy: m.connectedBy || '',
+    expiresAt: m.expiresAt || 0,
+    missingScopes: m.scopes && m.scopes.length ? SCOPES_NEEDED.filter((x) => !m.scopes.includes(x)) : [],
+  };
+  if (check) {
+    try {
+      const p = await graphGet(env, m.pageId || 'me', { fields: 'name', access_token: m.pageToken });
+      out.check = { ok: true, name: p.name || '' };
+      if (m.appId && m.appSecret) {
+        const info = await inspectToken(env, m.appId, m.appSecret, m.pageToken);
+        if (!info.valid) out.check = { ok: false, error: 'التوكن انتهى أو انسحب. اربط من جديد.' };
+        if (info.scopes.length) out.missingScopes = SCOPES_NEEDED.filter((x) => !info.scopes.includes(x));
+      }
+    } catch (e) { out.check = { ok: false, error: e.message }; }
+  }
+  return out;
+}
+
+/* ---------------- Meta Graph API ---------------- */
+const nameOf = (p) => (p === 'facebook' ? 'فيسبوك' : 'إنستغرام');
+const graph = (env) => `https://graph.facebook.com/${env.GRAPH_VERSION || 'v23.0'}`;
+
+async function graphCall(env, path, params, method = 'POST', token = '') {
+  const body = new URLSearchParams({ ...params, access_token: token });
+  const res = method === 'GET'
+    ? await fetch(`${graph(env)}/${path}?${body}`)
+    : await fetch(`${graph(env)}/${path}`, { method, body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) {
+    const msg = data.error?.error_user_msg || data.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function publishPost(env, post) {
+  post.status = 'publishing';
+  await savePost(env, post);
+  const meta = (await getMeta(env)) || {};
+  const tk = meta.pageToken || '';
+  const imageUrl = `${env.PUBLIC_BASE_URL.replace(/\/$/, '')}/img/${post.id}.jpg`;
+  const results = post.results || {};
+
+  for (const p of post.platforms) {
+    if (results[p]?.id) continue; // already out (retry only does what failed)
+    try {
+      if (p === 'facebook') {
+        if (!meta.pageId) throw new Error('فيسبوك مش مربوط');
+        const r = await graphCall(env, `${meta.pageId}/photos`, { url: imageUrl, caption: post.caption, published: 'true' }, 'POST', tk);
+        results.facebook = { id: r.post_id || r.id, at: new Date().toISOString() };
+      } else {
+        const params = post.story ? { image_url: imageUrl, media_type: 'STORIES' } : { image_url: imageUrl, caption: post.caption };
+        if (!meta.igId) throw new Error('إنستغرام مش مربوط');
+        const container = await graphCall(env, `${meta.igId}/media`, params, 'POST', tk);
+        await waitForContainer(env, container.id, tk);
+        const r = await graphCall(env, `${meta.igId}/media_publish`, { creation_id: container.id }, 'POST', tk);
+        let permalink = '';
+        try { permalink = (await graphCall(env, r.id, { fields: 'permalink' }, 'GET', tk)).permalink || ''; } catch { /* optional */ }
+        results.instagram = { id: r.id, permalink, at: new Date().toISOString() };
+      }
+    } catch (e) {
+      results[p] = { error: String(e.message || e).slice(0, 300), at: new Date().toISOString() };
+    }
+  }
+
+  const ok = post.platforms.filter((p) => results[p]?.id).length;
+  post.results = results;
+  post.status = ok === post.platforms.length ? 'published' : ok ? 'partial' : 'failed';
+  post.publishedAt = ok ? new Date().toISOString() : post.publishedAt || null;
+  await savePost(env, post);
+  return post;
+}
+
+async function waitForContainer(env, id, tk) {
+  for (let i = 0; i < 8; i++) {
+    const { status_code: s } = await graphCall(env, id, { fields: 'status_code' }, 'GET', tk);
+    if (s === 'FINISHED') return;
+    if (s === 'ERROR' || s === 'EXPIRED') throw new Error(`إنستغرام رفض الصورة (${s})`);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error('إنستغرام تأخر بتجهيز الصورة، جرّب «انشر الآن» كمان مرة');
+}
+
+/* ---------------- auth: Firebase ID token + admins/{uid} ---------------- */
+let jwks = null; let jwksAt = 0;
+const adminCache = new Map(); // uid → expiry
+
+async function requireAdmin(req, env, perm = '') {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!token) throw fail(401, 'لازم تسجّل دخول');
+  let user;
+  try { user = await verifyIdToken(token, env.FIREBASE_PROJECT_ID); } catch { throw fail(401, 'جلسة الدخول انتهت، سجّل دخول من جديد'); }
+  const cached = adminCache.get(user.uid);
+  if (cached && cached.until > Date.now()) {
+    if (perm && cached.perms && !cached.perms.includes(perm)) throw fail(403, 'ما عندك صلاحية النشر (استوديو السوشيال)');
+    return user;
+  }
+  // the admin's own token can read admins/{uid} only if that document exists (firestore.rules)
+  const res = await fetch(`https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/admins/${user.uid}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status !== 200) throw fail(403, 'ما عندك صلاحية');
+  // admins/{uid}.perms: an admin with a permissions list needs «studio»; no list = an admin with everything
+  const doc = await res.json().catch(() => ({}));
+  const list = doc.fields?.perms?.arrayValue;
+  const perms = list ? (list.values || []).map((v) => v.stringValue) : null; // null = an admin with everything
+  adminCache.set(user.uid, { until: Date.now() + 5 * 60e3, perms });
+  if (perm && perms && !perms.includes(perm)) throw fail(403, 'ما عندك صلاحية النشر (استوديو السوشيال)');
+  return user;
+}
+
+const b64urlBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+const b64urlJson = (s) => JSON.parse(new TextDecoder().decode(b64urlBytes(s)));
+
+export async function verifyIdToken(token, projectId) {
+  const [h, p, sig] = token.split('.');
+  if (!h || !p || !sig) throw new Error('malformed');
+  const header = b64urlJson(h); const payload = b64urlJson(p);
+  if (header.alg !== 'RS256') throw new Error('alg');
+  if (!jwks || Date.now() - jwksAt > 3600e3) {
+    const r = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
+    jwks = (await r.json()).keys; jwksAt = Date.now();
+  }
+  const jwk = jwks.find((k) => k.kid === header.kid);
+  if (!jwk) { jwks = null; throw new Error('kid'); }
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlBytes(sig), new TextEncoder().encode(`${h}.${p}`));
+  const now = Date.now() / 1000;
+  if (!ok || payload.exp < now || payload.iat > now + 300 || payload.aud !== projectId
+    || payload.iss !== `https://securetoken.google.com/${projectId}` || !payload.sub) throw new Error('invalid');
+  return { uid: payload.sub, email: payload.email || '' };
+}
+
+/* ---------------- helpers ---------------- */
+function corsHeaders(req, env) {
+  const origin = req.headers.get('Origin') || '';
+  const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const h = { Vary: 'Origin' };
+  if (allowed.includes(origin)) {
+    h['Access-Control-Allow-Origin'] = origin;
+    h['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS';
+    h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
+    h['Access-Control-Max-Age'] = '86400';
+  }
+  return h;
+}
+function json(data, status = 200, headers = {}) {
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
+}
+function fail(status, message) {
+  const e = new Error(message); e.status = status; e.expose = true; return e;
+}
