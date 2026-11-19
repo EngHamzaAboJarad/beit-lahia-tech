@@ -1047,10 +1047,20 @@
             </div>
 
             <h2 class="studio-sep">النشر</h2>
-            <div class="field">
+            <fieldset class="field studio-platforms">
+              <legend>شو ينتشر؟</legend>
+              <label class="studio-chk"><input type="checkbox" id="pub-post" checked><span>منشور</span></label>
+              <label class="studio-chk"><input type="checkbox" id="pub-story"><span>ستوري</span></label>
+              <p class="muted small studio-format-hint" id="studio-format-hint"></p>
+            </fieldset>
+            <fieldset class="field studio-music">
+              <legend>موسيقى <span class="muted small">(اختياري)</span></legend>
+              <div id="music-box"></div>
+            </fieldset>
+            <div class="field" id="studio-caption-field">
               <label for="studio-caption">نص المنشور (الكابشن)</label>
               <textarea id="studio-caption" rows="4" maxlength="2200" placeholder="اكتب النص اللي بيطلع مع الصورة، والهاشتاقات…"></textarea>
-              <div class="field-foot"><span class="muted small">بيطلع تحت الصورة بفيسبوك وإنستغرام</span><span class="muted small" id="studio-count">0 / 2200</span></div>
+              <div class="field-foot"><span class="muted small" id="studio-caption-hint">بيطلع تحت الصورة بفيسبوك وإنستغرام</span><span class="muted small" id="studio-count">0 / 2200</span></div>
             </div>
             <fieldset class="field studio-platforms">
               <legend>وين ينتشر؟</legend>
@@ -1069,6 +1079,7 @@
               <button class="btn btn-ghost-dark" type="button" id="studio-download"><span class="btn-label">نزّل PNG</span><span class="spinner" aria-hidden="true"></span></button>
               <button class="btn btn-primary" type="button" id="studio-publish"><span class="btn-label">انشر الآن</span><span class="spinner" aria-hidden="true"></span></button>
             </div>
+            <p class="muted small studio-progress" id="studio-progress" aria-live="polite" hidden></p>
           </div>
           <div class="panel studio-preview">
             <div class="studio-toolbar" role="toolbar" aria-label="أدوات التصميم">
@@ -1080,7 +1091,10 @@
               <button type="button" class="tb-btn" id="tb-down" title="لورا" aria-label="لورا"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
               <button type="button" class="tb-btn" id="tb-center" title="بالنص أفقياً" aria-label="بالنص أفقياً"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 8h10M5 16h14"/></svg></button>
               <button type="button" class="tb-btn" id="tb-del" title="احذف العنصر (Delete)" aria-label="احذف العنصر (Delete)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
+              <span class="tb-sep" aria-hidden="true"></span>
+              <button type="button" class="tb-btn" id="tb-draw" title="ارسم بالقلم" aria-label="ارسم بالقلم" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/><path d="M4 20h7"/></svg></button>
             </div>
+            <div class="studio-drawbar" id="studio-drawbar" hidden></div>
             <div class="studio-stage" id="studio-stage" tabindex="0" aria-label="لوحة التصميم: اضغط على عنصر لتحديده"></div>
             <p class="muted small" id="studio-size"></p>
             <p class="muted small studio-hint">اضغط على أي عنصر لتحدده، اسحبه لتحرّكه، واسحب المربع الأخضر بالزاوية لتكبّره أو تصغّره. الأسهم بتحرّك بدقة.</p>

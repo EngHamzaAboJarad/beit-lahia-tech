@@ -41,7 +41,7 @@ let failInstagram = false;
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const body = init.body ? Object.fromEntries(new URLSearchParams(String(init.body))) : null;
-  calls.push({ url, body });
+  calls.push({ url, body, headers: init.headers || {} });
   const ok = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'Content-Type': 'application/json' } });
   if (url.includes('securetoken@system')) return ok({ keys: [jwk] });
   if (url.includes('firestore.googleapis.com')) {
@@ -51,12 +51,16 @@ globalThis.fetch = async (url, init = {}) => {
     return new Response('{}', { status: 403 });
   }
   if (url.includes('graph.facebook.com')) {
-    if (url.endsWith('/PAGE/photos')) return ok({ id: 'ph1', post_id: 'PAGE_123' });
+    if (url.endsWith('/PAGE/photos')) return ok(body.published === 'false' ? { id: 'ph9' } : { id: 'ph1', post_id: 'PAGE_123' });
+    if (url.endsWith('/PAGE/photo_stories')) return ok({ success: true, post_id: 'PAGE_S1' });
+    if (url.endsWith('/PAGE/videos')) return ok({ id: 'V1' });
+    if (url.endsWith('/PAGE/video_stories')) return ok(body.upload_phase === 'start' ? { video_id: 'VS1', upload_url: 'https://rupload.facebook.com/video-upload/v23.0/VS1' } : { success: true, post_id: 'PAGE_VS1' });
     if (url.endsWith('/IGU/media')) return failInstagram ? new Response(JSON.stringify({ error: { message: 'bad image' } }), { status: 400 }) : ok({ id: 'C1' });
     if (url.includes('/C1?')) return ok({ status_code: 'FINISHED' });
     if (url.endsWith('/IGU/media_publish')) return ok({ id: 'IG1' });
     if (url.includes('/IG1?')) return ok({ permalink: 'https://instagram.com/p/x' });
   }
+  if (url.startsWith('https://rupload.facebook.com/')) return ok({ success: true });
   return new Response('not found', { status: 404 });
 };
 
@@ -66,11 +70,12 @@ const env = {
 };
 const ctx = { waitUntil: (p) => p };
 const jpeg = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(3000, 7)]).toString('base64');
-async function call(method, path, { token, body, origin = 'https://beitlahia.tech' } = {}) {
-  const headers = { Origin: origin };
+const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypisom'), Buffer.alloc(5000, 1)]);
+async function call(method, path, { token, body, raw, origin = 'https://beitlahia.tech', headers: extra = {} } = {}) {
+  const headers = { Origin: origin, ...extra };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers['Content-Type'] = 'application/json';
-  const res = await worker.fetch(new Request(`https://social.example${path}`, { method, headers, body: body && JSON.stringify(body) }), env, ctx);
+  const res = await worker.fetch(new Request(`https://social.example${path}`, { method, headers, body: raw || (body && JSON.stringify(body)) }), env, ctx);
   return { status: res.status, data: res.headers.get('Content-Type')?.includes('json') ? await res.json() : await res.arrayBuffer(), res };
 }
 
@@ -165,5 +170,60 @@ await t('not connected yet: clear message', async () => {
   const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['instagram'] } });
   assert.equal(r.status, 400); assert.match(r.data.error, /إنستغرام مش مربوط/);
   env.IG_USER_ID = saved;
+});
+await t('a story picture: Facebook photo story + Instagram story', async () => {
+  calls.length = 0;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'ignored', platforms: ['facebook', 'instagram'], story: true } });
+  assert.equal(r.data.post.status, 'published');
+  assert.equal(r.data.post.results.facebook.id, 'PAGE_S1');
+  const ph = calls.find((c) => c.url.endsWith('/PAGE/photos'));
+  assert.equal(ph.body.published, 'false');
+  assert.equal(calls.find((c) => c.url.endsWith('/PAGE/photo_stories')).body.photo_id, 'ph9');
+  const ig = calls.find((c) => c.url.endsWith('/IGU/media'));
+  assert.equal(ig.body.media_type, 'STORIES'); assert.ok(ig.body.image_url); assert.equal(ig.body.caption, undefined);
+});
+await t('with music: the post waits for its video, then goes out as video', async () => {
+  calls.length = 0;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, video: true, duration: 15, music: 'نغمة', caption: 'صوت', platforms: ['facebook', 'instagram'] } });
+  assert.equal(r.status, 201); assert.equal(r.data.post.status, 'uploading');
+  assert.equal(calls.filter((c) => c.url.includes('graph.facebook.com')).length, 0); // nothing goes out before the video
+  const id = r.data.post.id;
+  assert.equal((await call('POST', `/posts/${id}/publish`, { token: admin })).status, 409);
+  assert.equal((await call('PUT', `/posts/${id}/video`, { token: admin, raw: Buffer.alloc(3000, 2) })).status, 400); // not an MP4
+  const up = await call('PUT', `/posts/${id}/video`, { token: admin, raw: mp4 });
+  assert.equal(up.status, 200); assert.equal(up.data.post.status, 'published');
+  const fb = calls.find((c) => c.url.endsWith('/PAGE/videos'));
+  assert.equal(fb.body.description, 'صوت'); assert.match(fb.body.file_url, /\/vid\/.+\.mp4$/);
+  const ig = calls.find((c) => c.url.endsWith('/IGU/media'));
+  assert.equal(ig.body.media_type, 'REELS'); assert.equal(ig.body.video_url, fb.body.file_url);
+  // the video is served, whole or in parts
+  const path = new URL(fb.body.file_url).pathname;
+  const whole = await call('GET', path);
+  assert.equal(whole.status, 200); assert.equal(whole.res.headers.get('Content-Type'), 'video/mp4'); assert.equal(whole.data.byteLength, mp4.length);
+  const part = await call('GET', path, { headers: { Range: 'bytes=4-11' } });
+  assert.equal(part.status, 206); assert.equal(Buffer.from(part.data).toString(), 'ftypisom');
+  assert.equal(part.res.headers.get('Content-Range'), `bytes 4-11/${mp4.length}`);
+  assert.equal((await call('PUT', `/posts/${id}/video`, { token: admin, raw: mp4 })).status, 409);
+});
+await t('a story with music: Facebook video story (upload by URL) + Instagram video story', async () => {
+  calls.length = 0;
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, video: true, duration: 20, platforms: ['facebook', 'instagram'], story: true } });
+  const up = await call('PUT', `/posts/${r.data.post.id}/video`, { token: admin, raw: mp4 });
+  assert.equal(up.data.post.status, 'published');
+  assert.equal(up.data.post.results.facebook.id, 'PAGE_VS1');
+  const phases = calls.filter((c) => c.url.endsWith('/PAGE/video_stories')).map((c) => c.body.upload_phase);
+  assert.deepEqual(phases, ['start', 'finish']);
+  const rup = calls.find((c) => c.url.startsWith('https://rupload.facebook.com/'));
+  assert.match(rup.headers.file_url, /\/vid\/.+\.mp4$/); assert.equal(rup.headers.Authorization, 'OAuth secret');
+  const ig = calls.find((c) => c.url.endsWith('/IGU/media'));
+  assert.equal(ig.body.media_type, 'STORIES'); assert.ok(ig.body.video_url);
+});
+await t('a scheduled post with music is scheduled once its video is in', async () => {
+  const r = await call('POST', '/posts', { token: admin, body: { image: jpeg, video: true, platforms: ['instagram'], story: true, scheduledAt: new Date(Date.now() + 3600e3).toISOString() } });
+  assert.equal(r.data.post.status, 'uploading');
+  const up = await call('PUT', `/posts/${r.data.post.id}/video`, { token: admin, raw: mp4 });
+  assert.equal(up.data.post.status, 'scheduled');
+  assert.equal((await call('DELETE', `/posts/${r.data.post.id}`, { token: admin })).status, 200);
+  assert.equal(await env.SOCIAL.get(`vid:${r.data.post.id}`), null);
 });
 console.log(`\n${n} tests passed`);

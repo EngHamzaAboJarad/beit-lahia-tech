@@ -20,12 +20,23 @@
 //   POST   /connect/test        owner: check the saved connection against Meta right now
 //   DELETE /connect             owner: forget the connection
 //   GET    /img/:id.jpg         public: the post image (Instagram/Facebook download it from here)
+//   GET    /vid/:id.mp4         public: the post video, when it has music (Range requests supported)
 //   GET    /posts               admin: latest posts (scheduled, published, failed)
-//   POST   /posts               admin: { image, caption, platforms[], scheduledAt?, template, title, story? }
+//   POST   /posts               admin: { image, video?: true, duration?, music?, caption, platforms[], scheduledAt?, template, title, story? }
+//   PUT    /posts/:id/video     admin: the MP4 of a post made with { video: true } (raw bytes) → publish/schedule
 //   POST   /posts/:id/publish   admin: publish now (a scheduled post, or retry a failed one)
 //   DELETE /posts/:id           admin: cancel a scheduled post / remove a failed one
+//
+// What goes out where:
+//   post  + image → Facebook page photo        · Instagram feed photo
+//   post  + video → Facebook page video        · Instagram reel (also shown in the feed)
+//   story + image → Facebook page photo story  · Instagram story
+//   story + video → Facebook page video story  · Instagram story (video, with its music)
+// The video is made in the admin panel (the design + the chosen music, as MP4/H.264/AAC); the image
+// always comes along too (the thumbnail in the posts list).
 
 const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
+const MAX_VIDEO = 24 * 1024 * 1024; // below KV's 25 MiB value limit (a 60 s story is ~10–18 MB)
 const MAX_CAPTION = 2200;          // Instagram's caption limit
 const MAX_AHEAD = 75 * 864e5;      // schedule at most ~75 days ahead
 const PLATFORMS = ['facebook', 'instagram'];
@@ -65,6 +76,13 @@ async function route(req, env, ctx) {
     if (!bytes) throw fail(404, 'مش موجود');
     return new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600' } });
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && parts[0] === 'vid' && parts[1]) {
+    const id = parts[1].replace(/\.mp4$/, '');
+    if (!/^[a-z0-9-]{6,40}$/.test(id)) throw fail(404, 'مش موجود');
+    const buf = await env.SOCIAL.get(`vid:${id}`, 'arrayBuffer');
+    if (!buf) throw fail(404, 'مش موجود');
+    return videoResponse(req, new Uint8Array(buf));
+  }
 
   if (parts[0] === 'connect') {
     const owner = await requireAdmin(req, env);
@@ -86,6 +104,7 @@ async function route(req, env, ctx) {
   if (req.method === 'POST' && parts.length === 1) {
     const body = await req.json().catch(() => null);
     const post = await createPost(env, body, user);
+    if (post.status === 'uploading') return json({ post }, 201); // the video comes next (PUT …/video)
     if (!post.scheduledAt) {
       const done = await publishPost(env, post);
       return json({ post: done }, 201);
@@ -97,7 +116,20 @@ async function route(req, env, ctx) {
   const post = id && (await getPost(env, id));
   if (!post) throw fail(404, 'المنشور مش موجود');
 
+  if (req.method === 'PUT' && parts[2] === 'video') {
+    if (post.status !== 'uploading') throw fail(409, 'الفيديو انرفع من قبل');
+    if (Number(req.headers.get('Content-Length') || 0) > MAX_VIDEO) throw fail(400, 'الفيديو أكبر من 24MB. قصّر مدة الموسيقى.');
+    const buf = await req.arrayBuffer();
+    const head = new Uint8Array(buf, 0, Math.min(12, buf.byteLength));
+    if (buf.byteLength < 1000 || String.fromCharCode(...head.slice(4, 8)) !== 'ftyp') throw fail(400, 'لازم الفيديو يكون MP4');
+    if (buf.byteLength > MAX_VIDEO) throw fail(400, 'الفيديو أكبر من 24MB. قصّر مدة الموسيقى.');
+    await env.SOCIAL.put(`vid:${post.id}`, buf, { expirationTtl: post.keepFor || 120 * 86400 });
+    if (post.scheduledAt) { post.status = 'scheduled'; await savePost(env, post); return json({ post }); }
+    return json({ post: await publishPost(env, post) });
+  }
+
   if (req.method === 'POST' && parts[2] === 'publish') {
+    if (post.status === 'uploading') throw fail(409, 'الفيديو لسا ما انرفع');
     if (post.status === 'published' || post.status === 'publishing') throw fail(409, 'المنشور انتشر أو عم ينتشر هلّق');
     return json({ post: await publishPost(env, post) });
   }
@@ -107,6 +139,7 @@ async function route(req, env, ctx) {
     }
     await env.SOCIAL.delete(`post:${id}`);
     await env.SOCIAL.delete(`img:${id}`);
+    await env.SOCIAL.delete(`vid:${id}`);
     return json({ ok: true });
   }
   throw fail(405, 'طلب مش مدعوم');
@@ -130,6 +163,11 @@ async function createPost(env, body, user) {
   if (bytes.length < 1000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw fail(400, 'لازم الصورة تكون JPEG');
   if (bytes.length > MAX_IMAGE) throw fail(400, 'الصورة أكبر من 8MB');
 
+  // optional: the same design as an MP4 with music. It comes in a second request (PUT /posts/:id/video,
+  // raw bytes): decoding megabytes of base64 here would blow the Worker's CPU budget.
+  const video = body.video === true;
+  const duration = video ? Math.max(0, Math.min(90, Number(body.duration) || 0)) : 0;
+
   let scheduledAt = null;
   if (body.scheduledAt) {
     const t = Date.parse(body.scheduledAt);
@@ -148,7 +186,10 @@ async function createPost(env, body, user) {
     caption,
     platforms,
     story: body.story === true,
-    status: scheduledAt ? 'scheduled' : 'publishing',
+    video,
+    duration,
+    music: video ? String(body.music || '').slice(0, 120) : '',
+    status: video ? 'uploading' : scheduledAt ? 'scheduled' : 'publishing',
     scheduledAt,
     createdAt: new Date().toISOString(),
     createdBy: user.email || user.uid,
@@ -156,6 +197,7 @@ async function createPost(env, body, user) {
   };
   const keepFor = Math.max(0, (scheduledAt ? Date.parse(scheduledAt) : Date.now()) - Date.now()) / 1000 + 120 * 86400;
   await env.SOCIAL.put(`img:${id}`, bytes, { expirationTtl: Math.ceil(keepFor) });
+  post.keepFor = Math.ceil(keepFor);
   await savePost(env, post);
   return post;
 }
@@ -232,12 +274,44 @@ async function connectPages(env, body) {
   if (userToken.length < 30) throw fail(400, 'الصق التوكن كامل من Graph API Explorer');
   // a token from the Explorer lasts ~1 hour: swap it for a long-lived one (pages derived from it don't expire)
   const ex = await graphGet(env, 'oauth/access_token', { grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: userToken });
-  const pages = await graphGet(env, 'me/accounts', { fields: 'id,name,access_token,instagram_business_account{id,username}', limit: '100', access_token: ex.access_token });
-  const list = (pages.data || []).filter((p) => p.access_token).map((p) => ({
-    id: String(p.id), name: p.name || '', token: p.access_token,
-    ig: p.instagram_business_account ? { id: String(p.instagram_business_account.id), username: p.instagram_business_account.username || '' } : null,
-  }));
-  if (!list.length) throw fail(400, 'ما لقينا صفحات فيسبوك بهاد الحساب. تأكد إنك أدمن على الصفحة وإنك اخترت صلاحية pages_show_list وأنت بتعمل التوكن.');
+  const token = ex.access_token;
+  const FIELDS = 'id,name,access_token,instagram_business_account{id,username}';
+  const found = new Map();
+  const keep = (p) => {
+    if (!p || !p.id || !p.access_token || found.has(String(p.id))) return;
+    found.set(String(p.id), {
+      id: String(p.id), name: p.name || '', token: p.access_token,
+      ig: p.instagram_business_account ? { id: String(p.instagram_business_account.id), username: p.instagram_business_account.username || '' } : null,
+    });
+  };
+  const pages = await graphGet(env, 'me/accounts', { fields: FIELDS, limit: '100', access_token: token });
+  (pages.data || []).forEach(keep);
+
+  // me/accounts can come back empty: when the pages were granted one by one (Facebook Login for Business
+  // asks «only the current pages»), or when the page belongs to a business portfolio. The token itself
+  // says which pages and businesses were chosen, so ask for those directly.
+  let granted = { scopes: [], targets: {} };
+  if (!found.size) {
+    try {
+      const d = (await graphGet(env, 'debug_token', { input_token: token, access_token: `${appId}|${appSecret}` })).data || {};
+      granted = { scopes: d.scopes || [], targets: Object.fromEntries((d.granular_scopes || []).map((g) => [g.scope, (g.target_ids || []).map(String)])) };
+    } catch { /* keep going with what we have */ }
+    const pageIds = new Set([...(granted.targets.pages_show_list || []), ...(granted.targets.pages_manage_posts || []), ...(granted.targets.pages_read_engagement || [])]);
+    for (const id of [...pageIds].slice(0, 25)) {
+      try { keep(await graphGet(env, id, { fields: FIELDS, access_token: token })); } catch { /* not a page we can manage */ }
+    }
+    for (const biz of (granted.targets.business_management || []).slice(0, 10)) {
+      try { (await graphGet(env, `${biz}/owned_pages`, { fields: FIELDS, limit: '100', access_token: token })).data?.forEach(keep); } catch { /* no access */ }
+      try { (await graphGet(env, `${biz}/client_pages`, { fields: FIELDS, limit: '100', access_token: token })).data?.forEach(keep); } catch { /* no access */ }
+    }
+  }
+  const list = [...found.values()];
+  if (!list.length) {
+    const missing = SCOPES_NEEDED.filter((s) => granted.scopes.length && !granted.scopes.includes(s));
+    throw fail(400, missing.length
+      ? `التوكن ناقصه صلاحيات: ${missing.join('، ')}. ضيفهم بـ Graph API Explorer واعمل توكن جديد.`
+      : 'ما لقينا صفحات فيسبوك بهاد الحساب. تأكد إنك أدمن على الصفحة، وإنك اخترت الصفحة بنافذة الصلاحيات وأنت بتعمل التوكن.');
+  }
   await env.SOCIAL.put(PENDING_KEY, JSON.stringify({ appId, appSecret, pages: list }), { expirationTtl: 1800 });
   return list.map(({ token, ...p }) => p);
 }
@@ -316,7 +390,9 @@ async function publishPost(env, post) {
   await savePost(env, post);
   const meta = (await getMeta(env)) || {};
   const tk = meta.pageToken || '';
-  const imageUrl = `${env.PUBLIC_BASE_URL.replace(/\/$/, '')}/img/${post.id}.jpg`;
+  const base = env.PUBLIC_BASE_URL.replace(/\/$/, '');
+  const imageUrl = `${base}/img/${post.id}.jpg`;
+  const videoUrl = post.video ? `${base}/vid/${post.id}.mp4` : '';
   const results = post.results || {};
 
   for (const p of post.platforms) {
@@ -324,13 +400,14 @@ async function publishPost(env, post) {
     try {
       if (p === 'facebook') {
         if (!meta.pageId) throw new Error('فيسبوك مش مربوط');
-        const r = await graphCall(env, `${meta.pageId}/photos`, { url: imageUrl, caption: post.caption, published: 'true' }, 'POST', tk);
-        results.facebook = { id: r.post_id || r.id, at: new Date().toISOString() };
+        results.facebook = { ...(await publishFacebook(env, meta, post, imageUrl, videoUrl)), at: new Date().toISOString() };
       } else {
-        const params = post.story ? { image_url: imageUrl, media_type: 'STORIES' } : { image_url: imageUrl, caption: post.caption };
         if (!meta.igId) throw new Error('إنستغرام مش مربوط');
+        const params = post.story
+          ? (videoUrl ? { video_url: videoUrl, media_type: 'STORIES' } : { image_url: imageUrl, media_type: 'STORIES' })
+          : (videoUrl ? { video_url: videoUrl, media_type: 'REELS', caption: post.caption, share_to_feed: 'true' } : { image_url: imageUrl, caption: post.caption });
         const container = await graphCall(env, `${meta.igId}/media`, params, 'POST', tk);
-        await waitForContainer(env, container.id, tk);
+        await waitForContainer(env, container.id, tk, !!videoUrl);
         const r = await graphCall(env, `${meta.igId}/media_publish`, { creation_id: container.id }, 'POST', tk);
         let permalink = '';
         try { permalink = (await graphCall(env, r.id, { fields: 'permalink' }, 'GET', tk)).permalink || ''; } catch { /* optional */ }
@@ -349,14 +426,62 @@ async function publishPost(env, post) {
   return post;
 }
 
-async function waitForContainer(env, id, tk) {
-  for (let i = 0; i < 8; i++) {
+// Facebook page: feed photo / feed video / photo story / video story
+async function publishFacebook(env, meta, post, imageUrl, videoUrl) {
+  const tk = meta.pageToken; const page = meta.pageId;
+  if (!post.story) {
+    if (videoUrl) {
+      const r = await graphCall(env, `${page}/videos`, { file_url: videoUrl, description: post.caption }, 'POST', tk);
+      return { id: r.id, link: `https://www.facebook.com/${page}/videos/${r.id}` };
+    }
+    const r = await graphCall(env, `${page}/photos`, { url: imageUrl, caption: post.caption, published: 'true' }, 'POST', tk);
+    return { id: r.post_id || r.id };
+  }
+  if (!videoUrl) {
+    // the photo goes up unpublished first, then becomes the story
+    const ph = await graphCall(env, `${page}/photos`, { url: imageUrl, published: 'false' }, 'POST', tk);
+    const r = await graphCall(env, `${page}/photo_stories`, { photo_id: ph.id }, 'POST', tk);
+    return { id: r.post_id || ph.id, story: true };
+  }
+  // video story: start an upload, let Facebook fetch the file from our URL, then finish
+  const start = await graphCall(env, `${page}/video_stories`, { upload_phase: 'start' }, 'POST', tk);
+  const up = await fetch(start.upload_url || `https://rupload.facebook.com/video-upload/${env.GRAPH_VERSION || 'v23.0'}/${start.video_id}`, {
+    method: 'POST', headers: { Authorization: `OAuth ${tk}`, file_url: videoUrl },
+  });
+  const upData = await up.json().catch(() => ({}));
+  if (!up.ok || upData.error || upData.success === false) throw new Error(upData.error?.message || `رفع الفيديو لفيسبوك فشل (HTTP ${up.status})`);
+  const done = await graphCall(env, `${page}/video_stories`, { upload_phase: 'finish', video_id: start.video_id }, 'POST', tk);
+  return { id: done.post_id || start.video_id, story: true };
+}
+
+async function waitForContainer(env, id, tk, isVideo = false) {
+  // photos are ready in seconds; a video needs Instagram to download and process it (up to a few minutes)
+  const tries = isVideo ? 60 : 8; const gap = isVideo ? 4000 : 2000;
+  const what = isVideo ? 'الفيديو' : 'الصورة';
+  for (let i = 0; i < tries; i++) {
     const { status_code: s } = await graphCall(env, id, { fields: 'status_code' }, 'GET', tk);
     if (s === 'FINISHED') return;
-    if (s === 'ERROR' || s === 'EXPIRED') throw new Error(`إنستغرام رفض الصورة (${s})`);
-    await new Promise((r) => setTimeout(r, 2000));
+    if (s === 'ERROR' || s === 'EXPIRED') throw new Error(`إنستغرام رفض ${what} (${s})`);
+    await new Promise((r) => setTimeout(r, gap));
   }
-  throw new Error('إنستغرام تأخر بتجهيز الصورة، جرّب «انشر الآن» كمان مرة');
+  throw new Error(`إنستغرام تأخر بتجهيز ${what}، جرّب «انشر الآن» كمان مرة`);
+}
+
+// serves the MP4 with byte ranges (Meta's downloaders and browsers ask for parts of it)
+function videoResponse(req, bytes) {
+  const size = bytes.length;
+  const head = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600' };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('Range') || '');
+  if (m && (m[1] || m[2])) {
+    let start = m[1] ? +m[1] : size - +m[2];
+    let end = m[1] && m[2] ? +m[2] : size - 1;
+    start = Math.max(0, start); end = Math.min(size - 1, end);
+    if (start > end) return new Response(null, { status: 416, headers: { ...head, 'Content-Range': `bytes */${size}` } });
+    return new Response(req.method === 'HEAD' ? null : bytes.slice(start, end + 1), {
+      status: 206, headers: { ...head, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) },
+    });
+  }
+  return new Response(req.method === 'HEAD' ? null : bytes, { headers: { ...head, 'Content-Length': String(size) } });
 }
 
 /* ---------------- auth: Firebase ID token + admins/{uid} ---------------- */
@@ -416,7 +541,7 @@ function corsHeaders(req, env) {
   const h = { Vary: 'Origin' };
   if (allowed.includes(origin)) {
     h['Access-Control-Allow-Origin'] = origin;
-    h['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS';
+    h['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
     h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type';
     h['Access-Control-Max-Age'] = '86400';
   }

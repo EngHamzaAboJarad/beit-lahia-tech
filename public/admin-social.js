@@ -5,8 +5,10 @@
 // Facebook / Instagram now or later through the social Worker (social-worker/ in the repo).
 import {
   BUILTIN, TYPES, ART, LINE_ICONS, MOSAICS, SIZES, BRAND_COLORS, SOCIAL_ICON_KEYS, FONT_URL, DEFAULT_PHOTO,
+  STICKERS, GRADIENTS, BRUSHES,
   renderDesign, moveElement, scaleElement, newElement, labelOf,
 } from './social-templates.js';
+import { videoSupported, decodeAudio, renderClip, makeVideo, MAX_SECONDS, fmtTime } from './story-video.js';
 import { SOCIAL_PLATFORMS } from './content-defaults.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,7 +18,7 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const PHOTOS = [['/img/beit-lahia-night.jpg', 'بيت لاهيا بالليل'], ['/img/beit-lahia-fields.jpg', 'حقول الفراولة']];
 const STATUS = {
   scheduled: ['مجدول', 'st-scheduled'], publishing: ['عم ينتشر', 'st-publishing'], published: ['انتشر', 'st-published'],
-  partial: ['انتشر جزئياً', 'st-partial'], failed: ['فشل', 'st-failed'],
+  partial: ['انتشر جزئياً', 'st-partial'], failed: ['فشل', 'st-failed'], uploading: ['عم ينرفع', 'st-publishing'],
 };
 const PLATFORM_NAME = { facebook: 'فيسبوك', instagram: 'إنستغرام' };
 const whenFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -31,6 +33,8 @@ const state = {
   sel: -1, pane: 'content',
   undo: [], redo: [],
   mine: [], caption: '', conn: null, posts: [],
+  pen: { on: false, color: '#FFFFFF', width: 14, brush: 'pen' }, // drawing on the canvas
+  music: null, // { file, name, audio: AudioBuffer, start, dur, vol, fade, motion } (memory only: the file is big)
 };
 
 /* =================== persistence (the working design survives a reload) =================== */
@@ -111,24 +115,27 @@ function openDesign(kind, id) {
   if (!d) return;
   state.src = { kind, id }; state.design = d; state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
-  refreshAll(); renderPickers();
+  refreshAll(); renderPickers(); autoFormats();
 }
 
 /* =================== content pane: quick text editing =================== */
 function renderContent() {
   const els = state.design.els;
-  const rows = els.map((e, i) => [e, i]).filter(([e]) => e.type === 'text' || e.type === 'button');
+  const rows = els.map((e, i) => [e, i]).filter(([e]) => ['text', 'button', 'sticker', 'music'].includes(e.type));
   if (!rows.length) { $('tpl-fields').replaceChildren(deps.h('p', { class: 'muted small' }, 'ما في نصوص بهالقالب. ضيف نص من «التصميم».')); return; }
-  $('tpl-fields').replaceChildren(...rows.map(([e, i], k) => {
+  let n = 0;
+  $('tpl-fields').replaceChildren(...rows.map(([e, i]) => {
     const id = `sc-${i}`;
-    const multi = String(e.text || '').includes('\n') || e.type === 'text' && (e.size || 0) >= 90;
+    const key = e.type === 'music' ? 'title' : 'text';
+    const multi = e.type === 'text' && (String(e.text || '').includes('\n') || (e.size || 0) >= 90);
     const input = deps.h(multi ? 'textarea' : 'input', {
-      id, rows: multi ? 2 : null, type: multi ? null : 'text', value: e.text ?? '', dir: e.font === 'en' ? 'ltr' : 'auto',
+      id, rows: multi ? 2 : null, type: multi ? null : 'text', value: e[key] ?? '', dir: e.font === 'en' ? 'ltr' : 'auto',
       onfocus: () => select(i, false),
-      oninput: (ev) => { checkpoint(); e.text = ev.target.value; renderStage(); persist(); },
+      oninput: (ev) => { checkpoint(); e[key] = ev.target.value; renderStage(); persist(); },
     });
-    const label = `${e.type === 'button' ? 'زر' : 'نص'} ${k + 1}${e.hidden ? ' (مخفي)' : ''}`;
-    return deps.h('div', { class: 'field' }, deps.h('label', { for: id }, label), input);
+    const label = e.type === 'sticker' ? `ملصق: ${STICKERS[e.kind]?.name || ''}` : e.type === 'music' ? 'ملصق الموسيقى: اسم الأغنية'
+      : `${e.type === 'button' ? 'زر' : 'نص'} ${++n}`;
+    return deps.h('div', { class: 'field' }, deps.h('label', { for: id }, label + (e.hidden ? ' (مخفي)' : '')), input);
   }));
 }
 
@@ -172,6 +179,7 @@ function toSvg(ev) {
 let drag = null;
 function onDown(ev) {
   if (!stageSvg || ev.button > 0) return;
+  if (state.pen.on) { startStroke(ev); return; }
   const handle = ev.target.closest('.sel-handle');
   const g = ev.target.closest('[data-i]');
   if (!handle && !g) { select(-1); return; }
@@ -180,12 +188,13 @@ function onDown(ev) {
   const p = toSvg(ev); const b = bboxOf(i);
   if (!b) return;
   drag = { i, mode: handle ? 'resize' : 'move', p0: p, el0: clone(state.design.els[i]), b0: { x: b.x, y: b.y, width: b.width, height: b.height }, moved: false };
-  $('studio-stage').setPointerCapture(ev.pointerId);
+  try { $('studio-stage').setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
   ev.preventDefault();
 }
 let dragRaf = 0; let pending = null;
 function onMove(ev) {
   if (!drag) return;
+  if (drag.mode === 'draw') { extendStroke(ev); return; }
   pending = { p: toSvg(ev), shift: ev.shiftKey };
   cancelAnimationFrame(dragRaf);
   dragRaf = requestAnimationFrame(applyDrag);
@@ -220,10 +229,59 @@ function applyDrag() {
 }
 function onUp() {
   if (!drag) return;
+  if (drag.mode === 'draw') { drag = null; persist(); renderLayers(); return; }
   cancelAnimationFrame(dragRaf);
   applyDrag(); // a fast release must not drop the last movement
   const moved = drag.moved; drag = null;
   if (moved) { persist(); renderProps(); renderLayers(); drawSelection(); }
+}
+
+/* =================== the pen: draw on the canvas (Instagram «ارسم») =================== */
+function startStroke(ev) {
+  const p = toSvg(ev);
+  checkpoint(true);
+  const { color, width, brush } = state.pen;
+  state.design.els.push({ type: 'draw', x: 0, y: 0, pct: 100, pts: [[Math.round(p.x), Math.round(p.y)]], color, width, brush });
+  drag = { mode: 'draw', i: state.design.els.length - 1 };
+  try { $('studio-stage').setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
+  ev.preventDefault();
+  renderStage();
+}
+let penRaf = 0;
+function extendStroke(ev) {
+  const el = state.design.els[drag.i]; const p = toSvg(ev);
+  const last = el.pts[el.pts.length - 1];
+  if (Math.hypot(p.x - last[0], p.y - last[1]) < state.design.w / 300) return; // ~3 px: keeps the path light
+  el.pts.push([Math.round(p.x), Math.round(p.y)]);
+  cancelAnimationFrame(penRaf); penRaf = requestAnimationFrame(renderStage);
+}
+function setPen(on) {
+  state.pen.on = on;
+  if (on) { state.sel = -1; }
+  $('tb-draw').setAttribute('aria-pressed', String(on));
+  $('studio-stage').classList.toggle('is-drawing', on);
+  renderDrawbar(); drawSelection(); syncToolbar();
+}
+function renderDrawbar() {
+  const bar = $('studio-drawbar');
+  bar.hidden = !state.pen.on;
+  if (!state.pen.on) return;
+  const pen = state.pen;
+  const colors = ['#FFFFFF', '#35E69B', '#F22964', '#FFD166', '#2F80ED', '#8A3AB9', '#0B1020'];
+  bar.replaceChildren(
+    deps.h('div', { class: 'db-row', role: 'radiogroup', 'aria-label': 'نوع القلم' }, BRUSHES.map(([k, n]) => deps.h('button', {
+      type: 'button', class: 'db-chip', role: 'radio', 'aria-checked': String(pen.brush === k), onclick: () => { pen.brush = k; renderDrawbar(); },
+    }, n))),
+    deps.h('div', { class: 'db-row' }, colors.map((c) => deps.h('button', {
+      type: 'button', class: `db-color ${pen.color === c ? 'is-on' : ''}`, style: `background:${c}`, 'aria-label': c, title: c, onclick: () => { pen.color = c; renderDrawbar(); },
+    })), deps.h('input', { type: 'color', value: pen.color, 'aria-label': 'لون ثاني', oninput: (e) => { pen.color = e.target.value; } })),
+    deps.h('label', { class: 'db-row db-width' }, deps.h('span', {}, 'السماكة'),
+      deps.h('input', { type: 'range', min: 4, max: 48, step: 1, value: pen.width, oninput: (e) => { pen.width = +e.target.value; } })),
+    deps.h('div', { class: 'db-row' },
+      deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: undo }, 'امسح آخر خط'),
+      deps.h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => setPen(false) }, 'خلصت')),
+    deps.h('p', { class: 'muted small' }, 'ارسم بالماوس أو بإصبعك على التصميم. كل خط بيصير عنصر بتقدر تحرّكه أو تحذفه بعدين.'),
+  );
 }
 
 function select(i, toDesign = true) {
@@ -255,9 +313,21 @@ function boolField(label, value, onChange) {
   return deps.h('label', { class: 'studio-chk' }, deps.h('input', { type: 'checkbox', checked: !!value, onchange: (e) => onChange(e.target.checked) }), deps.h('span', {}, label));
 }
 
-function propControl(e, [key, kind, label]) {
-  const set = (v) => { checkpoint(); e[key] = v; renderStage(); persist(); if (key === 'text' || key === 'art' || key === 'icon') renderLayers(); };
+function propControl(e, [key, kind, label, options]) {
+  const set = (v) => { checkpoint(); e[key] = v; renderStage(); persist(); if (['text', 'art', 'icon', 'title', 'kind'].includes(key)) renderLayers(); };
   switch (kind) {
+    case 'select': {
+      if (e.type === 'sticker' && key === 'kind') {
+        // a new kind starts from its own example texts
+        return selectField(label, e.kind, options, (v) => { checkpoint(true); e.kind = v; e.text = STICKERS[v].text; e.sub = STICKERS[v].sub || ''; renderStage(); persist(); renderLayers(); renderProps(); });
+      }
+      return selectField(label, e[key] ?? options[0][0], options, set);
+    }
+    case 'line': {
+      const id = `pl-${++uid}`;
+      return deps.h('div', { class: 'field span-2' }, deps.h('label', { for: id }, label),
+        deps.h('input', { id, type: 'text', value: e[key] ?? '', dir: 'auto', oninput: (ev) => set(ev.target.value) }));
+    }
     case 'textarea': {
       const id = `pt-${++uid}`;
       return deps.h('div', { class: 'field span-2' }, deps.h('label', { for: id }, label),
@@ -322,11 +392,30 @@ function renderProps() {
   );
 }
 
+function addElement(el) {
+  checkpoint(true); state.design.els.push(el); state.sel = state.design.els.length - 1; refreshAll();
+}
 function renderAdd() {
-  $('el-add').replaceChildren(...Object.entries(TYPES).map(([k, t]) => deps.h('button', {
-    type: 'button', class: 'btn btn-ghost-dark btn-sm',
-    onclick: () => { checkpoint(true); state.design.els.push(newElement(k, state.design)); state.sel = state.design.els.length - 1; refreshAll(); },
-  }, `+ ${t.name}`)));
+  const btn = (label, onclick, cls = 'btn btn-ghost-dark btn-sm') => deps.h('button', { type: 'button', class: cls, onclick }, label);
+  $('el-add').replaceChildren(
+    ...Object.entries(TYPES).filter(([, t]) => !t.story && !t.noAdd).map(([k, t]) => btn(`+ ${t.name}`, () => addElement(newElement(k, state.design)))),
+    deps.h('p', { class: 'el-add-title' }, 'ستوري (زي إنستغرام)'),
+    ...Object.entries(STICKERS).map(([k, st]) => btn(`+ ${st.name}`, () => addElement({ ...newElement('sticker', state.design), kind: k, text: st.text, sub: st.sub || '' }), 'btn btn-ghost-dark btn-sm is-story')),
+    btn('+ ملصق موسيقى', () => addMusicSticker(), 'btn btn-ghost-dark btn-sm is-story'),
+    btn('✎ ارسم بالقلم', () => setPen(true), 'btn btn-ghost-dark btn-sm is-story'),
+  );
+}
+function addMusicSticker() {
+  const el = newElement('music', state.design);
+  if (state.music) { const [title, artist] = songName(state.music.name); el.title = title; el.artist = artist; }
+  el.cy = Math.round(state.design.h * 0.68);
+  addElement(el);
+}
+// "Artist - Title.mp3" → ["Title", "Artist"]
+function songName(file) {
+  const base = String(file || '').replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[_]+/g, ' ').trim();
+  const parts = base.split(/\s+[-–—]\s+/);
+  return parts.length > 1 ? [parts.slice(1).join(' - ').slice(0, 60), parts[0].slice(0, 40)] : [base.slice(0, 60) || 'اسم الأغنية', ''];
 }
 
 function renderLayers() {
@@ -346,8 +435,11 @@ function renderBg() {
   $('design-bg').replaceChildren(
     colorField('لون الخلفية', d.bg?.color, (v) => { checkpoint(); d.bg = { ...(d.bg || {}), color: v }; renderStage(); persist(); }),
     boolField('شبكة البكسل الخفيفة', d.bg?.grid !== false, (v) => { checkpoint(true); d.bg = { ...(d.bg || {}), grid: v }; renderStage(); persist(); }),
+    selectField('تدرّج الخلفية', d.bg?.gradient || 'none', Object.entries(GRADIENTS).map(([k, g]) => [k, g.name]), (v) => {
+      checkpoint(true); d.bg = { ...(d.bg || {}), gradient: v === 'none' ? undefined : v }; renderStage(); persist();
+    }),
     selectField('المقاس', sizeKey, Object.entries(SIZES).map(([k, [w, h, n]]) => [k, `${n} (${w}×${h})`]), (k) => {
-      checkpoint(true); const [w, h] = SIZES[k]; d.w = w; d.h = h; renderStage(); persist();
+      checkpoint(true); const [w, h] = SIZES[k]; d.w = w; d.h = h; renderStage(); persist(); autoFormats();
     }),
   );
 }
@@ -445,7 +537,7 @@ async function uploadReady(file) {
   };
   state.src = { kind: 'upload', id: 'upload' }; state.design = d; state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
-  setPane('content'); refreshAll(); renderPickers();
+  setPane('content'); refreshAll(); renderPickers(); autoFormats();
   const cropped = Math.abs(pic.w / pic.h - w / h) > 0.01;
   deps.toast(cropped ? `الصورة انقصّت من النص لمقاس ${w}×${h} عشان تناسب إنستغرام` : `جاهزة للنشر (${w}×${h})`);
 }
@@ -468,6 +560,10 @@ async function toDataUrl(src) {
   return new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
 }
 async function rasterize(type = 'image/png', quality) {
+  return toBlob(await rasterCanvas(), type, quality);
+}
+const toBlob = (c, type, quality) => new Promise((resolve) => c.toBlob(resolve, type, quality));
+async function rasterCanvas() {
   const d = state.design;
   const srcs = [...new Set(d.els.filter((e) => e.type === 'image' && e.src && !e.hidden).map((e) => e.src))];
   const [css, pairs] = await Promise.all([fontCss(), Promise.all(srcs.map(async (s) => [s, await toDataUrl(s)]))]);
@@ -481,8 +577,155 @@ async function rasterize(type = 'image/png', quality) {
     await new Promise((r) => setTimeout(r, 120)); // let the embedded fonts settle inside the SVG image
     const c = document.createElement('canvas'); c.width = d.w; c.height = d.h;
     c.getContext('2d').drawImage(img, 0, 0, d.w, d.h);
-    return await new Promise((resolve) => c.toBlob(resolve, type, quality));
+    return c;
   } finally { URL.revokeObjectURL(url); }
+}
+
+/* =================== frames: what each format gets =================== */
+const isTall = (d) => d.h / d.w > 1.6;
+// the design centred on a blurred, darker copy of itself (like sharing a post to a story)
+function framed(src, W, H) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const cover = Math.max(W / src.width, H / src.height);
+  g.fillStyle = '#0B1020'; g.fillRect(0, 0, W, H);
+  g.filter = 'blur(46px) brightness(.55) saturate(1.2)';
+  g.drawImage(src, (W - src.width * cover) / 2, (H - src.height * cover) / 2, src.width * cover, src.height * cover);
+  g.filter = 'none';
+  const fit = Math.min((W * 0.86) / src.width, (H * 0.8) / src.height);
+  const w = src.width * fit; const h = src.height * fit; const x = (W - w) / 2; const y = (H - h) / 2; const r = Math.round(W / 36);
+  g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 60; g.shadowOffsetY = 24;
+  g.beginPath(); g.roundRect(x, y, w, h, r); g.fillStyle = '#0B1020'; g.fill(); g.restore();
+  g.save(); g.beginPath(); g.roundRect(x, y, w, h, r); g.clip(); g.drawImage(src, x, y, w, h); g.restore();
+  return c;
+}
+// H.264 needs even sizes
+function even(c) {
+  if (c.width % 2 === 0 && c.height % 2 === 0) return c;
+  const e = document.createElement('canvas'); e.width = c.width - (c.width % 2); e.height = c.height - (c.height % 2);
+  e.getContext('2d').drawImage(c, 0, 0, e.width, e.height);
+  return e;
+}
+const storyFrame = (c) => (Math.abs(c.width / c.height - 9 / 16) < 0.02 ? c : framed(c, 1080, 1920));
+function postFrame(c, video) {
+  const r = c.width / c.height;
+  if (video && r < 0.6) return c;            // a tall design with music = a reel, 9:16 is right for it
+  if (r >= 0.8 && r <= 1.91) return c;        // the shapes the Instagram feed takes
+  return framed(c, 1080, 1350);               // too tall/wide for the feed → inside a 4:5 frame
+}
+const frameFor = (fmt, base, video) => even(fmt === 'story' ? storyFrame(base) : postFrame(base, video));
+
+/* =================== music (memory only) and the video preview =================== */
+let player = null; // { ctx, src } while the clip plays
+let preview = null; // { url, fmt }
+const musicLabel = (m) => songName(m.name).filter(Boolean).join(' · ');
+function setMusicBusy(text) {
+  const p = $('music-status');
+  if (p) { p.hidden = !text; p.textContent = text || ''; }
+}
+async function loadMusic(file) {
+  stopPlay();
+  setMusicBusy('عم نقرأ الملف…');
+  try {
+    const audio = await decodeAudio(file);
+    if (audio.duration < 1) throw new Error('short');
+    state.music = { file, name: file.name, audio, start: 0, dur: Math.min(15, Math.floor(audio.duration)), vol: 1, fade: true, motion: 'zoom-in' };
+    // a music sticker that still says «اسم الأغنية» takes the song's name
+    const [title, artist] = songName(file.name);
+    state.design.els.filter((e) => e.type === 'music' && (!e.title || e.title === 'اسم الأغنية')).forEach((e) => { e.title = title; if (!e.artist || e.artist === 'الفنان') e.artist = artist; });
+    clearPreview(); renderStage(); renderMusic(); syncPublishUi();
+    deps.toast('انضافت الموسيقى ✓');
+  } catch {
+    setMusicBusy('');
+    deps.toast('ما قدرنا نقرأ الملف. جرّب mp3 أو m4a أو wav.', true);
+  }
+}
+function removeMusic() { stopPlay(); state.music = null; clearPreview(); renderMusic(); syncPublishUi(); }
+function clearPreview() { if (preview) URL.revokeObjectURL(preview.url); preview = null; }
+async function togglePlay() {
+  if (player) { stopPlay(); return; }
+  const m = state.music; if (!m) return;
+  const clip = await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = ctx.createBufferSource(); src.buffer = clip; src.connect(ctx.destination);
+  src.onended = () => { if (player?.src === src) stopPlay(); };
+  src.start();
+  player = { ctx, src };
+  renderMusic();
+}
+function stopPlay() {
+  if (!player) return;
+  const p = player; player = null;
+  try { p.src.stop(); } catch { /* already stopped */ }
+  p.ctx.close().catch(() => {});
+  renderMusic();
+}
+const primaryFormat = () => ($('pub-story').checked || (!$('pub-post').checked && isTall(state.design)) ? 'story' : 'post');
+async function buildPreview(btn) {
+  const m = state.music; if (!m) return;
+  stopPlay();
+  deps.setBusy(btn, true);
+  try {
+    const fmt = primaryFormat();
+    const frame = frameFor(fmt, await rasterCanvas(), true);
+    const clip = await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade });
+    const blob = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion: m.motion, onProgress: (k) => setMusicBusy(`عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
+    clearPreview();
+    preview = { url: URL.createObjectURL(blob), fmt, size: blob.size };
+    renderMusic();
+  } catch (e) {
+    console.error(e); deps.toast(e.message || 'ما زبط الفيديو', true);
+  } finally { setMusicBusy(''); deps.setBusy(btn, false); }
+}
+
+function renderMusic() {
+  const box = $('music-box'); const m = state.music; const h = deps.h;
+  if (!videoSupported()) {
+    box.replaceChildren(h('p', { class: 'muted small' }, 'الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر (هو اللي بيعمل الفيديو). الستوري بدون موسيقى شغّال من أي متصفح.'));
+    return;
+  }
+  const file = h('input', { type: 'file', accept: 'audio/*,.mp3,.m4a,.aac,.wav,.ogg', hidden: true,
+    onchange: (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) loadMusic(f); } });
+  const status = h('p', { class: 'muted small music-status', id: 'music-status', hidden: true });
+  if (!m) {
+    box.replaceChildren(file,
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, '♪ اختار ملف موسيقى'),
+      status,
+      h('p', { class: 'muted small' }, 'mp3 أو m4a أو wav. مع الموسيقى الستوري بينزل فيديو، والمنشور بينزل ريل على إنستغرام وفيديو على فيسبوك، والتصميم بيتحرّك زوم خفيف. استعمل موسيقى إلك حق تنشرها: الأغاني المحمية ممكن ميتا تكتم صوتها أو تشيلها.'));
+    return;
+  }
+  const total = m.audio.duration;
+  const maxStart = Math.max(0, total - 1);
+  const durations = [5, 10, 15, 20, 30, 45, 60].filter((x) => x <= MAX_SECONDS && x <= total);
+  if (!durations.length) durations.push(Math.floor(total));
+  const fit = () => { m.dur = Math.min(m.dur, Math.floor(total - m.start)) || 1; };
+  const startOut = h('span', { class: 'muted small' }, `${fmtTime(m.start)} → ${fmtTime(m.start + m.dur)}`);
+  const changed = () => { stopPlay(); clearPreview(); renderMusic(); };
+  box.replaceChildren(file,
+    h('div', { class: 'music-head' },
+      h('span', { class: 'music-note', 'aria-hidden': 'true' }, '♪'),
+      h('div', {}, h('strong', {}, musicLabel(m)), h('span', { class: 'muted small' }, ` · ${fmtTime(total)}`)),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => file.click() }, 'غيّر'),
+      h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: removeMusic }, 'شيل')),
+    h('div', { class: 'music-grid' },
+      h('div', { class: 'field span-2' }, h('label', { for: 'mu-start' }, 'من وين تبلّش؟ ', startOut),
+        h('input', { type: 'range', id: 'mu-start', min: 0, max: maxStart, step: 0.5, value: m.start,
+          oninput: (e) => { m.start = +e.target.value; fit(); startOut.textContent = `${fmtTime(m.start)} → ${fmtTime(m.start + m.dur)}`; },
+          onchange: changed })),
+      selectField('المدة', String(durations.includes(m.dur) ? m.dur : durations[durations.length - 1]), durations.map((x) => [String(x), `${x} ثانية`]), (v) => { m.dur = +v; fit(); changed(); }),
+      selectField('حركة التصميم', m.motion, [['zoom-in', 'زوم لجوّا'], ['zoom-out', 'زوم لبرّا'], ['none', 'ثابت']], (v) => { m.motion = v; clearPreview(); renderMusic(); }),
+      h('div', { class: 'field' }, h('label', { for: 'mu-vol' }, 'علو الصوت'),
+        h('input', { type: 'range', id: 'mu-vol', min: 0.1, max: 1.5, step: 0.05, value: m.vol, oninput: (e) => { m.vol = +e.target.value; }, onchange: changed })),
+      boolField('تلاشي بالأول والآخر', m.fade, (v) => { m.fade = v; changed(); })),
+    h('div', { class: 'music-actions' },
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: togglePlay }, player ? '■ وقّف' : '▶ اسمع المقطع'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: addMusicSticker }, '+ ملصق الموسيقى'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => buildPreview(e.currentTarget) },
+        h('span', { class: 'btn-label' }, preview ? 'اعمل المعاينة من جديد' : 'شوف الفيديو'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
+    status,
+    preview ? h('div', { class: `music-preview ${preview.fmt === 'story' ? 'is-story' : ''}` },
+      h('video', { src: preview.url, controls: true, playsinline: true, preload: 'metadata' }),
+      h('a', { class: 'btn btn-ghost-dark btn-sm', href: preview.url, download: `beitlahia-${preview.fmt}-${new Date().toISOString().slice(0, 10)}.mp4` }, `نزّل MP4 (${(preview.size / 1048576).toFixed(1)} MB)`)) : '');
 }
 const blobToBase64 = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
 const slug = () => (state.src.kind === 'builtin' ? state.src.id : state.src.kind === 'upload' ? 'upload' : 'custom');
@@ -563,9 +806,11 @@ function resetToSource() {
 /* =================== the publishing service =================== */
 async function api(path, opts = {}) {
   const token = await deps.getToken();
+  const { raw, ...rest } = opts; // raw: a Blob sent as it is (the MP4)
   const res = await fetch(WORKER + path, {
-    ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+    ...rest,
+    body: raw || rest.body,
+    headers: { Authorization: `Bearer ${token}`, ...(raw ? { 'Content-Type': raw.type || 'application/octet-stream' } : rest.body ? { 'Content-Type': 'application/json' } : {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'خدمة النشر ما ردّت صح');
@@ -665,8 +910,8 @@ function renderConnect() {
   if (!cn.pages) {
     const f = deps.h('form', { class: 'cn-form', novalidate: true, onsubmit: (e) => { e.preventDefault(); fetchPages(f); } },
       deps.h('div', { class: 'acc-fields' },
-        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-app' }, 'App ID'), deps.h('input', { id: 'cn-app', name: 'appId', dir: 'ltr', inputmode: 'numeric', autocomplete: 'off', placeholder: '1234567890' })),
-        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-secret' }, 'App Secret'), deps.h('input', { id: 'cn-secret', name: 'appSecret', type: 'password', dir: 'ltr', autocomplete: 'off', placeholder: '••••••••' }))),
+        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-app' }, 'App ID'), deps.h('input', { id: 'cn-app', name: 'appId', type: 'text', dir: 'ltr', inputmode: 'numeric', autocomplete: 'off', placeholder: '1234567890' })),
+        deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-secret' }, 'App Secret'), deps.h('input', { id: 'cn-secret', name: 'appSecret', type: 'password', dir: 'ltr', autocomplete: 'new-password', 'data-lpignore': 'true', placeholder: 'الصق الـ App Secret' }))),
       deps.h('div', { class: 'field' }, deps.h('label', { for: 'cn-token' }, 'التوكن من Graph API Explorer'),
         deps.h('textarea', { id: 'cn-token', name: 'userToken', rows: 3, dir: 'ltr', autocomplete: 'off', placeholder: 'EAAB…' })),
       deps.h('p', { class: 'muted small' }, 'هالمعلومات بتروح لخدمة النشر بس وبتنحفظ فيها، وما بترجع للمتصفح. التوكن بيتحوّل لتوكن صفحة ما بينتهي.'),
@@ -725,7 +970,23 @@ function syncPublishUi() {
     box.disabled = !c[k];
     box.closest('label').title = c[k] ? '' : `${PLATFORM_NAME[k]} مش مربوط لسا`;
   });
-  $('studio-publish').disabled = !['facebook', 'instagram'].some((k) => c[k] && $(`pub-${k}`).checked);
+  const post = $('pub-post').checked; const story = $('pub-story').checked; const m = !!state.music;
+  $('studio-publish').disabled = !['facebook', 'instagram'].some((k) => c[k] && $(`pub-${k}`).checked) || (!post && !story);
+  const tall = isTall(state.design);
+  const hints = [];
+  if (story) hints.push(m ? 'الستوري: فيديو بالموسيقى على فيسبوك وإنستغرام (بيضل 24 ساعة).' : 'الستوري: صورة على فيسبوك وإنستغرام (بتضل 24 ساعة).');
+  if (story && !tall) hints.push('التصميم مش طولي، فبالستوري بيتحط بالنص على خلفية مغبّشة منه.');
+  if (post && m) hints.push('المنشور مع الموسيقى: ريل على إنستغرام وفيديو على صفحة الفيسبوك.');
+  if (post && !m && tall) hints.push('التصميم طولي، فبالمنشور بيتحط بإطار 4:5 (إنستغرام ما بيقبل صورة أطول بالفيد).');
+  $('studio-format-hint').textContent = hints.join(' ');
+  $('studio-format-hint').hidden = !hints.length;
+  $('studio-caption-hint').textContent = post ? 'بيطلع تحت المنشور بفيسبوك وإنستغرام (الستوري ما إلها نص)' : 'الستوري ما إلها نص؛ هاد بيطلع مع المنشور بس';
+}
+// a tall design is a story by default, anything else a post
+function autoFormats() {
+  const tall = isTall(state.design);
+  $('pub-post').checked = !tall; $('pub-story').checked = tall;
+  syncPublishUi();
 }
 function defaultLater() {
   const d = new Date(Date.now() + 3600e3); d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0);
@@ -745,22 +1006,52 @@ async function publish() {
     scheduledAt = t.toISOString();
   }
   const d = state.design;
-  const story = d.h / d.w > 1.6;
+  const formats = [$('pub-post').checked && 'post', $('pub-story').checked && 'story'].filter(Boolean);
+  if (!formats.length) { deps.toast('اختار منشور أو ستوري', true); return; }
+  const m = state.music;
+  if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
   const verb = later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
-  if (!confirm(`المنشور «${d.name}» رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${story && platforms.includes('instagram') ? ' (على إنستغرام كستوري)' : ''}. أكمل؟`)) return;
+  const what = formats.map((f) => (f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
+  if (!confirm(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}. أكمل؟`)) return;
+  stopPlay();
   const btn = $('studio-publish');
   deps.setBusy(btn, true);
+  const progress = (t) => { const p = $('studio-progress'); p.hidden = !t; p.textContent = t || ''; };
+  const done = [];
   try {
-    const jpeg = await rasterize('image/jpeg', 0.92);
+    const base = await rasterCanvas();
+    const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
     const title = d.els.filter((e) => (e.type === 'text' || e.type === 'button') && !e.hidden && String(e.text || '').trim())
       .map((e) => String(e.text).replace(/\n/g, ' ')).slice(0, 2).join(' · ') || d.name;
-    const { post } = await api('/posts', { method: 'POST', body: JSON.stringify({ image: await blobToBase64(jpeg), caption: $('studio-caption').value, platforms, scheduledAt, template: slug(), title, story }) });
-    const [label] = STATUS[post.status] || ['تم'];
-    deps.toast(post.status === 'scheduled' ? 'تمت الجدولة ✓' : post.status === 'published' ? 'انتشر ✓' : `${label}: شوف التفاصيل بالقائمة`, post.status === 'failed');
-    upsertPost(post);
+    for (const fmt of formats) {
+      const name = fmt === 'story' ? 'الستوري' : 'المنشور';
+      const frame = frameFor(fmt, base, !!clip);
+      const jpeg = await toBlob(frame, 'image/jpeg', 0.92);
+      let video = null;
+      if (clip) {
+        video = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion: m.motion,
+          onProgress: (k) => progress(`${name}: عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
+      }
+      progress(`${name}: عم ${later ? 'نجدول' : 'ننشر'}…`);
+      let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
+        image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : $('studio-caption').value, platforms, scheduledAt,
+        template: slug(), title, story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '',
+      }) });
+      upsertPost(post);
+      if (video) {
+        progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later ? '' : ' وننشره'}…`);
+        ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
+        upsertPost(post);
+      }
+      done.push(post);
+    }
+    const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
+    if (bad.length) deps.toast(`${STATUS[bad[0].status][0]}: شوف التفاصيل بالقائمة`, true);
+    else deps.toast(done.every((p) => p.status === 'scheduled') ? 'تمت الجدولة ✓' : 'انتشر ✓');
   } catch (e) {
-    deps.toast(e.message || 'ما زبط النشر', true);
-  } finally { deps.setBusy(btn, false); syncPublishUi(); }
+    console.error(e);
+    deps.toast(`${done.length ? 'جزء انتشر، والباقي ' : ''}${e.message || 'ما زبط النشر'}`, true);
+  } finally { progress(''); deps.setBusy(btn, false); syncPublishUi(); }
 }
 
 /* =================== posts list =================== */
@@ -782,7 +1073,7 @@ function renderPosts() {
       : p.publishedAt ? `انتشر: ${whenFmt.format(new Date(p.publishedAt))}` : `انعمل: ${whenFmt.format(new Date(p.createdAt))}`;
     const results = p.platforms.map((k) => {
       const r = p.results?.[k] || {};
-      const href = k === 'facebook' && r.id ? `https://www.facebook.com/${r.id}` : r.permalink || '';
+      const href = r.link || (k === 'facebook' && r.id && !r.story ? `https://www.facebook.com/${r.id}` : r.permalink || '');
       const txt = r.id ? `${PLATFORM_NAME[k]} ✓` : r.error ? `${PLATFORM_NAME[k]}: ${r.error}` : PLATFORM_NAME[k];
       return href ? deps.h('a', { class: 'res ok', href, target: '_blank', rel: 'noopener noreferrer' }, txt)
         : deps.h('span', { class: `res ${r.error ? 'err' : ''}` }, txt);
@@ -797,7 +1088,9 @@ function renderPosts() {
     return deps.h('li', { class: 'studio-post' },
       deps.h('img', { src: `${WORKER}/img/${p.id}.jpg`, alt: '', loading: 'lazy', width: 64, height: 80 }),
       deps.h('div', { class: 'sp-body' },
-        deps.h('div', { class: 'sp-top' }, deps.h('span', { class: `st ${cls}` }, label), deps.h('strong', {}, p.title || tname)),
+        deps.h('div', { class: 'sp-top' }, deps.h('span', { class: `st ${cls}` }, label),
+          p.story ? deps.h('span', { class: 'sp-badge' }, 'ستوري') : '', p.video ? deps.h('span', { class: 'sp-badge is-music', title: p.music || '' }, p.story ? '♪ فيديو' : '♪ ريل') : '',
+          deps.h('strong', {}, p.title || tname)),
         deps.h('p', { class: 'muted small' }, `${tname} · ${when}`),
         deps.h('div', { class: 'sp-res' }, results)),
       deps.h('div', { class: 'sp-actions' }, actions));
@@ -825,7 +1118,8 @@ export function initStudio(d) {
     if (!$('studio-at').value) $('studio-at').value = defaultLater();
     syncPublishUi();
   }));
-  ['facebook', 'instagram'].forEach((k) => $(`pub-${k}`).addEventListener('change', syncPublishUi));
+  ['facebook', 'instagram', 'post', 'story'].forEach((k) => $(`pub-${k}`).addEventListener('change', syncPublishUi));
+  $('tb-draw').addEventListener('click', () => setPen(!state.pen.on));
   $('st-tab-content').addEventListener('click', () => setPane('content'));
   $('st-tab-design').addEventListener('click', () => setPane('design'));
   $('tpl-reset').addEventListener('click', resetToSource);
@@ -851,6 +1145,7 @@ export function initStudio(d) {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
+    if (e.key === 'Escape' && state.pen.on && !typing) { setPen(false); return; }
     if (typing || state.sel < 0) return;
     if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); act('dup'); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); act('del'); return; }
@@ -865,7 +1160,7 @@ export function initStudio(d) {
 export function showStudio() {
   if (started) { renderStage(); return; }
   started = true;
-  renderPickers(); renderAdd(); setPane('content'); renderStage(); syncPublishUi(); persist();
+  renderPickers(); renderAdd(); setPane('content'); renderStage(); renderMusic(); autoFormats(); persist();
   fontsReady.then(() => { renderPickers(); renderStage(); }); // re-fit the texts once the real fonts are in
   loadMine();
   checkConnection();

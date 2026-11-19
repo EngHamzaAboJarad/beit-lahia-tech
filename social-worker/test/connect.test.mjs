@@ -35,7 +35,16 @@ globalThis.fetch = async (url, init = {}) => {
     return new Response('{}', { status: 403 });
   }
   const q = Object.fromEntries(new URL(url).searchParams);
-  if (url.includes('/oauth/access_token')) return q.fb_exchange_token === 'SHORT_TOKEN_FROM_EXPLORER_xxxxxxxxxxxxx' && q.client_secret === 'a'.repeat(32) ? ok({ access_token: 'LONG_USER' }) : bad('Invalid OAuth access token');
+  if (url.includes('/oauth/access_token')) {
+    if (q.fb_exchange_token === 'GRANULAR_TOKEN_xxxxxxxxxxxxxxxxxxxxxxxxx') return ok({ access_token: 'LONG_GRANULAR' });
+    return q.fb_exchange_token === 'SHORT_TOKEN_FROM_EXPLORER_xxxxxxxxxxxxx' && q.client_secret === 'a'.repeat(32) ? ok({ access_token: 'LONG_USER' }) : bad('Invalid OAuth access token');
+  }
+  // Facebook Login for Business with «only the current pages»: me/accounts is empty, the token names the page
+  if (url.includes('/me/accounts') && q.access_token === 'LONG_GRANULAR') return ok({ data: [] });
+  if (url.includes('/debug_token') && q.input_token === 'LONG_GRANULAR') return ok({ data: { is_valid: true, scopes: ['pages_show_list', 'pages_manage_posts', 'business_management'], granular_scopes: [{ scope: 'pages_show_list', target_ids: ['333'] }, { scope: 'business_management', target_ids: ['B1'] }] } });
+  if (/\/333\?/.test(url) && q.access_token === 'LONG_GRANULAR') return ok({ id: '333', name: 'كوميونتي', access_token: 'PAGE3', instagram_business_account: { id: '777', username: 'beitlahia.tech' } });
+  if (url.includes('/B1/owned_pages')) return ok({ data: [{ id: '333', name: 'كوميونتي', access_token: 'PAGE3' }, { id: '444', name: 'صفحة الشركة', access_token: 'PAGE4' }] });
+  if (url.includes('/B1/client_pages')) return ok({ data: [] });
   if (url.includes('/me/accounts')) return q.access_token === 'LONG_USER' ? ok({ data: [
     { id: '111', name: 'بيت لاهيا تيك', access_token: 'PAGE_TOKEN', instagram_business_account: { id: '999', username: 'beitlahiatech' } },
     { id: '222', name: 'صفحة ثانية', access_token: 'PAGE2' },
@@ -103,6 +112,13 @@ await t('publishing uses the saved page token', async () => {
   assert.equal(r.data.post.status, 'published');
   assert.equal(calls.find((c) => c.url.endsWith('/111/photos')).body.access_token, 'PAGE_TOKEN');
   assert.equal(calls.find((c) => c.url.endsWith('/999/media_publish')).body.access_token, 'PAGE_TOKEN');
+});
+await t('pages granted one by one (empty me/accounts) are still found', async () => {
+  const r = await call('POST', '/connect/pages', owner, { ...creds, userToken: 'GRANULAR_TOKEN_xxxxxxxxxxxxxxxxxxxxxxxxx' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.pages.map((p) => p.id), ['333', '444']);
+  assert.equal(r.data.pages[0].ig.username, 'beitlahia.tech');
+  assert.ok(!JSON.stringify(r.data).includes('PAGE3'));
 });
 await t('disconnect forgets it', async () => {
   const r = await call('DELETE', '/connect', owner);
