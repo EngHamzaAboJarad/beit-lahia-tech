@@ -56,8 +56,8 @@ window.addEventListener('scroll', onScrollHeader, { passive: true });
 // "k" = seeds and the gaps inside the shape: dark, not clickable
 const GRID = [
   '......MM......', '......MM......', '..GGL.kk.LGG..', '..GGLLkkLLGD..',
-  '....GGTTDD....', 'RRRRkkTTkkRRQQ', 'RRRRkkTTkkRRQQ', 'RRSSPPkkPPSSQQ',
-  'RRkkPPkkPPkkQQ', 'RRkkPPSSPPkkQQ', '..RRSSRRSSQQ..', '..RRSSRRSSQQ..',
+  '....GGTTDD....', '.RRRkkTTkkRRQ.', 'RRRRkkTTkkRRQQ', 'RRSSPPkkPPSSQQ',
+  'RRkkPPkkPPkkQQ', '.RkkPPSSPPkkQ.', '..RRSSRRSSQQ..', '..RRSSRRSSQQ..',
   '....RRkkQQ....', '....RRkkQQ....', '......RQ......', '......RQ......',
 ];
 const FILL = {
