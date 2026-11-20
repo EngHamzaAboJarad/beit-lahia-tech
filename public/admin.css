@@ -1129,8 +1129,8 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 /* ---------- «اللي عندهم دخول»: cards (Material 3: outlined cards, filter chips, text buttons) ---------- */
 .acc-count { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 8px; margin-inline-start: 6px; border-radius: 999px; background: #E8F5EF; color: var(--emerald-deeper); font-size: 13px; font-weight: 700; vertical-align: middle; }
 .acc-count:empty { display: none; }
-#acc-list.acc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; align-items: start; }
-.acc-card { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; animation: act-rise .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 50ms); transition: box-shadow .25s var(--ease-out), border-color .2s, transform .25s var(--ease-out); }
+#acc-list.acc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 14px; align-items: start; }
+.acc-card { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: #fff; animation: act-rise .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 50ms); transition: box-shadow .25s var(--ease-out), border-color .2s, transform .25s var(--ease-out); }
 .acc-card:hover { box-shadow: 0 1px 2px rgba(11, 18, 32, .06), 0 10px 24px -14px rgba(11, 18, 32, .28); }
 .acc-card:focus-within { border-color: #B6E3CC; }
 .acc-card.is-owner { background: linear-gradient(160deg, #EAF8F1, #fff 55%); border-color: #C7EBD8; }
@@ -1205,14 +1205,20 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .perm-row:has(input:checked) .perm-ico { background: var(--emerald); color: var(--night); box-shadow: 0 6px 16px -8px rgba(52, 211, 153, .8); }
 .perm-row:has(input:checked) .perm-text strong { color: #fff; }
 .perm-row:has(input:focus-visible) { outline: 2px solid var(--emerald); outline-offset: -2px; }
-@media (max-width: 640px) { #acc-list.acc-list { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  #acc-list.acc-list { grid-template-columns: minmax(0, 1fr); }
+  .acc-card { padding: 14px; }
+  .perm-sum { gap: 5px; }
+  .perm-tile { width: 28px; height: 28px; border-radius: 8px; }
+  .perm-tile svg { width: 15px; height: 15px; }
+}
 @media (prefers-reduced-motion: reduce) { .acc-card, .acc-dirty, .perm-tile, .acc-perm-panel { animation: none !important; } .perm-switch, .perm-switch::after, .acc-perm-chev { transition: none; } }
 
 /* ---------- admin activity (owner › «المشرفين») ---------- */
 .act-panel { margin-bottom: 18px; }
 .act-sub { margin: 4px 0 0; max-width: 60ch; }
-.act-people { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.act-person { --c: #94A3B8; position: relative; display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; animation: act-rise .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); transition: transform .2s var(--ease-out), box-shadow .2s var(--ease-out), border-color .2s; }
+.act-people { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 12px; }
+.act-person { --c: #94A3B8; position: relative; min-width: 0; display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; animation: act-rise .45s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); transition: transform .2s var(--ease-out), box-shadow .2s var(--ease-out), border-color .2s; }
 .act-person:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -22px rgba(11, 18, 32, .5); }
 .act-person.is-online { --c: var(--emerald-500); border-color: color-mix(in srgb, var(--emerald-500) 40%, var(--line)); background: linear-gradient(180deg, #F2FCF7, #fff 60%); }
 .act-person.is-never { background: #FAFBFC; }
