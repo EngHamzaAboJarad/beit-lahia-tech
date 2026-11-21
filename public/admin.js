@@ -1265,6 +1265,7 @@ async function loadGallery() {
     gallery = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
     renderGalleryAdmin();
+    if (me.owner) setTabCount('gallery', gallery.filter(waiting).length);
   } catch (e) { toast(errMsg(e), true); }
 }
 
@@ -1279,6 +1280,11 @@ function galleryAlbums() {
   return [...map].map(([name, photos]) => ({ name, photos, desc: photos.find((p) => p.albumDesc)?.albumDesc || '' }));
 }
 const CAP_MAX = 280; const DESC_MAX = 600;
+// Publishing on the site is the owner's call: another admin's «انشر» is a request (publishReq) that waits for the
+// owner's «وافق» (firestore.rules lets only the owner set published = true). Hiding is open to every gallery admin.
+const waiting = (p) => !p.published && p.publishReq === true;
+const requestFields = () => ({ publishReq: true, reqBy: auth.currentUser?.email || '', updatedAt: fs.serverTimestamp() });
+const publishFields = () => ({ published: true, publishReq: false, updatedAt: fs.serverTimestamp() });
 // the album's description («وصف البوست»), on every photo of it
 function albumDescBox(a) {
   const ta = h('textarea', { rows: 3, maxlength: DESC_MAX, placeholder: 'اكتب شو صار بهاليوم، مين شارك، شو تعلّمنا… بيطلع فوق صور الألبوم على الموقع', 'aria-label': 'وصف البوست' });
@@ -1309,6 +1315,7 @@ function renderGalleryAdmin() {
   $('gallery-list').replaceChildren(...albums.map((a) => {
     const live = a.photos.filter((p) => p.published).length;
     const all = live === a.photos.length;
+    const asked = a.photos.filter(waiting).length;
     // each album folds; open, its photos run in a strip that scrolls sideways
     const box = h('details', { class: 'g-album', open: albumsOpen.has(a.name) });
     box.addEventListener('toggle', () => { if (box.open) albumsOpen.add(a.name); else albumsOpen.delete(a.name); });
@@ -1317,12 +1324,17 @@ function renderGalleryAdmin() {
         h('span', { class: 'g-album-cover', 'aria-hidden': 'true' }, ...a.photos.slice(0, 3).map((p) => h('img', { src: p.thumb, alt: '' }))),
         h('div', { class: 'g-album-title' },
           h('h3', {}, a.name || ALBUM_NONE),
-          h('span', { class: 'muted small' }, `${photoCount(a.photos.length)} · ${live === a.photos.length ? 'كلها منشورة' : live ? `${live} منشورة` : 'كلها مسودات'}${a.desc ? ' · فيه وصف' : ''}`)),
+          h('span', { class: 'muted small' }, `${photoCount(a.photos.length)} · ${live === a.photos.length ? 'كلها منشورة' : live ? `${live} منشورة` : 'كلها مسودات'}${a.desc ? ' · فيه وصف' : ''}`),
+          asked ? h('span', { class: 'badge badge-pending' }, me.owner ? `${photoCount(asked)} بانتظار موافقتك` : `${photoCount(asked)} بانتظار موافقة صاحب المنصة`) : null),
         h('span', { class: 'g-album-chev', 'aria-hidden': 'true' })),
       h('div', { class: 'g-album-body' },
         h('div', { class: 'g-album-actions' },
           a.name ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => renameAlbum(a) }, 'غيّر الاسم') : null,
-          h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, !all) }, all ? 'اخفي الألبوم' : 'انشر الألبوم كله')),
+          me.owner && asked ? h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveAlbum(a) }, `وافق على النشر (${asked})`) : null,
+          me.owner && asked ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => rejectAlbum(a) }, 'ارفض') : null,
+          all ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, false) }, 'اخفي الألبوم')
+            : me.owner ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, true) }, 'انشر الألبوم كله')
+              : asked + live < a.photos.length ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, true) }, 'اطلب نشر الألبوم') : null),
         albumDescBox(a),
         h('ul', { class: 'gallery-admin g-strip' }, ...a.photos.map((p, i) => galleryItem(p, i, a.photos)))));
     return box;
@@ -1344,13 +1356,17 @@ function galleryItem(p, i, same) {
       toast(v ? `انتقلت لألبوم «${v}»` : `انتقلت لـ«${ALBUM_NONE}»`); renderGalleryAdmin();
     } catch (e) { toast(errMsg(e), true); }
   });
+  const ask = waiting(p);
   return h('li', { class: p.published ? 'g-item' : 'g-item is-draft' },
     h('img', { src: p.thumb, alt: p.caption || '' }),
-    h('span', { class: p.published ? 'badge badge-live' : 'badge badge-draft' }, p.published ? 'منشورة' : 'مسودة'),
+    h('span', { class: p.published ? 'badge badge-live' : ask ? 'badge badge-pending' : 'badge badge-draft', title: ask && p.reqBy ? `طلبها ${p.reqBy}` : null },
+      p.published ? 'منشورة' : ask ? 'بانتظار الموافقة' : 'مسودة'),
     h('div', { class: 'field' }, cap),
     h('label', { class: 'field g-album-in' }, h('span', { class: 'small muted' }, 'الألبوم'), alb),
     h('div', { class: 'g-actions' },
-      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) }, p.published ? 'إخفاء' : 'انشر'),
+      h('button', { type: 'button', class: me.owner && ask ? 'btn btn-primary btn-sm' : 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) },
+        p.published ? 'إخفاء' : me.owner ? (ask ? 'وافق وانشر' : 'انشر') : ask ? 'إلغاء الطلب' : 'اطلب النشر'),
+      me.owner && ask ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => rejectPhotos([p]) }, 'ارفض') : null,
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لقدام', title: 'لقدام', disabled: i === 0, onclick: () => movePhoto(p, -1, same) }, svgIcon(ICONS.up)),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لورا', title: 'لورا', disabled: i === same.length - 1, onclick: () => movePhoto(p, 1, same) }, svgIcon(ICONS.down)),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'حذف الصورة', title: 'حذف', onclick: () => deletePhoto(p) }, svgIcon(ICONS.trash))));
@@ -1367,16 +1383,38 @@ async function renameAlbum(a) {
   } catch (e) { toast(errMsg(e), true); }
 }
 async function publishAlbum(a, on) {
-  const todo = a.photos.filter((p) => !!p.published !== on);
+  // another admin asks for the drafts that aren't asked for yet; the owner publishes
+  const todo = a.photos.filter((p) => (on ? !p.published && (me.owner || !waiting(p)) : p.published));
   if (!todo.length) return;
   try {
     const batch = fs.writeBatch(db);
-    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { published: on, updatedAt: fs.serverTimestamp() }));
+    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), !on ? { published: false, updatedAt: fs.serverTimestamp() } : me.owner ? publishFields() : requestFields()));
     await batch.commit();
-    toast(on ? `انشر الألبوم (${photoCount(todo.length)})` : 'انخفى الألبوم من الموقع');
+    toast(!on ? 'انخفى الألبوم من الموقع' : me.owner ? `انشر الألبوم (${photoCount(todo.length)})` : `انبعت طلب نشر ${photoCount(todo.length)} لصاحب المنصة`);
     await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }
+async function approveAlbum(a) {
+  const todo = a.photos.filter(waiting);
+  if (!todo.length || !confirm(`نشر ${photoCount(todo.length)} من «${a.name || ALBUM_NONE}» على الموقع؟`)) return;
+  try {
+    const batch = fs.writeBatch(db);
+    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), publishFields()));
+    await batch.commit();
+    toast(`وافقت، وانشرت ${photoCount(todo.length)}`);
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function rejectPhotos(list) {
+  try {
+    const batch = fs.writeBatch(db);
+    list.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { publishReq: false, updatedAt: fs.serverTimestamp() }));
+    await batch.commit();
+    toast(list.length > 1 ? 'رفضت الطلب: الصور بتضل مسودات' : 'رفضت الطلب: الصورة بتضل مسودة');
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
+const rejectAlbum = (a) => { if (confirm(`ترفض طلب نشر صور «${a.name || ALBUM_NONE}»؟ بتضل مسودات.`)) rejectPhotos(a.photos.filter(waiting)); };
 
 async function uploadFiles(files, captions = [], album, desc = '') {
   const albumName = String(album ?? $('gallery-album').value).trim().slice(0, 80);
@@ -1436,8 +1474,11 @@ dz.addEventListener('drop', (e) => { e.preventDefault(); uploadFiles(e.dataTrans
 
 async function togglePhoto(p) {
   try {
-    await fs.updateDoc(fs.doc(db, 'gallery', p.id), { published: !p.published, updatedAt: fs.serverTimestamp() });
-    toast(p.published ? 'انخفت من الموقع' : 'انشرت على الموقع');
+    const ref = fs.doc(db, 'gallery', p.id);
+    if (p.published) { await fs.updateDoc(ref, { published: false, updatedAt: fs.serverTimestamp() }); toast('انخفت من الموقع'); }
+    else if (me.owner) { await fs.updateDoc(ref, publishFields()); toast('انشرت على الموقع'); }
+    else if (waiting(p)) { await fs.updateDoc(ref, { publishReq: false, updatedAt: fs.serverTimestamp() }); toast('انلغى طلب النشر'); }
+    else { await fs.updateDoc(ref, requestFields()); toast('انبعت طلب النشر لصاحب المنصة: بتنشر لما يوافق'); }
     await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }

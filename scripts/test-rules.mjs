@@ -333,6 +333,17 @@ await t('gallery → social suggestions: gallery admins suggest, studio admins s
   assert.equal(await get('galleryFull/d1', social), OK);
   assert.equal(await get('galleryFull/d1', stranger), NO);
 });
+await t('gallery: only the owner publishes on the site; another admin asks', async () => {
+  const photo = { thumb: 'data:image/jpeg;base64,' + 'A'.repeat(40), caption: '', album: 'a', published: false, order: 0 };
+  assert.equal(await setWithTime('gallery/q1', galAdmin, photo, 'createdAt'), OK);
+  assert.equal(await setWithTime('gallery/q2', galAdmin, { ...photo, published: true }, 'createdAt'), NO); // not straight onto the site
+  assert.equal(await merge('gallery/q1', galAdmin, { published: true }), NO);
+  assert.equal(await merge('gallery/q1', galAdmin, { publishReq: true, reqBy: 'gal@x.test' }), OK); // asking is fine
+  assert.equal(await merge('gallery/q1', owner, { published: true, publishReq: false }), OK); // the owner approves
+  assert.equal(await merge('gallery/q1', galAdmin, { caption: 'كابشن' }), OK); // editing a published photo stays open
+  assert.equal(await merge('gallery/q1', galAdmin, { published: false }), OK); // so does hiding it
+  assert.equal(await merge('gallery/q1', galAdmin, { published: true }), NO); // but not putting it back
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

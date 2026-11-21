@@ -404,8 +404,14 @@ service cloud.firestore {
     match /gallery/{photoId} {
       // استوديو السوشيال بيشوف كمان (المسودات): اقتراحات استوديو المعرض بتنتشر من عنده
       allow read: if resource.data.published == true || canSite('gallery') || can('studio');
+      // النشر على الموقع لصاحب المنصة بس: المشرف التاني بيبعت طلب (publishReq) وصاحب المنصة بيوافق.
+      // الإخفاء وتعديل صورة منشورة مسموح لكل مشرفين المعرض.
       allow create, update: if canSite('gallery')
-        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'albumDesc', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'albumDesc', 'published', 'publishReq', 'reqBy', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
+        && (request.resource.data.published == false || isOwner()
+            || (resource != null && resource.data.published == true))
+        && (!('publishReq' in request.resource.data) || request.resource.data.publishReq is bool)
+        && (!('reqBy' in request.resource.data) || isStr(request.resource.data.reqBy, 0, 120))
         && isStr(request.resource.data.thumb, 30, 120000)
         && request.resource.data.thumb.matches('^data:image/(jpeg|png|webp);base64,.*')
         && isStr(request.resource.data.caption, 0, 280)
