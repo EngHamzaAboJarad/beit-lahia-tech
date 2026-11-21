@@ -258,6 +258,9 @@ function enterPanel(sec) {
 }
 
 function selectTab(name, focus = false) {
+  // the certificate is a section of each workshop's page now (old #cert links and shortcuts land there)
+  let wsOpen = null;
+  if (name === 'cert') { name = 'workshop'; wsOpen = 'cert'; }
   if (!tabAllowed(name)) name = 'overview';
   TABS.forEach((t) => {
     const btn = $(`tab-btn-${t}`);
@@ -265,7 +268,6 @@ function selectTab(name, focus = false) {
     btn.setAttribute('aria-selected', on);
     btn.tabIndex = on ? 0 : -1;
     $(`tab-${t}`).hidden = !on;
-    if (on && t === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
     if (on && t === 'total') renderTotal();
     if (on && t === 'messages') renderMessages();
     if (on && t === 'overview') renderOverview(true);
@@ -282,11 +284,15 @@ function selectTab(name, focus = false) {
   moveIndicator();
   setDrawer(false);
   history.replaceState(null, '', `#${name}`);
+  if (name === 'workshop') {
+    if (wsOpen && selId) openWorkshop(selId, wsOpen);
+    else showWsIndex();
+  }
 }
 
 // sidebar, shortcuts and overview panels follow the permissions
 function applyPerms() {
-  TABS.forEach((t) => { $(`tab-btn-${t}`).hidden = !tabAllowed(t); });
+  TABS.forEach((t) => { $(`tab-btn-${t}`).hidden = !tabAllowed(t) || $(`tab-btn-${t}`).hasAttribute('data-gone'); });
   document.querySelectorAll('.admin-tabs .tab-group').forEach((g) => { // a group label with nothing under it goes too
     let n = g.nextElementSibling; let any = false;
     while (n && !n.classList.contains('tab-group')) { if (n.getAttribute('role') === 'tab' && !n.hidden) any = true; n = n.nextElementSibling; }
@@ -330,7 +336,7 @@ TABS.forEach((t, i) => {
     const dir = ['ArrowLeft', 'ArrowDown'].includes(e.key) ? 1 : ['ArrowRight', 'ArrowUp'].includes(e.key) ? -1 : 0;
     if (dir) {
       e.preventDefault();
-      const open = TABS.filter(tabAllowed); // skip the sections this admin can't open
+      const open = TABS.filter((x) => tabAllowed(x) && !$(`tab-btn-${x}`).hasAttribute('data-gone')); // skip the sections this admin can't open
       selectTab(open[(open.indexOf(t) + dir + open.length) % open.length], true);
     }
   });
@@ -344,9 +350,10 @@ function boot() {
   if (can('blog')) blogReady = blogMod().then((m) => { m.initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser }); return m; });
   [studioReady, galleryStudioReady, blogReady].forEach((p) => p?.catch((e) => console.error('[admin module]', e)));
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
-  const hash = location.hash.slice(1);
+  const [hash, hashWs, hashSub] = location.hash.slice(1).split('/');
+  if (hash === 'workshop' && hashWs) wsDeepLink = { id: decodeURIComponent(hashWs), sub: hashSub || 'overview' };
   // a limited admin lands on their own first section (the overview has little for them)
-  const home = isFull() ? 'overview' : TABS.find((t) => t !== 'overview' && tabAllowed(t)) || 'overview';
+  const home = isFull() ? 'overview' : TABS.find((t) => t !== 'overview' && tabAllowed(t) && t !== 'cert') || 'overview';
   selectTab(TABS.includes(hash) && tabAllowed(hash) ? hash : home);
   requestAnimationFrame(moveIndicator);
   document.fonts?.ready.then(moveIndicator);
@@ -1795,6 +1802,8 @@ async function loadWorkshopAll() {
   try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
   selectWorkshop(pick, { force: true });
+  if (wsDeepLink && workshops.some((w) => w.id === wsDeepLink.id) && !$('tab-workshop').hidden) openWorkshop(wsDeepLink.id, wsDeepLink.sub);
+  wsDeepLink = null;
   renderTotal();
   renderMessages();
   markLoaded('workshops');
@@ -1873,7 +1882,10 @@ function selectWorkshop(id, { force = false } = {}) {
 }
 
 function syncSelectedUi() {
-  $('wsa-heading').textContent = ws.title;
+  $('wsa-heading-ar').textContent = ws.titleAr || ws.title || 'ورشة بدون اسم';
+  $('wsa-heading').textContent = ws.titleAr ? ws.title : '';
+  const meta = [ws.date ? arDate(ws.date) : 'بدون تاريخ', placeText(ws)].filter(Boolean).join(' · ');
+  $('ws-detail-meta').textContent = ws.titleAr ? ` · ${meta}` : meta;
   $('cert-heading').textContent = ws.title;
   const badge = $('wsa-state-badge');
   const st = stateBadge(ws);
@@ -1889,26 +1901,34 @@ function wsCounts(id) {
   return { regs: r.length, attended: r.filter((x) => x.attended).length, certs: allCerts.filter((c) => c.workshopId === id).length };
 }
 
+let wsFilter = 'all';
 function renderWorkshopList() {
-  const list = sortedWorkshops();
+  const all = sortedWorkshops();
+  const stOf = (w) => mergeWorkshop(w).status;
+  document.querySelectorAll('#ws-filter [data-f]').forEach((b) => {
+    const f = b.dataset.f;
+    b.setAttribute('aria-pressed', String(f === wsFilter));
+    b.querySelector('span').textContent = String(f === 'all' ? all.length : all.filter((w) => stOf(w) === f).length);
+  });
+  const list = wsFilter === 'all' ? all : all.filter((w) => stOf(w) === wsFilter);
   $('ws-list-empty').hidden = list.length > 0;
-  $('ws-list-empty').textContent = 'ما في ورشات لسا. اضغط «+ ورشة جديدة».';
+  $('ws-list-empty').textContent = all.length ? 'ما في ورشات بهالحالة.' : 'ما في ورشات لسا. اضغط «+ ورشة جديدة».';
   $('ws-list').replaceChildren(...list.map((w) => {
     const m = mergeWorkshop(w);
     const n = wsCounts(w.id);
-    const sel = w.id === selId;
-    const sub = [m.titleAr ? h('bdi', { dir: 'ltr' }, m.title) : null, m.date ? arDate(m.date) : 'بدون تاريخ', placeText(m)]
-      .filter(Boolean).flatMap((x, i) => (i ? [' · ', x] : [x]));
-    return h('li', { class: sel ? 'is-selected' : '' },
-      h('div', { class: 'wl-info' },
-        h('div', { class: 'wl-title' },
-          h('strong', {}, m.titleAr || m.title),
-          h('span', { class: `badge ${stateBadge(m).cls}` }, stateBadge(m).text),
-          w.id === currentId && isPublic(m) ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
-        h('span', { class: 'muted small' }, sub),
-        h('div', { class: 'wl-counts' },
-          h('span', {}, `${n.regs} مسجّل`), h('span', {}, `${n.attended} حضروا`), h('span', {}, `${n.certs} شهادة`))),
-      h('div', { class: 'wl-tools' },
+    const st = stateBadge(m);
+    const onSite = w.id === currentId && isPublic(m);
+    return h('li', { class: `ws-card is-${m.status}${onSite ? ' is-on-site' : ''}` },
+      h('button', { type: 'button', class: 'ws-card-open', 'aria-label': `افتح ورشة ${m.titleAr || m.title}`, onclick: () => openWorkshop(w.id) },
+        h('span', { class: 'ws-card-badges' },
+          h('span', { class: `badge ${st.cls}` }, st.text),
+          onSite ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
+        h('strong', { class: 'ws-card-title' }, m.titleAr || m.title || 'ورشة بدون اسم'),
+        m.titleAr && m.title ? h('bdi', { class: 'ws-card-en', dir: 'ltr' }, m.title) : null,
+        h('span', { class: 'ws-card-meta' }, [m.date ? arDate(m.date) : 'بدون تاريخ', placeText(m)].filter(Boolean).join(' · ')),
+        h('span', { class: 'ws-card-counts' },
+          h('span', {}, h('b', {}, String(n.regs)), ' مسجّل'), h('span', {}, h('b', {}, String(n.attended)), ' حضروا'), h('span', {}, h('b', {}, String(n.certs)), ' شهادة'))),
+      h('div', { class: 'ws-card-tools' },
         m.status === 'done'
           ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', title: 'بترجع مسودة مخفية', onclick: () => setWorkshopState(w, 'draft') }, 'إلغاء الأرشفة')
           : [
@@ -1919,10 +1939,6 @@ function renderWorkshopList() {
             }, m.status === 'live' ? (isScheduled(m) ? 'إلغاء الجدولة' : 'إخفاء (مسودة)') : 'انشر الآن'),
             h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', title: 'بتنعرض بالورشات السابقة والتسجيل بوقف', onclick: () => setWorkshopState(w, 'done') }, 'أرشفة'),
           ],
-        h('button', {
-          type: 'button', class: sel ? 'btn btn-primary btn-xs' : 'btn btn-ghost-dark btn-xs', 'aria-pressed': String(sel),
-          onclick: () => { selectWorkshop(w.id); if (selId === w.id) $('wsa-heading').closest('.tab-intro').scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-        }, sel ? 'مختارة ✓' : 'إدارة'),
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-xs', onclick: () => copyText(wsUrl(w.id), 'انسخ رابط الورشة') }, 'نسخ الرابط'),
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `حذف ورشة ${m.titleAr || m.title}`, title: 'حذف الورشة', onclick: () => deleteWorkshop(w) }, svgIcon(ICONS.trash))));
   }));
@@ -1974,7 +1990,7 @@ async function deleteWorkshop(w) {
     if (w.id === currentId) currentId = '';
     if (w.id === nextId) nextId = '';
     workshops = workshops.filter((x) => x.id !== w.id);
-    if (selId === w.id) selectWorkshop(currentId || (sortedWorkshops()[0] || {}).id || '', { force: true });
+    if (selId === w.id) { selectWorkshop(currentId || (sortedWorkshops()[0] || {}).id || '', { force: true }); showWsIndex(); }
     else renderWorkshopList();
     toast('انحذفت الورشة');
   } catch (e) { toast(errMsg(e), true); }
@@ -1992,8 +2008,8 @@ $('ws-new').addEventListener('click', async () => {
     await fs.setDoc(ref, { ...data, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() });
     workshops.push({ id: ref.id, ...data, _t: Date.now() });
     selectWorkshop(ref.id, { force: true });
+    openWorkshop(ref.id, 'info');
     toast('انعملت ورشة جديدة (مسودة) بنفس محتوى اللي قبلها. عدّل معلوماتها، وبس تجهز خلّي حالتها «منشورة».');
-    $('wsa-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
     $('wsa-title').focus({ preventScroll: true });
   } catch (e) { toast(errMsg(e), true); } finally { setBusy(btn, false); }
 });
@@ -2285,7 +2301,85 @@ function renderWsStats() {
   const certMails = pendingCertMails().length;
   $('wr-mail-cert').hidden = !certMails;
   $('wr-mail-cert').querySelector('.btn-label').textContent = `ابعت الشهادات بالإيميل (${certMails})`;
+  $('ws-subcount-regs').textContent = regs.length ? String(regs.length) : '';
+  renderWsNext(pending);
 }
+
+/** «نظرة عامة»: the next steps for this workshop, each one opens the section that does it */
+function renderWsNext(pending) {
+  const go = (sub, label) => h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => setWsSub(sub) }, label);
+  const items = [];
+  const st = ws.status;
+  if (st === 'draft') items.push(['draft', 'الورشة مسودة ومخفية عن الزوار', 'كمّل معلوماتها (التاريخ، المكان، المحاور) وخلّي حالتها «منشورة» لما تجهز.', go('info', 'افتح التفاصيل')]);
+  if (st === 'live') {
+    items.push(['live', isScheduled(ws) ? 'الورشة مجدولة للنشر' : (ws.open ? 'التسجيل مفتوح' : 'التسجيل مسكّر'),
+      ws.open ? 'انشر رابط التسجيل، والمسجّلين بيوصلوا لتبويب «المسجّلين».' : 'الورشة ظاهرة بس ما بتقبل تسجيلات جديدة.',
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => copyText(wsUrl(selId), 'انسخ رابط الورشة') }, 'انسخ رابط التسجيل')]);
+  }
+  if (regs.length) {
+    const att = regs.filter((r) => r.attended).length;
+    items.push(['regs', `${regs.length} مسجّل · ${att} حضروا`, 'يوم الورشة: سجّل الحضور بالـ QR أو علّم عليهم بالجدول.',
+      h('span', { class: 'ws-next-tools' }, h('button', { type: 'button', class: 'btn btn-dark btn-sm', onclick: () => openScanner() }, 'سجّل الحضور (QR)'), go('regs', 'افتح المسجّلين'))]);
+  }
+  if (pending) items.push(['cert', `${pending} حضروا وما إلهم شهادة`, 'أصدرلهم شهاداتهم بضغطة من تبويب «المسجّلين».', go('regs', 'أصدر الشهادات')]);
+  if (certs.length) items.push(['done', `${certs.length} شهادة صادرة`, 'كل شهادة بتضل بالتصميم اللي انصدرت فيه.', go('cert', 'افتح الشهادة')]);
+  else items.push(['cert', 'تصميم الشهادة', 'جهّز نصوص الشهادة والتواقيع قبل ما تصدرها.', go('cert', 'افتح الشهادة')]);
+  $('ws-next').replaceChildren(...items.map(([kind, title, text, action]) => h('div', { class: `ws-next-item is-${kind}` },
+    h('div', {}, h('strong', {}, title), h('p', { class: 'muted small' }, text)), action)));
+}
+
+/* ---------- the two screens: the list, and one workshop's page ---------- */
+let wsSub = 'overview';
+let wsDeepLink = null; // #workshop/<id>/<section> from the address, opened once the workshops are loaded
+const WS_SUBS = ['overview', 'regs', 'info', 'cert'];
+function showWsIndex() {
+  $('ws-detail').hidden = true;
+  $('ws-index').hidden = false;
+  renderWorkshopList();
+  if (!$('tab-workshop').hidden) history.replaceState(null, '', '#workshop');
+}
+function openWorkshop(id, sub = 'overview') {
+  if (id !== selId) { selectWorkshop(id); if (selId !== id) return; } // unsaved changes elsewhere and the admin stayed
+  $('ws-index').hidden = true;
+  $('ws-detail').hidden = false;
+  setWsSub(WS_SUBS.includes(sub) ? sub : 'overview');
+  enterPanel($('ws-detail'));
+  scrollTo({ top: 0, behavior: 'auto' });
+}
+function setWsSub(sub, focus = false) {
+  wsSub = sub;
+  WS_SUBS.forEach((s) => {
+    const on = s === sub;
+    const b = $(`ws-subbtn-${s}`);
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+    $(`ws-sub-${s}`).hidden = !on;
+    if (on && focus) b.focus();
+  });
+  enterPanel($(`ws-sub-${sub}`));
+  if (sub === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
+  if (selId && !$('tab-workshop').hidden) history.replaceState(null, '', `#workshop/${encodeURIComponent(selId)}/${sub}`);
+}
+$('ws-back').addEventListener('click', () => { showWsIndex(); scrollTo({ top: 0, behavior: 'auto' }); });
+$('ws-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-f]');
+  if (!b) return;
+  wsFilter = b.dataset.f;
+  renderWorkshopList();
+});
+WS_SUBS.forEach((s, i) => {
+  const b = $(`ws-subbtn-${s}`);
+  b.addEventListener('click', () => setWsSub(s));
+  b.addEventListener('keydown', (e) => {
+    const dir = e.key === 'ArrowLeft' ? 1 : e.key === 'ArrowRight' ? -1 : 0; // RTL
+    if (!dir) return;
+    e.preventDefault();
+    setWsSub(WS_SUBS[(i + dir + WS_SUBS.length) % WS_SUBS.length], true);
+  });
+});
+// a dot on «التفاصيل» / «الشهادة» while they have unsaved changes
+const syncDirtyDots = () => { $('ws-subdot-info').hidden = !wsaDirty; $('ws-subdot-cert').hidden = !certDirty; };
+['wsa-status', 'cf-status'].forEach((id) => new MutationObserver(syncDirtyDots).observe($(id), { childList: true, characterData: true, subtree: true }));
 
 function filteredRegs() {
   const q = $('wr-search').value.trim().toLowerCase();
