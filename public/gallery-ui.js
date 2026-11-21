@@ -11,6 +11,8 @@ let lbIndex = 0;
 const ALBUM_NONE = 'صور متنوعة';
 export const photoCount = (n) => (n === 1 ? 'صورة وحدة' : n === 2 ? 'صورتين' : n <= 10 ? `${n} صور` : `${n} صورة`);
 const SVGNS = 'http://www.w3.org/2000/svg';
+// the shape of an album = its cover's (the studio frames are 16:9, 4:5…), so no edge of the picture is cut
+const ratioOf = (p) => { const r = p && p.w > 0 && p.h > 0 ? p.w / p.h : 4 / 3; return Math.min(1.9, Math.max(0.75, r)).toFixed(4); };
 function stackIcon() {
   const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   s.innerHTML = '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>'; // fixed markup, no data
@@ -43,7 +45,7 @@ export function renderAlbums(grid, list) {
     }).reverse();
     const badge = h('span', { class: 'album-badge' }, stackIcon(), String(a.photos.length));
     const card = h('button', { type: 'button', class: 'album-card', 'aria-label': `افتح ألبوم ${a.name}: ${photoCount(a.photos.length)}` },
-      h('span', { class: 'album-stack', 'aria-hidden': 'true' }, ...layers, badge),
+      h('span', { class: 'album-stack', 'aria-hidden': 'true', style: `--ar:${ratioOf(a.photos[0])}` }, ...layers, badge),
       h('span', { class: 'album-info' }, h('strong', {}, a.name),
         a.desc ? h('span', { class: 'album-desc' }, a.desc) : null,
         h('span', {}, photoCount(a.photos.length))));
@@ -62,6 +64,7 @@ export function openAlbum(a) {
   const desc = document.getElementById('av-desc');
   if (desc) { desc.textContent = a.desc || ''; desc.hidden = !a.desc; }
   const grid = document.getElementById('av-grid');
+  grid.style.setProperty('--ar', ratioOf(a.photos[0])); // every tile in the album's shape; another shape fits inside, whole
   grid.replaceChildren(...a.photos.map((p, i) => {
     const b = h('button', {
       type: 'button', class: 'gallery-item', style: `--i:${Math.min(i, 24)};--r:${((i * 37) % 9) - 4}deg`,
@@ -74,7 +77,12 @@ export function openAlbum(a) {
   av.showModal();
   av.scrollTop = 0;
 }
-if (av) av.addEventListener('click', (e) => { if (e.target.closest('[data-av="close"]')) av.close(); });
+if (av) av.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-av="close"]')) return;
+  av.close();
+  // closed with the mouse or a finger (detail > 0): no focus ring left on the album card; with the keyboard it stays, to keep your place
+  if (e.detail > 0) document.activeElement?.closest?.('.album-card')?.blur();
+});
 
 const lb = document.getElementById('lightbox');
 async function showPhoto(i) {
