@@ -10,15 +10,16 @@ const html = await (await fetch('/admin.html')).text();
 const doc = new DOMParser().parseFromString(html, 'text/html');
 const sec = doc.getElementById('tab-gstudio'); sec.hidden = false; document.getElementById('mount').append(sec);
 document.body.append(doc.getElementById('gs-crop-dlg'));
-const { initGalleryStudio, showGalleryStudio } = await import('/admin-gallery-studio.js?v=2');
+const { initGalleryStudio, showGalleryStudio } = await import('/admin-gallery-studio.js?v=3');
 function h(tag, attrs = {}, ...kids) { const el = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === 'class') el.className = v; else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (k === 'value') el.value = v; else if (k === 'checked') el.checked = !!v; else el.setAttribute(k, v === true ? '' : v); } kids.flat().forEach((k) => k != null && el.append(k.nodeType ? k : String(k))); return el; }
 const toast = (m, e) => { const t = document.getElementById('toast'); t.textContent = m; t.classList.toggle('is-error', !!e); t.classList.add('is-on'); window.__lastToast = m; };
 const setBusy = (b, on, l) => { b.disabled = on; b.classList.toggle('is-loading', on); if (l) b.querySelector('.btn-label').textContent = l; };
 window.__saved = [];
 initGalleryStudio({
   h, toast, setBusy,
-  saveToGallery: async (files, caps, album) => { window.__saved.push(...files.map((f, i) => ({ name: f.name, size: f.size, caption: caps[i], album }))); return { done: files.length, failed: 0 }; },
+  saveToGallery: async (files, caps, album, desc) => { window.__saved.push(...files.map((f, i) => ({ name: f.name, size: f.size, caption: caps[i], album, desc }))); return { done: files.length, failed: 0 }; },
   albums: () => ['ورشة المبرمج المعزّز'],
+  albumDesc: (n) => (n === 'ورشة المبرمج المعزّز' ? 'وصف محفوظ للألبوم' : ''),
   workshops: () => [{ id: 'w1', titleAr: 'المبرمج المعزَّز: من الفكرة إلى الكود', date: '2026-11-21', place: 'أونلاين' }],
 });
 await showGalleryStudio();

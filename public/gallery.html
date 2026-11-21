@@ -10,15 +10,16 @@
   <link rel="canonical" href="https://beitlahia.tech/gallery">
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
-  <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/brand.css?v=7">
+  <link rel="stylesheet" href="/styles.css?v=20">
+  <link rel="stylesheet" href="/brand.css?v=8">
+  <link rel="stylesheet" href="/nav.css?v=1">
   <link rel="stylesheet" href="/blog.css?v=1">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Beit Lahia Tech">
   <meta property="og:title" content="المعرض | كميونتي تقني بيت لاهيا">
   <meta property="og:description" content="صور من لقاءات وورشات مجتمع بيت لاهيا التقني، مرتّبة بألبومات.">
   <meta property="og:image" content="https://beitlahia.tech/og.png">
-  <script type="module" src="/nav.js?v=1"></script>
+  <script type="module" src="/nav.js?v=2"></script>
 </head>
 <body>
   <a class="skip" href="#main">تخطَّ إلى المحتوى</a>
@@ -34,27 +35,46 @@
         </span>
       </a>
       <nav class="nav" id="site-nav" aria-label="القائمة الرئيسية">
-        <ul class="nav-list">
-          <li><a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6h-6v6H4z"/></svg><span>الرئيسية</span></a></li>
-          <li><a href="/workshop"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5ZM7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></a></li>
-          <li><a href="/blog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5zM14 4v5h5M8 13h8M8 16.5h5"/></svg><span>المدونة</span></a></li>
-          <li><a href="/gallery" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 4h17v16h-17zM8.5 11.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4zM4 18l5-5 4 4 3-3 4.5 4.5"/></svg><span>المعرض</span></a></li>
-          <li><a href="/#about"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5"/></svg><span>من نحن</span></a></li>
-          <li class="nav-more">
-            <button class="nav-more-btn" type="button" aria-expanded="false" aria-controls="nav-more-menu">
-              <span>المزيد</span><svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <ul class="nav-menu" id="nav-more-menu">
-              <li id="nav-members" hidden><a href="/#members"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-7 7-7s7 3 7 7M17 3.5a4 4 0 0 1 0 7.5M19 14c2 1 3 3.5 3 7"/></svg><span><b>أعضاء المجتمع</b><small>وجوه من المجتمع</small></span></a></li>
-              <li id="nav-events" hidden><a href="/#events"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h17v15.5h-17zM3.5 10h17M8 3v4M16 3v4"/></svg><span><b>الفعاليات</b><small>آخر الأخبار والأنشطة</small></span></a></li>
-              <li><a href="/#fields"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6M14 4l-4 16"/></svg><span><b>المجالات</b><small>شو بنتعلّم سوا</small></span></a></li>
-              <li><a href="/survey"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h3"/></svg><span><b>استبيان المواضيع</b><small>قلّنا شو بدك نتعلّم</small></span></a></li>
-              <li><a href="/trainer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v12H3zM8 20h8M12 16v4M10 8l4 2-4 2z"/></svg><span><b>كن مدرّباً معنا</b><small>شارك خبرتك بورشة</small></span></a></li>
-              <li><a href="/#faq"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.2a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.2-2.5 3.8M12 17h.01"/></svg><span><b>أسئلة شائعة</b><small>أجوبة سريعة</small></span></a></li>
-            </ul>
-          </li>
-        </ul>
-        <a class="btn btn-primary nav-drawer-cta" href="/join">انضم للمجتمع</a>
+        <div class="nav-sheet-head">
+          <span class="nav-grip" aria-hidden="true"></span>
+          <strong>وين بدك تروح؟</strong>
+          <button class="nav-close" type="button" aria-label="إغلاق القائمة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div class="nav-rail">
+          <span class="nav-ink" aria-hidden="true"></span>
+          <ul class="nav-list">
+            <li><a class="nav-link" href="/" data-k="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6h-6v6H4z"/></svg><span>الرئيسية</span></a></li>
+            <li><a class="nav-link" href="/workshop" data-k="workshop"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5ZM7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></a></li>
+            <li><a class="nav-link" href="/blog" data-k="blog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5zM14 4v5h5M8 13h8M8 16.5h5"/></svg><span>المدونة</span></a></li>
+            <li><a class="nav-link" href="/gallery" data-k="gallery" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 4h17v16h-17zM8.5 11.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4zM4 18l5-5 4 4 3-3 4.5 4.5"/></svg><span>المعرض</span></a></li>
+            <li class="nav-wide-only"><a class="nav-link" href="/#about" data-k="about"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5"/></svg><span>من نحن</span></a></li>
+            <li class="nav-more">
+              <button class="nav-more-btn" type="button" aria-expanded="false" aria-controls="nav-more-menu">
+                <span>المزيد</span><svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="nav-menu" id="nav-more-menu">
+              <div class="nav-group">
+                <p class="nav-group-title">المجتمع</p>
+                <ul>
+                  <li class="nav-phone-only"><a href="/#about" data-k="about"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5"/></svg><span><b>من نحن</b><small>قصتنا ورؤيتنا</small></span></a></li>
+                  <li id="nav-members" hidden><a href="/#members" data-k="members"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-7 7-7s7 3 7 7M17 3.5a4 4 0 0 1 0 7.5M19 14c2 1 3 3.5 3 7"/></svg><span><b>أعضاء المجتمع</b><small>وجوه من المجتمع</small></span></a></li>
+                  <li id="nav-events" hidden><a href="/#events" data-k="events"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h17v15.5h-17zM3.5 10h17M8 3v4M16 3v4"/></svg><span><b>الفعاليات</b><small>آخر الأخبار والأنشطة</small></span></a></li>
+                  <li><a href="/#fields" data-k="fields"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6M14 4l-4 16"/></svg><span><b>المجالات</b><small>شو بنتعلّم سوا</small></span></a></li>
+                  <li><a href="/#faq" data-k="faq"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.2a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.2-2.5 3.8M12 17h.01"/></svg><span><b>أسئلة شائعة</b><small>أجوبة سريعة</small></span></a></li>
+                </ul>
+              </div>
+              <div class="nav-group">
+                <p class="nav-group-title">شارك معنا</p>
+                <ul>
+                  <li><a href="/survey" data-k="survey"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h3"/></svg><span><b>استبيان المواضيع</b><small>قلّنا شو بدك نتعلّم</small></span></a></li>
+                  <li><a href="/trainer" data-k="trainer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v12H3zM8 20h8M12 16v4M10 8l4 2-4 2z"/></svg><span><b>كن مدرّباً معنا</b><small>شارك خبرتك بورشة</small></span></a></li>
+                </ul>
+              </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+        <a class="btn btn-primary nav-sheet-cta" href="/join"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19v-1.5A3.5 3.5 0 0 0 11.5 14h-5A3.5 3.5 0 0 0 3 17.5V19M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19 8v6M22 11h-6"/></svg><span>انضم للمجتمع</span></a>
       </nav>
       <div class="header-actions">
         <a class="btn btn-primary btn-sm nav-cta" href="/join">انضم الآن</a>
@@ -124,6 +144,7 @@
         <p class="av-kicker">ألبوم</p>
         <h2 id="av-title"></h2>
         <p class="av-count" id="av-count"></p>
+        <p class="av-desc" id="av-desc" hidden></p>
       </div>
       <button class="lb-close av-close" type="button" data-av="close" aria-label="إغلاق الألبوم"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>

@@ -94,17 +94,7 @@ section[id] { scroll-margin-top: 68px; }
 .brand-kicker { font-family: var(--font-head); font-size: 11px; color: var(--slate-400); }
 .brand-name { font-family: var(--font-head); font-size: 20px; font-weight: 700; color: var(--white); }
 
-/* mobile menu (☰) */
-.menu-btn {
-  display: none; place-items: center; width: 44px; height: 44px; margin-inline-start: auto;
-  border-radius: 12px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.04);
-  color: var(--white); cursor: pointer;
-}
-.menu-btn svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.menu-btn svg path { transition: transform .25s var(--ease-out, ease), opacity .2s ease; transform-origin: 12px 12px; }
-.menu-btn[aria-expanded="true"] .l1 { transform: translateY(5px) rotate(45deg); }
-.menu-btn[aria-expanded="true"] .l2 { opacity: 0; }
-.menu-btn[aria-expanded="true"] .l3 { transform: translateY(-5px) rotate(-45deg); }
+/* the menu (☰ and the phone sheet): nav.css */
 
 /* ========== Hero ========== */
 .hero {
@@ -678,6 +668,7 @@ img.brand-mark { display: block; }
 .album-info { display: grid; gap: 2px; padding-inline: 18px; }
 .album-info strong { font-family: var(--font-head); font-size: 19px; font-weight: 700; line-height: 1.4; }
 .album-info span { font-size: 14.5px; color: var(--slate); }
+.album-info .album-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 4px; font-size: 15px; line-height: 1.7; color: var(--ink-2, #3A4558); }
 
 /* An open album: every photo of it, dealt onto a dark sheet */
 .album-view {
@@ -695,6 +686,8 @@ img.brand-mark { display: block; }
 .av-kicker { margin: 0; font-size: 13px; font-weight: 700; color: var(--emerald); }
 .av-head h2 { margin: 2px 0 0; font-size: clamp(22px, 3.2vw, 34px); line-height: 1.35; color: #fff; }
 .av-count { margin: 4px 0 0; font-size: 14px; color: #9AA6BC; }
+.av-desc { max-width: 68ch; margin: 12px 0 0; font-size: 16px; line-height: 1.85; color: #D5DCE8; white-space: pre-line; }
+.av-desc[hidden] { display: none; }
 .lb-close.av-close { position: static; flex: none; }
 .av-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px; padding: 0 clamp(16px, 4vw, 48px) 56px; }
 .av-grid .gallery-item { background: #151C2D; animation: av-deal .55s var(--ease-out, ease) both; animation-delay: calc(var(--i, 0) * 45ms); }

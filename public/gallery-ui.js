@@ -1,7 +1,8 @@
 // The photo gallery, shared by the home page section and /gallery.
 // Photos come in albums: each album is a stack of cards; a stack opens on all its photos (#album-view),
 // and a photo opens the lightbox (#lightbox), which walks through that album.
-// Firestore: gallery/{id} (thumb, caption, album, published, order) + galleryFull/{id} (full image).
+// Firestore: gallery/{id} (thumb, caption, album, albumDesc, published, order) + galleryFull/{id} (full image).
+// albumDesc is the album's description («وصف البوست»): the same on every photo of it.
 import { getDbLite } from './firebase-init.js';
 import { h } from './blog-ui.js';
 
@@ -26,7 +27,7 @@ export async function fetchGallery(db, fs) {
 export function albumsOf(list) {
   const map = new Map();
   list.forEach((p) => { const k = String(p.album || '').trim(); if (!map.has(k)) map.set(k, []); map.get(k).push(p); });
-  return [...map].map(([name, items]) => ({ name: name || ALBUM_NONE, photos: items }));
+  return [...map].map(([name, items]) => ({ name: name || ALBUM_NONE, photos: items, desc: String(items.find((p) => p.albumDesc)?.albumDesc || '').trim() }));
 }
 
 /** the albums as stacks of cards into `grid`; returns how many albums */
@@ -43,7 +44,9 @@ export function renderAlbums(grid, list) {
     const badge = h('span', { class: 'album-badge' }, stackIcon(), String(a.photos.length));
     const card = h('button', { type: 'button', class: 'album-card', 'aria-label': `افتح ألبوم ${a.name}: ${photoCount(a.photos.length)}` },
       h('span', { class: 'album-stack', 'aria-hidden': 'true' }, ...layers, badge),
-      h('span', { class: 'album-info' }, h('strong', {}, a.name), h('span', {}, photoCount(a.photos.length))));
+      h('span', { class: 'album-info' }, h('strong', {}, a.name),
+        a.desc ? h('span', { class: 'album-desc' }, a.desc) : null,
+        h('span', {}, photoCount(a.photos.length))));
     card.addEventListener('click', () => openAlbum(a));
     return card;
   }));
@@ -56,6 +59,8 @@ export function openAlbum(a) {
   photos = a.photos;
   document.getElementById('av-title').textContent = a.name;
   document.getElementById('av-count').textContent = photoCount(a.photos.length);
+  const desc = document.getElementById('av-desc');
+  if (desc) { desc.textContent = a.desc || ''; desc.hidden = !a.desc; }
   const grid = document.getElementById('av-grid');
   grid.replaceChildren(...a.photos.map((p, i) => {
     const b = h('button', {

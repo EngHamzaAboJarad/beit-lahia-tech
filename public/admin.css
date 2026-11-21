@@ -1436,7 +1436,24 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .gs-range { display: grid; gap: 6px; padding-bottom: 8px; }
 .gs-range input { width: 100%; accent-color: var(--emerald-deep); }
 .gs-reset { margin-top: 12px; }
-.gs-photo { margin-top: 8px; padding-top: 4px; border-top: 1px dashed var(--line); }
+/* the current photo's caption, right under the preview (dark workspace) */
+.gs-capbar { width: 100%; display: grid; gap: 8px; padding: 10px 12px 12px; border-radius: 14px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08); }
+.gs-capbar[hidden] { display: none; }
+.gs-cap-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #E6ECF5; font-size: 13.5px; font-weight: 700; }
+.gs-cap-n { font-size: 11.5px; font-weight: 500; color: #8A97B0; font-variant-numeric: tabular-nums; }
+.gs-capbar textarea { width: 100%; min-height: 58px; resize: vertical; padding: 10px 12px; border-radius: 11px; border: 1px solid rgba(255, 255, 255, .12); background: #0E1528; color: #F3F6FA; font: inherit; font-size: 14.5px; line-height: 1.6; }
+.gs-capbar textarea::placeholder { color: #6B7891; }
+.gs-capbar textarea:focus { outline: none; border-color: #35E69B; box-shadow: 0 0 0 3px rgba(53, 230, 155, .18); }
+.gs-cap-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.gs-cap-chk { display: inline-flex; align-items: center; gap: 8px; color: #C3CCDA; font-size: 13px; font-weight: 600; cursor: pointer; }
+.gs-cap-chk input { width: 16px; height: 16px; accent-color: #35E69B; }
+.gs-cap-btn { min-height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, .14); background: transparent; color: #E6ECF5; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.gs-cap-btn:hover:not(:disabled) { border-color: #35E69B; color: #35E69B; }
+.gs-cap-btn:disabled { opacity: .4; cursor: default; }
+.gs-cap-hint { margin-inline-start: auto; font-size: 11.5px; color: #6B7891; }
+@media (hover: none) { .gs-cap-hint { display: none; } }
+.gs-capflag { position: absolute; bottom: 4px; inset-inline-start: 4px; padding: 0 6px; height: 18px; border-radius: 5px; background: rgba(53, 230, 155, .92); color: #0B1020; font-size: 10.5px; font-weight: 800; line-height: 18px; }
+.gs-album-field textarea { width: 100%; resize: vertical; line-height: 1.7; }
 .gs-preview.is-over { outline: 3px dashed #35E69B; outline-offset: -8px; }
 .gs-count { min-width: 52px; text-align: center; font-size: 13px; font-weight: 600; color: #C3CCDA; font-variant-numeric: tabular-nums; }
 .gs-count:empty { display: none; }
@@ -1519,6 +1536,12 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .g-album-in { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; margin: 0; }
 .g-album-in input { min-height: 38px !important; padding: 6px 12px !important; font-size: 13.5px !important; background: #F8FAFC; }
 .gs-album-field .muted { display: block; margin-top: 6px; line-height: 1.6; }
+.g-album-desc { display: grid; gap: 6px; margin-top: 12px; padding: 12px; border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+.g-album-desc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 14px; }
+.g-album-desc textarea { width: 100%; min-height: 72px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #F8FAFC; font: inherit; font-size: 14px; line-height: 1.7; }
+.g-album-desc textarea:focus { outline: none; border-color: var(--emerald-deep); box-shadow: 0 0 0 3px rgba(16, 185, 129, .15); background: #fff; }
+.g-album-desc-foot { display: flex; justify-content: flex-end; }
+.g-item .field textarea { width: 100%; min-height: 58px; resize: vertical; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 13.5px; line-height: 1.6; }
 @media (max-width: 640px) {
   .g-album-sum { gap: 10px; padding: 10px; }
   .g-album-cover { width: 52px; height: 40px; }

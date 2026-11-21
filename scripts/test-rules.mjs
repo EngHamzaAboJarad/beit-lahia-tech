@@ -94,6 +94,9 @@ await t('site permissions split: content / events / gallery / contact', async ()
   const photo = { thumb, caption: 'x', album: 'ورشة المبرمج المعزّز', published: false };
   assert.equal(await set('gallery/g1', galAdmin, photo), OK);
   assert.equal(await set('gallery/g2', galAdmin, { ...photo, album: 'x'.repeat(81) }), NO); // album too long
+  assert.equal(await set('gallery/g5', galAdmin, { ...photo, caption: 'ك'.repeat(280), albumDesc: 'و'.repeat(600) }), OK); // caption + post description
+  assert.equal(await set('gallery/g6', galAdmin, { ...photo, albumDesc: 'و'.repeat(601) }), NO); // description too long
+  assert.equal(await set('gallery/g7', galAdmin, { ...photo, caption: 'ك'.repeat(281) }), NO); // caption too long
   assert.equal(await set('gallery/g3', site, photo), OK); // the old 'site' still opens the gallery
   assert.equal(await set('gallery/g4', contactAdmin, photo), NO);
   assert.equal(await set('galleryFull/g1', galAdmin, { src: thumb }), OK);

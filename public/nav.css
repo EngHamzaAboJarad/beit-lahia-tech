@@ -1,0 +1,187 @@
+/* =====================================================================
+   Beit Lahia Tech — the site header, on every public page.
+   Markup: scripts/build-nav.mjs · behaviour: nav.js · loaded after styles.css + brand.css.
+   Wide screens: a rail of links with a pill that slides to the one you point at, «المزيد» opens a
+   two-column menu, and the header tucks away while you scroll down (back as soon as you scroll up).
+   Phones: ☰ opens a sheet from the bottom (easy to reach with a thumb; drag it down to close).
+   ===================================================================== */
+.site-header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(11, 16, 32, .9); border-bottom: 1px solid rgba(255, 255, 255, .06);
+  transition: transform .38s var(--ease-out, ease), background-color .3s ease, box-shadow .3s ease;
+}
+.site-header.is-scrolled { background: rgba(11, 16, 32, .97); box-shadow: 0 8px 28px rgba(0, 0, 0, .28); }
+.site-header.is-hidden { transform: translateY(-102%); box-shadow: none; }
+.site-header .header-row { gap: 14px; min-height: 70px; }
+.site-header .brand { flex: none; }
+.brand-mark { transition: transform .4s var(--ease-back, ease); }
+.brand:hover .brand-mark { transform: rotate(-8deg) scale(1.06); }
+.header-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.nav-cta { white-space: nowrap; }
+.nav-cta[aria-current="page"] { box-shadow: 0 0 0 2px var(--night), 0 0 0 4px var(--emerald); }
+
+/* ☰ (phones) */
+.menu-btn {
+  display: none; place-items: center; width: 44px; height: 44px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .04); color: #fff; cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+.menu-btn:hover { background: rgba(255, 255, 255, .08); }
+.menu-btn:focus-visible { outline: 2px solid var(--emerald); outline-offset: 2px; }
+.menu-btn svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.menu-btn svg path { transition: transform .28s var(--ease-out, ease), opacity .2s ease; transform-origin: 12px 12px; }
+.menu-btn[aria-expanded="true"] { border-color: rgba(53, 230, 155, .5); }
+.menu-btn[aria-expanded="true"] .l1 { transform: translateY(5px) rotate(45deg); }
+.menu-btn[aria-expanded="true"] .l2 { opacity: 0; }
+.menu-btn[aria-expanded="true"] .l3 { transform: translateY(-5px) rotate(-45deg); }
+
+/* ---------- wide screens: the rail ---------- */
+.nav { flex: 1; display: flex; justify-content: center; min-width: 0; }
+.nav-sheet-head, .nav-sheet-cta, .nav-phone-only, .nav-backdrop { display: none; }
+.nav-rail { position: relative; padding: 4px; border-radius: 15px; background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .06); }
+.nav-list { position: relative; z-index: 1; display: flex; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; }
+/* the pill behind the link you point at (or the page you're on), sliding between them */
+.nav-ink {
+  position: absolute; top: 4px; left: 0; height: calc(100% - 8px); width: 0; border-radius: 11px; pointer-events: none;
+  background: rgba(255, 255, 255, .08); opacity: 0;
+  transition: transform .38s var(--ease-out, ease), width .38s var(--ease-out, ease), opacity .2s ease, background-color .25s ease, box-shadow .25s ease;
+}
+.nav-ink.is-on { opacity: 1; }
+.nav-ink.is-here { background: rgba(53, 230, 155, .12); box-shadow: inset 0 0 0 1px rgba(53, 230, 155, .2); }
+.nav-ink.no-slide { transition: opacity .2s ease; }
+.nav-link, .nav-more-btn {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 15px; border-radius: 11px;
+  border: 0; background: none; color: #C9D2E0; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: color .2s ease;
+}
+.nav-link svg { display: none; }
+.nav-link:hover, .nav-more-btn:hover, .nav-more.is-open .nav-more-btn { color: #fff; }
+.nav-link:focus-visible, .nav-more-btn:focus-visible, .nav-menu a:focus-visible, .nav-sheet-cta:focus-visible, .nav-close:focus-visible { outline: 2px solid var(--emerald); outline-offset: 2px; }
+/* where you are: mint text + the brand's two pixels under it (no JS: the page link; with JS: the section in view too) */
+.nav-link[aria-current="page"], .nav-link.is-here, .nav-more.is-current .nav-more-btn { color: var(--emerald); }
+html.js .nav-link[aria-current="page"]:not(.is-here) { color: #C9D2E0; }
+html.js .nav-link[aria-current="page"]:not(.is-here):hover { color: #fff; }
+.nav-link.is-here::after, html:not(.js) .nav-link[aria-current="page"]::after {
+  content: ""; position: absolute; bottom: 4px; left: 50%; width: 5px; height: 5px; margin-left: -5px; background: var(--emerald);
+  box-shadow: 5px 0 0 var(--strawberry);
+}
+.nav-chev { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--ease-out, ease); }
+.nav-more { position: relative; }
+.nav-more.is-open .nav-chev { transform: rotate(180deg); }
+
+/* «المزيد»: two groups side by side */
+.nav-menu {
+  position: absolute; top: calc(100% + 14px); inset-inline-end: -10px; z-index: 60; width: 540px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 10px;
+  border-radius: 18px; background: #121A2B; border: 1px solid rgba(255, 255, 255, .09); box-shadow: 0 28px 60px -20px rgba(0, 0, 0, .75);
+  opacity: 0; visibility: hidden; transform: translateY(-8px) scale(.985); transform-origin: top left;
+  transition: opacity .18s ease, transform .26s var(--ease-out, ease), visibility .18s;
+}
+.nav-menu::before { /* the brand's pixels on the top edge */
+  content: ""; position: absolute; top: -1px; inset-inline-end: 34px; width: 12px; height: 3px; background: var(--emerald); box-shadow: 12px 0 0 var(--strawberry);
+}
+.nav-menu::after { content: ""; position: absolute; bottom: 100%; inset-inline: 0; height: 16px; } /* keeps the hover on the way down */
+.nav-more.is-open .nav-menu { opacity: 1; visibility: visible; transform: none; }
+.nav-group { min-width: 0; }
+.nav-group-title { margin: 4px 12px 6px; font-size: 12px; font-weight: 700; letter-spacing: .02em; color: #7C8AA5; }
+.nav-group ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nav-group li[hidden] { display: none; }
+.nav-menu a { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 12px; color: #E5E9F0; text-decoration: none; transition: background-color .15s ease; }
+.nav-menu a:hover, .nav-menu a.is-here { background: rgba(255, 255, 255, .06); }
+.nav-menu a[aria-current="page"], .nav-menu a.is-here { background: rgba(53, 230, 155, .1); }
+.nav-menu svg {
+  flex: none; width: 38px; height: 38px; padding: 9px; box-sizing: border-box; border-radius: 11px; background: rgba(53, 230, 155, .1);
+  fill: none; stroke: var(--emerald); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--ease-back, ease);
+}
+.nav-menu a:hover svg { transform: scale(1.08) rotate(-4deg); }
+.nav-menu span { display: grid; gap: 1px; min-width: 0; }
+.nav-menu b { font-size: 15px; font-weight: 700; }
+.nav-menu small { font-size: 12.5px; color: #8A97B0; }
+
+/* a bit tighter before the phone layout kicks in */
+@media (max-width: 1100px) {
+  .nav-link, .nav-more-btn { padding: 0 11px; font-size: 14.5px; }
+}
+
+/* ---------- phones: a sheet from the bottom ---------- */
+@media (max-width: 900px) {
+  .menu-btn { display: grid; }
+  /* a blur or a transform on the header would trap the fixed sheet inside it */
+  .site-header { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(11, 16, 32, .97); }
+  .site-header.menu-open { z-index: 80; transform: none; }
+  .site-header .header-row { justify-content: space-between; }
+  .nav {
+    position: fixed; inset: auto 0 0 0; z-index: 70; max-height: min(86dvh, 760px);
+    display: flex; flex-direction: column; justify-content: flex-start; gap: 14px;
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px)); overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 24px 24px 0 0; border-top: 1px solid rgba(255, 255, 255, .1);
+    background:
+      radial-gradient(90% 50% at 100% 0%, rgba(53, 230, 155, .12), transparent 70%),
+      radial-gradient(70% 40% at 0% 100%, rgba(242, 41, 100, .1), transparent 70%), #0E1426;
+    box-shadow: 0 -30px 60px -20px rgba(0, 0, 0, .8);
+    transform: translateY(105%); visibility: hidden;
+    transition: transform .42s var(--ease-out, ease), visibility .42s;
+  }
+  .nav.is-open { transform: translateY(var(--drag, 0px)); visibility: visible; }
+  .nav.is-dragging { transition: none; }
+  .nav-sheet-head {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 0 -16px; padding: 18px 16px 10px; background: linear-gradient(#0E1426 75%, rgba(14, 20, 38, 0));
+    touch-action: none; cursor: grab;
+  }
+  .nav-sheet-head strong { font-family: var(--font-head); font-size: 17px; color: #fff; }
+  .nav-grip { position: absolute; top: 7px; left: 50%; width: 42px; height: 5px; margin-left: -21px; border-radius: 99px; background: rgba(255, 255, 255, .22); }
+  .nav-close { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .04); color: #fff; cursor: pointer; }
+  .nav-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+  .nav-rail { padding: 0; background: none; border: 0; }
+  .nav-ink, .nav-wide-only, .nav-more-btn { display: none; }
+  /* the main pages: big tiles */
+  .nav-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .nav-link {
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 10px; min-height: 86px; padding: 14px;
+    border-radius: 16px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .07);
+    color: #EEF2F7; font-size: 16px; font-weight: 700; white-space: normal;
+    transition: background-color .2s ease, border-color .2s ease, transform .15s ease;
+  }
+  .nav-link:active { transform: scale(.97); }
+  .nav-link svg { display: block; width: 26px; height: 26px; fill: none; stroke: var(--emerald); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  html.js .nav-link[aria-current="page"]:not(.is-here), .nav-link[aria-current="page"] { color: #fff; background: rgba(53, 230, 155, .1); border-color: rgba(53, 230, 155, .38); }
+  .nav-link.is-here::after, html:not(.js) .nav-link[aria-current="page"]::after { left: auto; bottom: auto; top: 16px; inset-inline-end: 22px; margin: 0; }
+  /* the rest: two groups of compact rows */
+  .nav-more { grid-column: 1 / -1; margin-top: 4px; }
+  .nav-menu {
+    position: static; width: auto; grid-template-columns: 1fr; gap: 12px; padding: 0;
+    background: none; border: 0; box-shadow: none; opacity: 1; visibility: visible; transform: none; transition: none;
+  }
+  .nav-menu::before, .nav-menu::after { display: none; }
+  .nav-group-title { margin: 0 4px 8px; }
+  .nav-group ul { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .nav-phone-only { display: block; }
+  .nav-menu a { gap: 10px; min-height: 52px; padding: 8px 10px; background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .05); }
+  .nav-menu svg { width: 32px; height: 32px; padding: 7px; border-radius: 9px; }
+  .nav-menu b { font-size: 14px; line-height: 1.35; }
+  .nav-menu small { display: none; }
+  .nav-sheet-cta { display: flex; gap: 8px; min-height: 52px; margin-top: 4px; font-size: 16px; }
+  .nav-sheet-cta svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 65; background: rgba(5, 8, 16, .62);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: nav-fade .25s ease;
+  }
+  .nav-backdrop[hidden] { display: none; }
+  html.nav-locked, html.nav-locked body { overflow: hidden; }
+  /* the sheet opens with its tiles rising in one after another */
+  .nav.is-open .nav-list > li, .nav.is-open .nav-group { animation: nav-in .45s var(--ease-out, ease) both; }
+  .nav.is-open .nav-list > li:nth-child(2) { animation-delay: .03s; }
+  .nav.is-open .nav-list > li:nth-child(3) { animation-delay: .06s; }
+  .nav.is-open .nav-list > li:nth-child(4) { animation-delay: .09s; }
+  .nav.is-open .nav-group { animation-delay: .12s; }
+  .nav.is-open .nav-group + .nav-group { animation-delay: .16s; }
+  .nav.is-open .nav-list > li.nav-more { animation: none; }
+}
+@media (max-width: 400px) { .nav-cta { display: none; } }
+@keyframes nav-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes nav-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .site-header, .nav, .nav-ink, .nav-menu, .nav-chev, .brand-mark, .menu-btn svg path { transition: none; }
+  .nav.is-open .nav-list > li, .nav.is-open .nav-group, .nav-backdrop { animation: none; }
+}

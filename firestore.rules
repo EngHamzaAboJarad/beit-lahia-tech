@@ -386,15 +386,17 @@ service cloud.firestore {
     }
 
     // ---------- معرض الصور ----------
-    // gallery: الصورة المصغّرة + الوصف + الألبوم (الزوار بيشوفوا المنشور بس). album فاضي = «صور متنوعة».
+    // gallery: الصورة المصغّرة + الكابشن + الألبوم + وصف البوست (albumDesc، نفسه على كل صور الألبوم).
+    // الزوار بيشوفوا المنشور بس. album فاضي = «صور متنوعة».
     match /gallery/{photoId} {
       allow read: if resource.data.published == true || canSite('gallery');
       allow create, update: if canSite('gallery')
-        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'albumDesc', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
         && isStr(request.resource.data.thumb, 30, 120000)
         && request.resource.data.thumb.matches('^data:image/(jpeg|png|webp);base64,.*')
-        && isStr(request.resource.data.caption, 0, 140)
+        && isStr(request.resource.data.caption, 0, 280)
         && (!('album' in request.resource.data) || isStr(request.resource.data.album, 0, 80))
+        && (!('albumDesc' in request.resource.data) || isStr(request.resource.data.albumDesc, 0, 600))
         && request.resource.data.published is bool;
       allow delete: if canSite('gallery');
     }

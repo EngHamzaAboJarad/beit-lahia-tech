@@ -33,9 +33,12 @@ const THEMES = {
 const DEFAULTS = {
   theme: 'night', size: 'wide', title: '', sub: '', tag: '',
   logo: true, mosaic: true, chrome: false, footer: true, border: true, fit: 'contain', pad: 6, radius: 26,
+  capOn: false, // write each photo's caption on the picture too, under the card
 };
+export const CAP_MAX = 280; // a photo's caption
+export const DESC_MAX = 600; // the post (album) description
 
-let deps; // { h, toast, setBusy, saveToGallery(files, captions) → { done, failed }, workshops() }
+let deps; // { h, toast, setBusy, saveToGallery(files, captions, album, desc) → { done, failed }, workshops(), albums(), albumDesc(name) }
 let started = false;
 const state = {
   st: (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORE) || '{}') }; } catch { return { ...DEFAULTS }; } })(),
@@ -138,14 +141,33 @@ function layout(p, s) {
   else headH = Math.max(s.logo ? logoH : 0, textH);
   const footH = s.footer || s.tag.trim() ? Math.round(40 * u) : 0;
   const gap = Math.round(38 * u);
+  // the caption under the card: one or two lines
+  const capSize = Math.round(32 * u);
+  const capLines = s.capOn && p ? capWrap((p.caption || '').trim(), capSize, W - 2 * m) : [];
+  const capH = capLines.length ? Math.round(capLines.length * capSize * 1.4 + gap * 0.55) : 0;
   const ax = m; const ay = m + (headH ? headH + gap : 0);
-  const aw = W - 2 * m; const ah = H - m - (footH ? footH + gap * 0.8 : 0) - ay;
+  const aw = W - 2 * m; const ah = H - m - (footH ? footH + gap * 0.8 : 0) - capH - ay;
   const bar = s.chrome ? Math.round(46 * u) : 0;
   const ar = p ? p.cw / p.ch : 16 / 9;
   let iw; let ih;
   if (s.fit === 'cover') { iw = aw; ih = ah - bar; } else { iw = Math.min(aw, (ah - bar) * ar); ih = iw / ar; }
   const card = { x: ax + (aw - iw) / 2, y: ay + (ah - ih - bar) / 2, w: iw, h: ih + bar, bar };
-  return { W, H, u, m, narrow, title, sub, titleSize, subSize, logoH, headH, footH, card };
+  return { W, H, u, m, narrow, title, sub, titleSize, subSize, logoH, headH, footH, card, capSize, capLines, gap };
+}
+// a caption as at most two balanced lines that fit maxW (the renderer shrinks whatever still doesn't)
+function capWrap(text, size, maxW) {
+  if (!text) return [];
+  const one = text.replace(/\s+/g, ' ');
+  if (measure(one, size, 700, 'Cairo') <= maxW) return [one];
+  const words = one.split(' ');
+  if (words.length < 2) return [one];
+  let best = null;
+  for (let k = 1; k < words.length; k++) {
+    const a = words.slice(0, k).join(' '); const b = words.slice(k).join(' ');
+    const w = Math.max(measure(a, size, 700, 'Cairo'), measure(b, size, 700, 'Cairo'));
+    if (!best || w < best.w) best = { w, lines: [a, b] };
+  }
+  return best.lines;
 }
 
 const f1 = (n) => Math.round(n * 10) / 10;
@@ -211,6 +233,12 @@ function frameSvg(p, s, src, css = '') {
     }
     out += `<image href="${src.photo}" x="${f1(x)}" y="${f1(y + bar)}" width="${f1(w)}" height="${f1(h - bar)}" preserveAspectRatio="xMidYMid slice"/></g>`;
     if (s.border) out += `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" rx="${r}" fill="none" stroke="${th.accent}" stroke-opacity="${th.light ? 0.5 : 0.42}" stroke-width="${f1(3 * u)}"/>`;
+  }
+
+  // the caption, centred under the card
+  if (p && L.capLines.length) {
+    const cy = card.y + card.h + L.gap * 0.55 + L.capSize * 0.95;
+    out += el({ type: 'text', text: L.capLines.join('\n'), x: W / 2, y: Math.round(cy), size: L.capSize, weight: 700, color: th.text, align: 'middle', font: 'ar', maxW: W - 2 * m, lh: 1.4 });
   }
 
   // header: logo + title + second line (Arabic, right-aligned)
@@ -295,11 +323,12 @@ async function saveAll() {
       prog.textContent = `جاري تجهيز ${k + 1} من ${n}…`;
       const p = state.photos[k];
       files.push(new File([await exportPhoto(p)], fileName(k), { type: 'image/jpeg' }));
-      caps.push((p.caption || '').trim().slice(0, 140));
+      caps.push((p.caption || '').trim().slice(0, CAP_MAX));
     }
     prog.textContent = 'جاري الرفع على المعرض…';
     const album = ($('gs-album').value.trim() || st().title.trim()).slice(0, 80);
-    const { done, failed } = await deps.saveToGallery(files, caps, album);
+    const desc = $('gs-desc').value.trim().slice(0, DESC_MAX);
+    const { done, failed } = await deps.saveToGallery(files, caps, album, desc);
     prog.replaceChildren(
       failed ? `انرفعت ${done}، وفشلت ${failed}. ` : `انحفظت ${done} صورة بألبوم «${album || 'صور متنوعة'}» كمسودات. انشرها من تبويب المعرض لما تكون جاهزة. `,
       deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', 'data-goto': 'gallery' }, 'روح للمعرض'),
@@ -333,6 +362,7 @@ function renderStrip() {
     art.innerHTML = frameSvg(p, s, thumbSrc(p));
     b.append(art, deps.h('span', { class: 'gs-n' }, String(k + 1)));
     if (p.blurs.length) b.append(deps.h('span', { class: 'gs-flag', title: 'فيها تمويه' }, '▦'));
+    if ((p.caption || '').trim()) b.append(deps.h('span', { class: 'gs-capflag', title: p.caption.trim() }, 'كابشن'));
     return b;
   });
   const add = deps.h('label', { class: 'gs-thumb gs-add', title: 'ضيف صور' },
@@ -350,13 +380,28 @@ function renderForm() {
   $('gs-fit').value = s.fit; $('gs-pad').value = s.pad; $('gs-radius').value = s.radius;
   $('gs-photo-box').hidden = !p;
   if (p && document.activeElement !== $('gs-caption')) $('gs-caption').value = p.caption;
-  $('gs-caption').placeholder = 'وصف قصير (اختياري)';
+  $('gs-cap-on').checked = !!s.capOn;
+  capCount();
+  $('gs-cap-all').disabled = n < 2;
   $('gs-album').placeholder = s.title.trim() || 'صور متنوعة';
+  descCount();
   $('gs-save-label').textContent = n ? `احفظ بالمعرض (${n})` : 'احفظ بالمعرض';
   ['gs-save', 'gs-dl-all'].forEach((id) => { $(id).disabled = !n; });
   $('gs-dl').disabled = !p;
 }
 function refresh() { renderForm(); renderStage(); renderStrip(); }
+const capCount = () => { const v = $('gs-caption').value.length; $('gs-cap-n').textContent = v ? `${v} / ${CAP_MAX}` : ''; };
+const descCount = () => { const v = $('gs-desc').value.length; $('gs-desc-n').textContent = v ? `${v} / ${DESC_MAX}` : ''; };
+// picking an album that already has a description brings it back (unless you've written your own)
+let descTyped = false;
+function albumChanged() {
+  if (descTyped && $('gs-desc').value.trim()) return;
+  const name = $('gs-album').value.trim() || st().title.trim();
+  const saved = deps.albumDesc?.(name) || '';
+  $('gs-desc').value = saved; descTyped = false;
+  $('gs-desc-note').textContent = saved ? 'هاد الوصف المحفوظ لهالألبوم. عدّله هون وبيتحدّث للبوست كله.' : 'بيطلع فوق صور الألبوم على الموقع. اختياري.';
+  descCount();
+}
 let raf = 0;
 const refreshSoon = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { renderStage(); renderForm(); clearTimeout(refreshSoon.t); refreshSoon.t = setTimeout(renderStrip, 250); }); };
 function setStyle(patch) { Object.assign(state.st, patch); saveStyle(); refreshSoon(); }
@@ -538,7 +583,27 @@ function wire() {
   $('gs-pad').addEventListener('input', (e) => setStyle({ pad: +e.target.value }));
   $('gs-radius').addEventListener('input', (e) => setStyle({ radius: +e.target.value }));
   $('gs-reset').addEventListener('click', () => { state.st = { ...DEFAULTS, title: st().title, sub: st().sub, tag: st().tag }; saveStyle(); refresh(); });
-  $('gs-caption').addEventListener('input', (e) => { const p = curPhoto(); if (p) p.caption = e.target.value; });
+  $('gs-caption').addEventListener('input', (e) => {
+    const p = curPhoto(); if (!p) return;
+    p.caption = e.target.value; capCount();
+    if (st().capOn) refreshSoon(); // the caption is on the picture: redraw it
+    else { clearTimeout(refreshSoon.t); refreshSoon.t = setTimeout(renderStrip, 400); } // the strip's «كابشن» flag
+  });
+  $('gs-caption').addEventListener('keydown', (e) => { // Ctrl+Enter: the next photo, straight to its caption
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && state.cur < state.photos.length - 1) { e.preventDefault(); state.cur++; refresh(); $('gs-caption').focus(); }
+  });
+  $('gs-cap-on').addEventListener('change', (e) => setStyle({ capOn: e.target.checked }));
+  $('gs-cap-all').addEventListener('click', () => {
+    const p = curPhoto(); if (!p) return;
+    const v = (p.caption || '').trim();
+    if (!v) { deps.toast('اكتب كابشن للصورة الحالية أول'); $('gs-caption').focus(); return; }
+    state.photos.forEach((q) => { q.caption = v; });
+    deps.toast(`صار نفس الكابشن على ${state.photos.length} صور`);
+    refresh();
+  });
+  $('gs-desc').addEventListener('input', () => { descTyped = true; descCount(); });
+  $('gs-album').addEventListener('change', albumChanged);
+  $('gs-title').addEventListener('change', () => { if (!$('gs-album').value.trim()) albumChanged(); });
   $('gs-prev').addEventListener('click', () => { if (state.cur > 0) { state.cur--; refresh(); } });
   $('gs-next').addEventListener('click', () => { if (state.cur < state.photos.length - 1) { state.cur++; refresh(); } });
   $('gs-del').addEventListener('click', removeCurrent);
@@ -577,4 +642,5 @@ export async function showGalleryStudio() {
   }
   fillWorkshops(); fillAlbums();
   refresh();
+  albumChanged();
 }

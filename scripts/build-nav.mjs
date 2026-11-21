@@ -1,12 +1,16 @@
 // Writes the site header (logo + menu + «انضم الآن») into every public page, so it's identical everywhere.
-// Edit LINKS / MORE here, then run:  node scripts/build-nav.mjs
+// Edit LINKS / GROUPS here, then run:  node scripts/build-nav.mjs
 // The header sits between <!-- nav:start --> and <!-- nav:end -->; the first run replaces the old
-// <header class="site-header">…</header>. Behaviour (drawer, «المزيد», scroll) is public/nav.js.
+// <header class="site-header">…</header>. Looks: public/nav.css · behaviour: public/nav.js.
+//
+// Wide screens: the main links in a rail (a mint pill slides to the one you point at), «المزيد» opens a
+// two-column menu. Phones: ☰ opens a sheet from the bottom: the main pages as big tiles, then the rest.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
-const NAV_JS = '/nav.js?v=1';
+const NAV_JS = '/nav.js?v=2';
+const NAV_CSS = '/nav.css?v=1';
 
 // page file → which link is «you are here»
 const PAGES = {
@@ -25,31 +29,50 @@ const ICON = {
   survey: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3',
   trainer: 'M3 4h18v12H3zM8 20h8M12 16v4M10 8l4 2-4 2z',
   faq: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.2a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.2-2.5 3.8M12 17h.01',
+  join: 'M15 19v-1.5A3.5 3.5 0 0 0 11.5 14h-5A3.5 3.5 0 0 0 3 17.5V19M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM19 8v6M22 11h-6',
 };
+// the rail (wide screens) and the tiles (phones). `wide` = only in the rail (on phones it sits in a group below)
 const LINKS = [
   ['home', '/', 'الرئيسية'],
   ['workshop', '/workshop', 'الورشات'],
   ['blog', '/blog', 'المدونة'],
   ['gallery', '/gallery', 'المعرض'],
-  ['about', '/#about', 'من نحن'],
+  ['about', '/#about', 'من نحن', 'wide'],
 ];
-// [key, href, name, line, extra attributes]
-const MORE = [
-  ['members', '/#members', 'أعضاء المجتمع', 'وجوه من المجتمع', 'id="nav-members" hidden'],
-  ['events', '/#events', 'الفعاليات', 'آخر الأخبار والأنشطة', 'id="nav-events" hidden'],
-  ['fields', '/#fields', 'المجالات', 'شو بنتعلّم سوا'],
-  ['survey', '/survey', 'استبيان المواضيع', 'قلّنا شو بدك نتعلّم'],
-  ['trainer', '/trainer', 'كن مدرّباً معنا', 'شارك خبرتك بورشة'],
-  ['faq', '/#faq', 'أسئلة شائعة', 'أجوبة سريعة'],
+// «المزيد»: [key, href, name, line, extra]. extra: 'hidden' = shown by site.js when the section has something;
+// 'phone' = only on phones (it's in the rail on wide screens)
+const GROUPS = [
+  ['المجتمع', [
+    ['about', '/#about', 'من نحن', 'قصتنا ورؤيتنا', 'phone'],
+    ['members', '/#members', 'أعضاء المجتمع', 'وجوه من المجتمع', 'hidden'],
+    ['events', '/#events', 'الفعاليات', 'آخر الأخبار والأنشطة', 'hidden'],
+    ['fields', '/#fields', 'المجالات', 'شو بنتعلّم سوا'],
+    ['faq', '/#faq', 'أسئلة شائعة', 'أجوبة سريعة'],
+  ]],
+  ['شارك معنا', [
+    ['survey', '/survey', 'استبيان المواضيع', 'قلّنا شو بدك نتعلّم'],
+    ['trainer', '/trainer', 'كن مدرّباً معنا', 'شارك خبرتك بورشة'],
+  ]],
 ];
 
 const svg = (key) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[key]}"/></svg>`;
 const cur = (key, active) => (key && key === active ? ' aria-current="page"' : '');
 
 function header(active) {
-  const links = LINKS.map(([k, href, name]) => `          <li><a href="${href}"${cur(k, active)}>${svg(k)}<span>${name}</span></a></li>`).join('\n');
-  const more = MORE.map(([k, href, name, line, extra]) => `              <li${extra && extra.includes('hidden') ? ` ${extra.replace(' hidden', '')} hidden` : ''}><a href="${href}"${cur(k, active)}>${svg(k)}<span><b>${name}</b><small>${line}</small></span></a></li>`).join('\n');
-  const moreActive = MORE.some(([k]) => k === active) ? ' is-current' : '';
+  const links = LINKS.map(([k, href, name, only]) => `            <li${only ? ' class="nav-wide-only"' : ''}><a class="nav-link" href="${href}" data-k="${k}"${cur(k, active)}>${svg(k)}<span>${name}</span></a></li>`).join('\n');
+  const groups = GROUPS.map(([title, items]) => {
+    const lis = items.map(([k, href, name, line, extra = '']) => {
+      const attrs = (extra === 'hidden' ? ` id="nav-${k}" hidden` : '') + (extra === 'phone' ? ' class="nav-phone-only"' : '');
+      return `                  <li${attrs}><a href="${href}" data-k="${k}"${extra === 'phone' ? '' : cur(k, active)}>${svg(k)}<span><b>${name}</b><small>${line}</small></span></a></li>`;
+    }).join('\n');
+    return `              <div class="nav-group">
+                <p class="nav-group-title">${title}</p>
+                <ul>
+${lis}
+                </ul>
+              </div>`;
+  }).join('\n');
+  const moreActive = GROUPS.some(([, items]) => items.some(([k, , , , extra]) => k === active && extra !== 'phone')) ? ' is-current' : '';
   return `<!-- nav:start (scripts/build-nav.mjs writes this block; edit it there) -->
   <header class="site-header" id="site-header">
     <div class="container header-row">
@@ -61,18 +84,26 @@ function header(active) {
         </span>
       </a>
       <nav class="nav" id="site-nav" aria-label="القائمة الرئيسية">
-        <ul class="nav-list">
+        <div class="nav-sheet-head">
+          <span class="nav-grip" aria-hidden="true"></span>
+          <strong>وين بدك تروح؟</strong>
+          <button class="nav-close" type="button" aria-label="إغلاق القائمة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div class="nav-rail">
+          <span class="nav-ink" aria-hidden="true"></span>
+          <ul class="nav-list">
 ${links}
-          <li class="nav-more${moreActive}">
-            <button class="nav-more-btn" type="button" aria-expanded="false" aria-controls="nav-more-menu">
-              <span>المزيد</span><svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <ul class="nav-menu" id="nav-more-menu">
-${more}
-            </ul>
-          </li>
-        </ul>
-        <a class="btn btn-primary nav-drawer-cta" href="/join">انضم للمجتمع</a>
+            <li class="nav-more${moreActive}">
+              <button class="nav-more-btn" type="button" aria-expanded="false" aria-controls="nav-more-menu">
+                <span>المزيد</span><svg class="nav-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="nav-menu" id="nav-more-menu">
+${groups}
+              </div>
+            </li>
+          </ul>
+        </div>
+        <a class="btn btn-primary nav-sheet-cta" href="/join">${svg('join')}<span>انضم للمجتمع</span></a>
       </nav>
       <div class="header-actions">
         <a class="btn btn-primary btn-sm nav-cta" href="/join"${active === 'join' ? ' aria-current="page"' : ''}>انضم الآن</a>
@@ -100,6 +131,10 @@ for (const [file, active] of Object.entries(PAGES)) {
   }
   if (!html.includes('/nav.js')) html = html.replace('</head>', `  <script type="module" src="${NAV_JS}"></script>\n</head>`);
   else html = html.replace(/\/nav\.js\?v=\d+/, NAV_JS);
+  // nav.css right after brand.css (it overrides the header bits of styles.css)
+  if (!html.includes('/nav.css')) html = html.replace(/(<link rel="stylesheet" href="\/brand\.css\?v=\d+">)/, `$1\n  <link rel="stylesheet" href="${NAV_CSS}">`);
+  else html = html.replace(/\/nav\.css\?v=\d+/, NAV_CSS);
+  if (!html.includes('/nav.css')) console.log(`  ! ${file}: no brand.css link to put nav.css after`);
   writeFileSync(path, html);
   console.log(`ok ${file}${active ? ` (${active})` : ''}`);
 }

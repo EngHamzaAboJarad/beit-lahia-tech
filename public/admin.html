@@ -10,12 +10,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=44">
+  <link rel="stylesheet" href="/styles.css?v=20">
+  <link rel="stylesheet" href="/admin.css?v=45">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=52"></script>
+  <script type="module" src="/admin.js?v=53"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -1011,16 +1011,17 @@
             </div>
             <button class="btn btn-ghost-dark btn-sm gs-reset" type="button" id="gs-reset">رجّع الشكل الافتراضي</button>
 
-            <div class="gs-photo" id="gs-photo-box" hidden>
-              <h3>الصورة الحالية</h3>
-              <div class="field"><label for="gs-caption">وصفها بالمعرض</label><input type="text" id="gs-caption" maxlength="140"></div>
-            </div>
-
+            <h3>البوست بالمعرض</h3>
             <div class="field gs-album-field">
-              <label for="gs-album">الألبوم بالمعرض</label>
+              <label for="gs-album">اسم الألبوم</label>
               <input type="text" id="gs-album" list="gs-albums" maxlength="80">
               <datalist id="gs-albums"></datalist>
               <span class="muted small">الصور بتنحفظ مع بعض بهالألبوم، وعلى الموقع بتطلع ككرت واحد بيفتح عليهم. فاضي = العنوان.</span>
+            </div>
+            <div class="field gs-album-field">
+              <label for="gs-desc">وصف البوست <span class="muted small" id="gs-desc-n"></span></label>
+              <textarea id="gs-desc" rows="4" maxlength="600" placeholder="مثلاً: يوم كامل مع 30 مشارك تعلّمنا فيه كيف نستخدم الذكاء الاصطناعي بالبرمجة، وطلعنا بمشاريع صغيرة…"></textarea>
+              <span class="muted small" id="gs-desc-note">بيطلع فوق صور الألبوم على الموقع. اختياري.</span>
             </div>
 
             <div class="studio-actions">
@@ -1045,6 +1046,15 @@
             </div>
             <div class="ws-canvas">
               <div class="gs-stage" id="gs-stage" tabindex="0" aria-label="المعاينة: الأسهم بين الصور، Enter للقص"></div>
+            </div>
+            <div class="gs-capbar" id="gs-photo-box" hidden>
+              <label class="gs-cap-label" for="gs-caption"><span>كابشن الصورة</span><span class="gs-cap-n" id="gs-cap-n" dir="ltr"></span></label>
+              <textarea id="gs-caption" rows="2" maxlength="280" placeholder="اكتب جملة عن هالصورة… بتطلع تحتها بالمعرض (اختياري)"></textarea>
+              <div class="gs-cap-tools">
+                <label class="gs-cap-chk"><input type="checkbox" id="gs-cap-on"><span>اكتبه على الصورة كمان</span></label>
+                <button class="gs-cap-btn" type="button" id="gs-cap-all">نفس الكابشن لكل الصور</button>
+                <span class="gs-cap-hint">Ctrl+Enter للصورة الجاية</span>
+              </div>
             </div>
             <div class="gs-strip" id="gs-strip" aria-label="الصور"></div>
             <p class="muted small studio-hint">دبل كليك على المعاينة بيفتح القص · الصور اللي بنفس المقاس بتاخد نفس القص لحالها</p>

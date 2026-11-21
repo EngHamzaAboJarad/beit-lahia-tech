@@ -7,7 +7,7 @@ import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fit
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
 import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=10';
-import { initGalleryStudio, showGalleryStudio } from './admin-gallery-studio.js?v=2';
+import { initGalleryStudio, showGalleryStudio } from './admin-gallery-studio.js?v=3';
 import { initBlog, showBlog } from './admin-blog.js?v=1';
 import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
 import { withActivity, startActivity, logAction } from './admin-activity.js?v=3';
@@ -310,7 +310,7 @@ function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
   if (can('studio')) initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
-  if (can('gallery')) initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean) });
+  if (can('gallery')) initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' });
   if (can('blog')) initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser });
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const hash = location.hash.slice(1);
@@ -1170,7 +1170,8 @@ async function deleteEvent(ev) {
 
 /* =================== Gallery =================== */
 // Photos live in Firestore (no Cloud Storage / paid plan needed):
-//   gallery/{id}     → thumb (small data URL), caption, published, order, w, h   (listed on the home page)
+//   gallery/{id}     → thumb (small data URL), caption, album, albumDesc, published, order, w, h   (listed on the home page)
+//                      albumDesc = the album's «وصف البوست», kept the same on every photo of the album
 //   galleryFull/{id} → src (full image data URL, ≤ ~900 KB)                       (loaded when a photo is opened)
 let gallery = [];
 
@@ -1217,7 +1218,30 @@ const photoCount = (n) => (n === 1 ? 'صورة وحدة' : n === 2 ? 'صورتي
 function galleryAlbums() {
   const map = new Map();
   gallery.forEach((p) => { const k = String(p.album || '').trim(); if (!map.has(k)) map.set(k, []); map.get(k).push(p); });
-  return [...map].map(([name, photos]) => ({ name, photos }));
+  return [...map].map(([name, photos]) => ({ name, photos, desc: photos.find((p) => p.albumDesc)?.albumDesc || '' }));
+}
+const CAP_MAX = 280; const DESC_MAX = 600;
+// the album's description («وصف البوست»), on every photo of it
+function albumDescBox(a) {
+  const ta = h('textarea', { rows: 3, maxlength: DESC_MAX, placeholder: 'اكتب شو صار بهاليوم، مين شارك، شو تعلّمنا… بيطلع فوق صور الألبوم على الموقع', 'aria-label': 'وصف البوست' });
+  ta.value = a.desc;
+  const n = h('span', { class: 'muted small' }, a.desc ? `${a.desc.length} / ${DESC_MAX}` : '');
+  const save = h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', disabled: true }, h('span', { class: 'btn-label' }, 'احفظ الوصف'), h('span', { class: 'spinner', 'aria-hidden': 'true' }));
+  ta.addEventListener('input', () => { n.textContent = ta.value.length ? `${ta.value.length} / ${DESC_MAX}` : ''; save.disabled = ta.value.trim() === a.desc; });
+  save.addEventListener('click', async () => {
+    const v = ta.value.trim().slice(0, DESC_MAX);
+    setBusy(save, true);
+    try {
+      const batch = fs.writeBatch(db);
+      a.photos.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { albumDesc: v, updatedAt: fs.serverTimestamp() }));
+      await batch.commit();
+      a.photos.forEach((p) => { p.albumDesc = v; }); a.desc = v;
+      toast(v ? 'انحفظ وصف البوست' : 'انشال وصف البوست');
+    } catch (e) { toast(errMsg(e), true); } finally { setBusy(save, false); save.disabled = ta.value.trim() === a.desc; }
+  });
+  return h('div', { class: 'g-album-desc' },
+    h('div', { class: 'g-album-desc-head' }, h('strong', {}, 'وصف البوست'), n),
+    ta, h('div', { class: 'g-album-desc-foot' }, save));
 }
 function renderGalleryAdmin() {
   $('gallery-empty').hidden = gallery.length > 0;
@@ -1235,27 +1259,30 @@ function renderGalleryAdmin() {
         h('span', { class: 'g-album-cover', 'aria-hidden': 'true' }, ...a.photos.slice(0, 3).map((p) => h('img', { src: p.thumb, alt: '' }))),
         h('div', { class: 'g-album-title' },
           h('h3', {}, a.name || ALBUM_NONE),
-          h('span', { class: 'muted small' }, `${photoCount(a.photos.length)} · ${live === a.photos.length ? 'كلها منشورة' : live ? `${live} منشورة` : 'كلها مسودات'}`)),
+          h('span', { class: 'muted small' }, `${photoCount(a.photos.length)} · ${live === a.photos.length ? 'كلها منشورة' : live ? `${live} منشورة` : 'كلها مسودات'}${a.desc ? ' · فيه وصف' : ''}`)),
         h('span', { class: 'g-album-chev', 'aria-hidden': 'true' })),
       h('div', { class: 'g-album-body' },
         h('div', { class: 'g-album-actions' },
           a.name ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => renameAlbum(a) }, 'غيّر الاسم') : null,
           h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, !all) }, all ? 'اخفي الألبوم' : 'انشر الألبوم كله')),
+        albumDescBox(a),
         h('ul', { class: 'gallery-admin g-strip' }, ...a.photos.map((p, i) => galleryItem(p, i, a.photos)))));
     return box;
   }));
 }
 function galleryItem(p, i, same) {
   const ref = fs.doc(db, 'gallery', p.id);
-  const cap = h('input', { type: 'text', value: p.caption || '', maxlength: 140, placeholder: 'وصف قصير (اختياري)', 'aria-label': 'وصف الصورة' });
+  const cap = h('textarea', { rows: 2, maxlength: CAP_MAX, placeholder: 'كابشن الصورة (اختياري)', 'aria-label': 'كابشن الصورة' });
+  cap.value = p.caption || '';
   cap.addEventListener('change', async () => {
-    try { await fs.updateDoc(ref, { caption: cap.value.trim(), updatedAt: fs.serverTimestamp() }); p.caption = cap.value.trim(); toast('انحفظ الوصف'); } catch (e) { toast(errMsg(e), true); }
+    try { await fs.updateDoc(ref, { caption: cap.value.trim(), updatedAt: fs.serverTimestamp() }); p.caption = cap.value.trim(); toast('انحفظ الكابشن'); } catch (e) { toast(errMsg(e), true); }
   });
   const alb = h('input', { type: 'text', value: p.album || '', maxlength: 80, list: 'gallery-albums', placeholder: ALBUM_NONE, 'aria-label': 'الألبوم' });
   alb.addEventListener('change', async () => {
     const v = alb.value.trim().slice(0, 80);
     try {
-      await fs.updateDoc(ref, { album: v, updatedAt: fs.serverTimestamp() }); p.album = v;
+      const desc = galleryAlbums().find((x) => x.name === v && x.photos.some((q) => q !== p))?.desc || '';
+      await fs.updateDoc(ref, { album: v, albumDesc: desc, updatedAt: fs.serverTimestamp() }); p.album = v; p.albumDesc = desc;
       toast(v ? `انتقلت لألبوم «${v}»` : `انتقلت لـ«${ALBUM_NONE}»`); renderGalleryAdmin();
     } catch (e) { toast(errMsg(e), true); }
   });
@@ -1293,8 +1320,11 @@ async function publishAlbum(a, on) {
   } catch (e) { toast(errMsg(e), true); }
 }
 
-async function uploadFiles(files, captions = [], album) {
+async function uploadFiles(files, captions = [], album, desc = '') {
   const albumName = String(album ?? $('gallery-album').value).trim().slice(0, 80);
+  // a new description goes on the whole album; none keeps the album's own
+  const existing = galleryAlbums().find((a) => a.name === albumName);
+  const albumDesc = String(desc || '').trim().slice(0, DESC_MAX) || existing?.desc || '';
   const list = [...files].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
   if (!list.length) { toast('اختار صور JPG أو PNG أو WebP', true); return { done: 0, failed: 0 }; }
   const progress = $('gallery-progress');
@@ -1309,13 +1339,20 @@ async function uploadFiles(files, captions = [], album) {
       const ref = fs.doc(fs.collection(db, 'gallery'));
       const batch = fs.writeBatch(db);
       batch.set(ref, {
-        thumb: thumb.data, caption: String(captions[k] || '').slice(0, 140), album: albumName, published: false, order: minOrder - list.length + done,
+        thumb: thumb.data, caption: String(captions[k] || '').slice(0, CAP_MAX), album: albumName, albumDesc, published: false, order: minOrder - list.length + done,
         w: thumb.w, h: thumb.h, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp(),
       });
       batch.set(fs.doc(db, 'galleryFull', ref.id), { src: full.data });
       await batch.commit();
       done++;
     } catch (e) { console.error(e); failed++; }
+  }
+  if (done && existing && albumDesc !== existing.desc) { // the album's older photos get the new description too
+    try {
+      const batch = fs.writeBatch(db);
+      existing.photos.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { albumDesc, updatedAt: fs.serverTimestamp() }));
+      await batch.commit();
+    } catch (e) { console.error(e); }
   }
   progress.textContent = failed ? `انرفعت ${done}، وفشلت ${failed}.` : `انرفعت ${done} صورة كمسودة. انشرها لما تكون جاهزة.`;
   $('gallery-input').value = '';
