@@ -1753,3 +1753,10 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
   #ws-sub-overview .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
   #ws-sub-overview .stat { padding: 12px 14px; }
 }
+
+/* «قالب الشهادة» from the sidebar: the template alone (no workshop header / sections), a picker for the workshop */
+.cert-only-bar { display: none; }
+.ws-detail.is-cert-only .ws-detail-head, .ws-detail.is-cert-only .ws-subtabs { display: none; }
+.ws-detail.is-cert-only .cert-only-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.cert-only-bar label { font-weight: 700; color: var(--night); }
+.cert-only-bar select { min-height: 44px; min-width: min(100%, 320px); padding: 8px 12px; font: inherit; font-size: 15px; color: var(--night); background: var(--white); border: 1.5px solid #D5DCE5; border-radius: 10px; }

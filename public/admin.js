@@ -285,7 +285,8 @@ function selectTab(name, focus = false) {
   setDrawer(false);
   history.replaceState(null, '', `#${name}`);
   if (name === 'workshop') {
-    if (wsOpen && selId) openWorkshop(selId, wsOpen);
+    if (wsOpen === 'cert' && selId) openCertOnly(selId);
+    else if (wsOpen && selId) openWorkshop(selId, wsOpen);
     else {
       showWsIndex();
       if (wsOpen === 'cert' && workshops.length) toast('اختار الورشة اللي بدك تعدّل قالب شهادتها');
@@ -297,7 +298,7 @@ function selectTab(name, focus = false) {
 // «قالب الشهادة» in the sidebar = the selected workshop's «الشهادة» section: it lights up there, «الورشات» elsewhere
 function syncWsSidebar() {
   if ($('tab-workshop').hidden) return;
-  const inCert = !$('ws-detail').hidden && wsSub === 'cert';
+  const inCert = !$('ws-detail').hidden && certOnly;
   $('tab-btn-workshop').setAttribute('aria-selected', String(!inCert));
   $('tab-btn-cert').setAttribute('aria-selected', String(inCert));
   $('tab-btn-workshop').tabIndex = inCert ? -1 : 0;
@@ -370,6 +371,7 @@ function boot() {
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const [hash, hashWs, hashSub] = location.hash.slice(1).split('/');
   if (hash === 'workshop' && hashWs) wsDeepLink = { id: decodeURIComponent(hashWs), sub: hashSub || 'overview' };
+  if (hash === 'cert') wsDeepLink = { certOnly: true };
   // a limited admin lands on their own first section (the overview has little for them)
   const home = isFull() ? 'overview' : TABS.find((t) => t !== 'overview' && tabAllowed(t) && t !== 'cert') || 'overview';
   selectTab(TABS.includes(hash) && tabAllowed(hash) ? hash : home);
@@ -1820,7 +1822,8 @@ async function loadWorkshopAll() {
   try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
   selectWorkshop(pick, { force: true });
-  if (wsDeepLink && workshops.some((w) => w.id === wsDeepLink.id) && !$('tab-workshop').hidden) openWorkshop(wsDeepLink.id, wsDeepLink.sub);
+  if (wsDeepLink?.certOnly && selId && !$('tab-workshop').hidden) openCertOnly(selId);
+  else if (wsDeepLink && workshops.some((w) => w.id === wsDeepLink.id) && !$('tab-workshop').hidden) openWorkshop(wsDeepLink.id, wsDeepLink.sub);
   wsDeepLink = null;
   renderTotal();
   renderMessages();
@@ -2351,12 +2354,32 @@ let wsSub = 'overview';
 let wsDeepLink = null; // #workshop/<id>/<section> from the address, opened once the workshops are loaded
 const WS_SUBS = ['overview', 'regs', 'info', 'cert'];
 function showWsIndex() {
+  setCertOnly(false);
   $('ws-detail').hidden = true;
   $('ws-index').hidden = false;
   renderWorkshopList();
   if (!$('tab-workshop').hidden) history.replaceState(null, '', '#workshop');
   syncWsSidebar();
 }
+// «قالب الشهادة» (sidebar): only the template of a workshop, with a picker to switch workshop; no workshop header or sections
+let certOnly = false;
+function setCertOnly(on) {
+  certOnly = on;
+  $('ws-detail').classList.toggle('is-cert-only', on);
+  if (on) {
+    $('cert-ws-pick').replaceChildren(...sortedWorkshops().map((w) => {
+      const m = mergeWorkshop(w);
+      return h('option', { value: w.id, selected: w.id === selId }, `${m.titleAr || m.title || 'ورشة بدون اسم'} · ${stateBadge(m).text}`);
+    }));
+  }
+}
+function openCertOnly(id) {
+  if (id !== selId) { selectWorkshop(id); if (selId !== id) { $('cert-ws-pick').value = selId; return; } }
+  setCertOnly(true);
+  openWorkshop(id, 'cert');
+}
+$('cert-ws-pick').addEventListener('change', (e) => openCertOnly(e.target.value));
+
 function openWorkshop(id, sub = 'overview') {
   if (id !== selId) { selectWorkshop(id); if (selId !== id) return; } // unsaved changes elsewhere and the admin stayed
   $('ws-index').hidden = true;
@@ -2366,6 +2389,7 @@ function openWorkshop(id, sub = 'overview') {
   scrollTo({ top: 0, behavior: 'auto' });
 }
 function setWsSub(sub, focus = false) {
+  if (sub !== 'cert' && certOnly) setCertOnly(false);
   wsSub = sub;
   WS_SUBS.forEach((s) => {
     const on = s === sub;
@@ -2377,7 +2401,7 @@ function setWsSub(sub, focus = false) {
   });
   enterPanel($(`ws-sub-${sub}`));
   if (sub === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
-  if (selId && !$('tab-workshop').hidden) history.replaceState(null, '', `#workshop/${encodeURIComponent(selId)}/${sub}`);
+  if (selId && !$('tab-workshop').hidden) history.replaceState(null, '', certOnly ? '#cert' : `#workshop/${encodeURIComponent(selId)}/${sub}`);
   syncWsSidebar();
 }
 $('ws-back').addEventListener('click', () => { showWsIndex(); scrollTo({ top: 0, behavior: 'auto' }); });
