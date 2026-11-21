@@ -1,5 +1,6 @@
 // Beit Lahia Tech — /trainer: a trainer's registration → trainers/{id}.
 import { getDbLite as getDb } from './firebase-init.js';
+import { siteData } from './site-data.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
 import { clean, normalizePhone, normalizeEmail, wireForm, friendlyError, loadFormConfig, applyFormTexts } from './forms-shared.js';
 
@@ -10,9 +11,13 @@ const statusEl = $('form-status');
 
 $('year').textContent = new Date().getFullYear();
 renderFooterLinks($('footer-social'), null);
-getDb().then(async ({ db, fs }) => {
-  const [snap, cfg] = await Promise.all([fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null), loadFormConfig(db, fs)]);
-  if (snap && snap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...snap.data() });
+// settings + the form's texts: the Worker's edge cache (site-data.js), Firestore if it can't answer
+siteData('settings').catch(() => getDb().then(async ({ db, fs }) => {
+  const [snap, forms] = await Promise.all([fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null), loadFormConfig(db, fs)]);
+  return { settings: snap && snap.exists() ? snap.data() : null, forms };
+})).then(({ settings, forms }) => {
+  const cfg = forms || {};
+  if (settings) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...settings });
   applyFormTexts(cfg, 'trainer', form);
 }).catch(() => {});
 form.addEventListener('focusin', () => { getDb().catch(() => {}); }, { once: true });

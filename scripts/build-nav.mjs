@@ -62,9 +62,23 @@ const GROUPS = [
 // · the page's data (public/site-data.js: the Worker's edge cache) starts downloading with the page itself
 const PRERENDER = ['/', '/workshop', '/blog', '/blog/*', '/gallery', '/join', '/survey', '/trainer', '/privacy'];
 const SITE_API = 'https://social.beitlahia.tech/site/';
-const DATA = { 'index.html': 'home', 'gallery.html': 'gallery', 'blog.html': 'blog' };
-const SPEED = (file) => `<!-- speed:start (scripts/build-nav.mjs) -->${DATA[file] ? `
-  <link rel="preload" as="fetch" href="${SITE_API}${DATA[file]}" crossorigin>` : ''}
+const DATA = {
+  'index.html': 'home', 'gallery.html': 'gallery', 'blog.html': 'blog',
+  'join.html': 'settings', 'survey.html': 'settings', 'trainer.html': 'settings',
+};
+// pages whose answer depends on the address: a tiny script adds the preload (same URL as site-data.js › siteUrl)
+const DATA_JS = {
+  'workshop.html': `var w=new URLSearchParams(location.search).get('w')||'';a='workshop'+(/^[A-Za-z0-9_-]{1,40}$/.test(w)?'/'+w:'');`,
+  'post.html': `var m=/^\\/blog\\/(.+?)\\/?$/.exec(location.pathname),s=m?m[1]:new URLSearchParams(location.search).get('s')||'';try{s=m?decodeURIComponent(s):s}catch(e){}if(!s)return;a='post/'+encodeURIComponent(s);`,
+};
+const preload = (file) => {
+  if (DATA[file]) return `
+  <link rel="preload" as="fetch" href="${SITE_API}${DATA[file]}" crossorigin>`;
+  if (DATA_JS[file]) return `
+  <script>(function(){var a;${DATA_JS[file]}var l=document.createElement('link');l.rel='preload';l.as='fetch';l.crossOrigin='anonymous';l.href='${SITE_API}'+a;document.head.appendChild(l)})()</script>`;
+  return '';
+};
+const SPEED = (file) => `<!-- speed:start (scripts/build-nav.mjs) -->${preload(file)}
   <link rel="preconnect" href="https://social.beitlahia.tech" crossorigin>
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
   <link rel="modulepreload" href="/firebase-init.js">

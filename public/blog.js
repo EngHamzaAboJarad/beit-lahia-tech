@@ -11,6 +11,7 @@ document.documentElement.classList.add('js');
 const year = $('year'); if (year) year.textContent = new Date().getFullYear();
 renderFooterLinks($('footer-social'), null);
 
+let postSettings = null; // a post page's settings, from the same answer as the post (the footer's contact)
 const setMeta = (sel, attr, v) => { const el = document.querySelector(sel); if (el && v) el.setAttribute(attr, v); };
 
 /* =================== /blog =================== */
@@ -70,11 +71,18 @@ async function postPage() {
   const slug = slugFromUrl();
   if (!slug) { notFound(); return; }
   let db; let fs; let post;
-  try {
-    ({ db, fs } = await getDbLite());
-    const snap = await fs.getDocs(fs.query(fs.collection(db, 'blog'), fs.where('slug', '==', slug), fs.where('status', '==', 'published')));
-    post = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((p) => postState(p) === 'published');
-  } catch (e) { console.warn(e); }
+  // the post, its text and its pictures in one answer from the Worker's edge cache; Firestore if it can't answer
+  const cached = await siteData('post', slug).catch(() => null);
+  if (cached) {
+    post = (cached.posts || []).find((p) => postState(p) === 'published');
+    postSettings = cached.settings || null;
+  } else {
+    try {
+      ({ db, fs } = await getDbLite());
+      const snap = await fs.getDocs(fs.query(fs.collection(db, 'blog'), fs.where('slug', '==', slug), fs.where('status', '==', 'published')));
+      post = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((p) => postState(p) === 'published');
+    } catch (e) { console.warn(e); }
+  }
   if (!post) { notFound(); return; }
 
   // the card first (title, cover), then the text and its images
@@ -90,12 +98,17 @@ async function postPage() {
   $('post-loading').hidden = true; $('post').hidden = false;
 
   let body = { md: '' };
-  try { body = (await fs.getDoc(fs.doc(db, 'blogBody', post.id))).data() || body; } catch (e) { console.warn(e); }
+  let media = {};
+  if (cached) {
+    body = cached.bodies?.[post.id] || body;
+    media = cached.media || {};
+  } else {
+    try { body = (await fs.getDoc(fs.doc(db, 'blogBody', post.id))).data() || body; } catch (e) { console.warn(e); }
+    await Promise.all(mediaIds(body.md).map(async (id) => {
+      try { const d = await fs.getDoc(fs.doc(db, 'blogMedia', id)); if (d.exists()) media[id] = d.data().src; } catch { /* skip that image */ }
+    }));
+  }
   if (body.cover) $('post-cover-img').src = body.cover; // the full-size cover replaces the small one
-  const media = {};
-  await Promise.all(mediaIds(body.md).map(async (id) => {
-    try { const d = await fs.getDoc(fs.doc(db, 'blogMedia', id)); if (d.exists()) media[id] = d.data().src; } catch { /* skip that image */ }
-  }));
   const { html, toc } = renderMarkdown(body.md, media);
   $('post-body').innerHTML = html; // renderMarkdown escapes every piece of text and only lets safe links through
   if (toc.length >= 3) {
@@ -152,7 +165,7 @@ if ($('post-body')) postPage();
 addEventListener('load', async () => {
   try {
     // /blog already has them (the same answer as its posts)
-    const fromCache = $('blog-grid') ? await siteData('blog').then((d) => d.settings).catch(() => null) : null;
+    const fromCache = $('blog-grid') ? await siteData('blog').then((d) => d.settings).catch(() => null) : postSettings;
     if (fromCache) { renderFooterLinks($('footer-social'), fromCache); return; }
     const { db, fs } = await getDbLite();
     renderFooterLinks($('footer-social'), (await fs.getDoc(fs.doc(db, 'site', 'settings'))).data() || {});

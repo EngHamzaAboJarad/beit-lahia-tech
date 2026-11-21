@@ -3,6 +3,7 @@
 // Content from workshops/{id}; registration → workshopRegs (with workshopId). A finished workshop
 // (status 'done') shows «الورشة انتهت» instead of the form; past workshops are listed at the bottom.
 import { getDbLite as getDb } from './firebase-init.js';
+import { siteData } from './site-data.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
 import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP, placeText, dayOver, WS_PUBLIC } from './workshop-shared.js';
 import { gazaDay } from './track.js';
@@ -107,30 +108,37 @@ function renderPast(list) {
   }));
 }
 
+// the same answer as the Worker's /site/workshop, straight from Firestore (when the Worker can't answer)
+async function workshopFromFirestore(id) {
+  const { db, fs } = await getDb();
+  const setSnap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
+  const settings = setSnap && setSnap.exists() ? setSnap.data() : null;
+  const ids = id ? [id] : [...new Set([settings?.nextWorkshop, settings?.currentWorkshop].filter(validId))];
+  const [found, done] = await Promise.all([
+    Promise.all(ids.map((x) => fs.getDoc(fs.doc(db, 'workshops', x)).catch(() => null))),
+    fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done'))).catch(() => null),
+  ]);
+  const hit = found.find((s) => s && s.exists());
+  return { settings, workshop: hit ? { id: hit.id, ...hit.data() } : null, past: (done?.docs || []).map((d) => ({ id: d.id, ...d.data() })) };
+}
+
 (async () => {
-  let fs, db;
+  let past = null;
   try {
-    ({ db, fs } = await getDb());
-    const setSnap = await fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null);
-    const settings = setSnap && setSnap.exists() ? setSnap.data() : {};
-    if (setSnap && setSnap.exists()) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...settings });
     // ?w=<id>, else the scheduled next workshop (readable only once its publish time came), else the current one.
     // A draft, a not-yet-published or a wrong id isn't readable by visitors → "not found".
-    const ids = validId(askedId) ? [askedId] : [...new Set([settings.nextWorkshop, settings.currentWorkshop].filter(validId))];
-    for (const id of ids) {
-      const snap = await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null);
-      if (snap && snap.exists()) { wid = id; ws = mergeWorkshop(snap.data()); break; }
-    }
-    if (!wid) ws = { ...mergeWorkshop(null), topics: askedId ? [] : DEFAULT_WORKSHOP.topics };
+    const id = validId(askedId) ? askedId : '';
+    const d = await siteData('workshop', id)
+      .catch((e) => { if (e?.message !== 'site-data: local') console.warn('[site-data]', e); return workshopFromFirestore(id); });
+    if (d.settings) renderFooterLinks($('footer-social'), { ...DEFAULT_SETTINGS, ...d.settings });
+    if (d.workshop) { wid = d.workshop.id; const { id: _, ...raw } = d.workshop; ws = mergeWorkshop(raw); }
+    else ws = { ...mergeWorkshop(null), topics: askedId ? [] : DEFAULT_WORKSHOP.topics };
+    past = d.past;
   } catch (e) {
     console.warn('[workshop]', e); // defaults keep the page readable; the form stays closed
   }
   renderContent();
-  if (!db) return;
-  try {
-    const past = await fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done')));
-    renderPast(past.docs.map((d) => ({ id: d.id, ...mergeWorkshop(d.data()) })));
-  } catch (e) { console.warn('[workshop past]', e); }
+  if (past) renderPast(past.map(({ id, ...raw }) => ({ id, ...mergeWorkshop(raw) })));
 })();
 
 /* =================== Hero: neural pixel network =================== */

@@ -24,7 +24,7 @@ globalThis.fetch = async (url, init = {}) => {
     const col = JSON.parse(init.body).structuredQuery.from[0].collectionId;
     const docs = {
       gallery: ['a1', 'a2', 'a3', 'a4'].map((id, i) => photo(id, 'رحلة', i)).concat([photo('b1', 'ورشة', 9)]),
-      workshops: [doc('workshops/w0', { status: S('done'), date: S('2026-10-01') })],
+      workshops: [doc('workshops/w0', { status: S('done'), date: S('2026-10-01'), cert: S('big'), topics: { arrayValue: { values: [S('a'), S('b')] } } })],
       blog: [doc('blog/p1', { title: S('أول بوست'), publishAt: { timestampValue: '2026-11-01T10:00:00Z' } })],
       team: [doc('team/t1', { name: S('حمزة') })],
     }[col] || [];
@@ -33,6 +33,10 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.endsWith('/site/settings')) return ok(doc('site/settings', { nextWorkshop: S('w1'), showMembers: { booleanValue: false } }));
   if (url.endsWith('/site/content')) return ok(doc('site/content', { hero: { mapValue: { fields: { title: S('مرحبا') } } } }));
   if (url.endsWith('/workshops/w1')) return ok(doc('workshops/w1', { status: S('live') }));
+  if (url.endsWith('/workshops/w0')) return ok(doc('workshops/w0', { status: S('done'), cert: S('big') }));
+  if (url.endsWith('/site/forms')) return ok(doc('site/forms', { surveyOpen: { booleanValue: false } }));
+  if (url.endsWith('/blogBody/p1')) return ok(doc('blogBody/p1', { md: S('hi ![x](media:img1234)') }));
+  if (url.endsWith('/blogMedia/img1234')) return ok(doc('blogMedia/img1234', { src: S('data:pic') }));
   return new Response('{}', { status: 404 });
 };
 
@@ -75,7 +79,7 @@ await t('second visit comes from the cache (no Firestore reads)', async () => {
 });
 
 await t('a stale copy is served at once and rebuilt behind it', async () => {
-  const k = 'https://site-data.internal/v1/home';
+  const k = 'https://site-data.internal/v2/0/home';
   store.get(k).headers['x-built'] = String(Date.now() - 120e3);
   const before = reads;
   const res = await call('GET', '/site/home');
@@ -93,12 +97,46 @@ await t('purge: admins only, then rebuilt', async () => {
   await assert.rejects(call('POST', '/site/purge', false), /no/);
   const res = await call('POST', '/site/purge');
   assert.equal((await res.json()).ok, true);
-  assert.ok(!store.has('https://site-data.internal/v1/gallery'));
-  assert.ok(store.has('https://site-data.internal/v1/home'));
+  const gen = store.get('https://site-data.internal/gen').body;
+  assert.notEqual(gen, '0');
+  assert.ok(store.has(`https://site-data.internal/v2/${gen}/home`)); // rebuilt under the new generation
+  const before = reads;
+  assert.equal((await call('GET', '/site/gallery')).headers.get('X-Cache'), 'MISS'); // the old copy is skipped
+  assert.ok(reads > before);
+});
+
+await t('workshop: asked id, else next/current; held ones without the certificate', async () => {
+  let d = await (await call('GET', '/site/workshop')).json();
+  assert.equal(d.workshop.id, 'w1');
+  assert.deepEqual(d.past.map((w) => w.id), ['w0']);
+  assert.equal(d.past[0].cert, undefined);
+  assert.equal(d.past[0].topics.length, 2);
+  d = await (await call('GET', '/site/workshop/w0')).json();
+  assert.equal(d.workshop.id, 'w0');
+  assert.equal(d.workshop.cert, undefined);
+  d = await (await call('GET', '/site/workshop/nope')).json();
+  assert.equal(d.workshop, null);
+});
+
+await t('post: the post, its text and its pictures', async () => {
+  const d = await (await call('GET', `/site/post/${encodeURIComponent('أول-بوست')}`)).json();
+  assert.equal(d.posts[0].id, 'p1');
+  assert.equal(d.bodies.p1.md, 'hi ![x](media:img1234)');
+  assert.deepEqual(d.media, { img1234: 'data:pic' });
+});
+
+await t('settings: site settings + forms', async () => {
+  const d = await (await call('GET', '/site/settings')).json();
+  assert.equal(d.settings.nextWorkshop, 'w1');
+  assert.equal(d.forms.surveyOpen, false);
 });
 
 await t('unknown paths are 404', async () => {
   await assert.rejects(call('GET', '/site/admins'), (e) => e.status === 404);
+  await assert.rejects(call('GET', '/site/constructor'), (e) => e.status === 404);
   await assert.rejects(call('POST', '/site/home'), (e) => e.status === 404);
+  await assert.rejects(call('GET', '/site/home/x'), (e) => e.status === 404);
+  await assert.rejects(call('GET', '/site/post'), (e) => e.status === 404);
+  await assert.rejects(call('GET', '/site/workshop/a%2Fb'), (e) => e.status === 404);
 });
 console.log(`${n} passed`);

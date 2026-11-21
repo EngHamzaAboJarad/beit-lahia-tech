@@ -62,7 +62,7 @@ function describeMany(ops) {
 /** The Firestore SDK with every write reported to the activity log (reads untouched). */
 // The public site reads its data through the Worker's edge cache (social-worker/src/site.js, up to a minute old).
 // A change to anything the site shows clears that cache, so it shows up on the next visit.
-const SITE_COLS = new Set(['site', 'events', 'gallery', 'blog', 'team', 'workshops']);
+const SITE_COLS = new Set(['site', 'events', 'gallery', 'blog', 'blogBody', 'blogMedia', 'team', 'workshops']);
 const WORKER = (() => { try { return localStorage.getItem('blt-social-worker') || ''; } catch { return ''; } })() || 'https://social.beitlahia.tech';
 let purgeTimer = 0;
 function purgeSite(paths) {

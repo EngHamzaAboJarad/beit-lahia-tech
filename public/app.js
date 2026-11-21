@@ -2,6 +2,7 @@
 // The form works the moment the page paints; the (light) Firestore SDK loads afterwards, when the
 // browser is idle or as soon as someone starts typing — whichever comes first.
 import { getDbLite as getDb } from './firebase-init.js';
+import { siteData } from './site-data.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
 import { track } from './track.js';
 
@@ -24,12 +25,16 @@ renderFooterLinks(document.getElementById('footer-social'), null); // default co
 // Registration can be closed from /admin → show the message instead of the form.
 const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
 const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
-afterLoad(async () => {
-  track('join');
+afterLoad(() => track('join'));
+(async () => {
   try {
-    const { db, fs } = await getDb();
-    const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
-    const s = { ...DEFAULT_SETTINGS, ...(snap.exists() ? snap.data() : {}) };
+    // the Worker's edge cache (site-data.js), Firestore if it can't answer; right away, not after the page loads
+    const saved = await siteData('settings').then((d) => d.settings).catch(async () => {
+      const { db, fs } = await getDb();
+      const snap = await fs.getDoc(fs.doc(db, 'site', 'settings'));
+      return snap.exists() ? snap.data() : null;
+    });
+    const s = { ...DEFAULT_SETTINGS, ...(saved || {}) };
     renderFooterLinks(document.getElementById('footer-social'), s);
     // optional WhatsApp group link, shown on the success screen
     const group = typeof s.whatsappGroup === 'string' && /^https:\/\/\S+$/.test(s.whatsappGroup.trim()) ? s.whatsappGroup.trim() : '';
@@ -47,7 +52,7 @@ afterLoad(async () => {
   } catch (e) {
     console.warn('[settings]', e); // keep the form usable if settings can't be read
   }
-});
+})();
 
 // someone started filling the form → fetch the SDK now so "send" is instant
 form.addEventListener('focusin', () => { getDb().catch(() => {}); track('start'); }, { once: true });

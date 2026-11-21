@@ -6,9 +6,14 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText, dayOver } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
-import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=10';
-import { initGalleryStudio, showGalleryStudio } from './admin-gallery-studio.js?v=3';
-import { initBlog, showBlog } from './admin-blog.js?v=1';
+// the studios (~300 KB with their templates and video encoder) load after sign-in, without holding it up;
+// boot() starts them, and opening their tab waits for them if they're not there yet
+const once = (load) => { let p = null; return () => { p = p || load(); p.catch(() => { p = null; }); return p; }; };
+const studioMod = once(() => import('./admin-social.js?v=10'));
+const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=3'));
+const blogMod = once(() => import('./admin-blog.js?v=1'));
+let studioReady = null; let galleryStudioReady = null; let blogReady = null; // the module, once its init() ran
+const lazyFail = (e) => { console.error('[admin module]', e); toast('ما قدرت أفتح هالقسم. حدّث الصفحة.', true); };
 import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
 import { withActivity, startActivity, logAction } from './admin-activity.js?v=4';
 import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref, getLiveLink, saveLiveLink, liveShareUrl, syncLiveKeys } from './admin-people.js?v=2';
@@ -105,10 +110,40 @@ async function claimInvite(user) {
   return { data };
 }
 
+// The last confirmed admin record of this browser (uid + perms). With it the panel opens right away while
+// admins/{uid} is checked behind it; if that check says otherwise, the page starts over. Showing the panel
+// grants nothing: Firestore's rules decide what each request may read or write.
+const ME_KEY = 'blt-admin-me';
+const readMe = () => { try { return JSON.parse(localStorage.getItem(ME_KEY) || 'null'); } catch { return null; } };
+const writeMe = (v) => { try { if (v) localStorage.setItem(ME_KEY, JSON.stringify(v)); else localStorage.removeItem(ME_KEY); } catch { /* private mode */ } };
+
+function enter(user, data) {
+  me.owner = (user.email || '').toLowerCase() === OWNER_EMAIL;
+  me.perms = Array.isArray(data.perms) && !me.owner ? expandPerms(data.perms) : null;
+  applyPerms();
+  $('admin-email').textContent = user.email || '';
+  try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
+  show('view-app');
+  if (!booted) { booted = true; boot(); startActivity({ db, fs: fsPlain, user, tab: () => location.hash.slice(1) }); }
+}
+
 au.onAuthStateChanged(auth, async (user) => {
-  if (!user) { show('view-login'); return; }
+  if (!user) { writeMe(null); show('view-login'); return; }
+  const known = readMe();
+  const early = known && known.uid === user.uid;
+  if (early) enter(user, known);
   let data = null;
-  try { const snap = await fs.getDoc(fs.doc(db, 'admins', user.uid)); if (snap.exists()) data = snap.data(); } catch { data = null; }
+  let failed = false;
+  try { const snap = await fs.getDoc(fs.doc(db, 'admins', user.uid)); if (snap.exists()) data = snap.data(); } catch { failed = true; }
+  if (early) {
+    if (data) {
+      writeMe({ uid: user.uid, perms: Array.isArray(data.perms) ? data.perms : null });
+      if (JSON.stringify(data.perms ?? null) !== JSON.stringify(known.perms ?? null)) location.reload(); // perms changed
+      return;
+    }
+    if (failed) return; // offline or slow: keep what we have, the rules still guard the data
+    writeMe(null); location.reload(); return; // no longer an admin
+  }
   let note = '';
   if (!data) {
     try {
@@ -125,13 +160,8 @@ au.onAuthStateChanged(auth, async (user) => {
     show('view-denied');
     return;
   }
-  me.owner = (user.email || '').toLowerCase() === OWNER_EMAIL;
-  me.perms = Array.isArray(data.perms) && !me.owner ? expandPerms(data.perms) : null;
-  applyPerms();
-  $('admin-email').textContent = user.email || '';
-  try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
-  show('view-app');
-  if (!booted) { booted = true; boot(); startActivity({ db, fs: fsPlain, user, tab: () => location.hash.slice(1) }); }
+  writeMe({ uid: user.uid, perms: Array.isArray(data.perms) ? data.perms : null });
+  enter(user, data);
 });
 
 $('login-form').addEventListener('submit', async (e) => {
@@ -239,9 +269,9 @@ function selectTab(name, focus = false) {
     if (on && t === 'total') renderTotal();
     if (on && t === 'messages') renderMessages();
     if (on && t === 'overview') renderOverview(true);
-    if (on && t === 'studio') showStudio();
-    if (on && t === 'gstudio') showGalleryStudio();
-    if (on && t === 'blog') showBlog();
+    if (on && t === 'studio') studioReady?.then((m) => m.showStudio()).catch(lazyFail);
+    if (on && t === 'gstudio') galleryStudioReady?.then((m) => m.showGalleryStudio()).catch(lazyFail);
+    if (on && t === 'blog') blogReady?.then((m) => m.showBlog()).catch(lazyFail);
     if (on && focus) btn.focus();
   });
   $('ph-title').textContent = TAB_META[name].title;
@@ -309,9 +339,10 @@ TABS.forEach((t, i) => {
 function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
-  if (can('studio')) initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
-  if (can('gallery')) initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' });
-  if (can('blog')) initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser });
+  if (can('studio')) studioReady = studioMod().then((m) => { m.initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() }); return m; });
+  if (can('gallery')) galleryStudioReady = galleryStudioMod().then((m) => { m.initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' }); return m; });
+  if (can('blog')) blogReady = blogMod().then((m) => { m.initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser }); return m; });
+  [studioReady, galleryStudioReady, blogReady].forEach((p) => p?.catch((e) => console.error('[admin module]', e)));
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const hash = location.hash.slice(1);
   // a limited admin lands on their own first section (the overview has little for them)
@@ -2215,7 +2246,8 @@ $('wsa-social').addEventListener('click', () => {
   if (wsaDirty && !confirm('في تعديلات على الورشة ما انحفظت. الحملة بتاخد آخر نسخة محفوظة. تكمّل؟')) return;
   const url = selId === currentId ? 'https://beitlahia.tech/workshop' : `https://beitlahia.tech/workshop?w=${encodeURIComponent(selId)}`;
   selectTab('studio');
-  openWorkshopCampaign(ws, { id: selId, url, shortUrl: 'beitlahia.tech/workshop' });
+  const w = ws; const id = selId;
+  (studioReady || Promise.reject(new Error('no studio'))).then((m) => m.openWorkshopCampaign(w, { id, url, shortUrl: 'beitlahia.tech/workshop' })).catch(lazyFail);
 });
 
 /* ---------- registrations ---------- */

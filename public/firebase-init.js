@@ -15,7 +15,8 @@ export function getApp() {
       const [{ initializeApp }, config] = await Promise.all([
         import(`${SDK}/firebase-app.js`),
         (async () => {
-          if (localConfig && localConfig.projectId) return localConfig;
+          // on localhost the emulator's own project (demo-…) must win over the real one written in firebase-config.js
+          if (localConfig && localConfig.projectId && !IS_LOCAL) return localConfig;
           // Firebase Hosting (and its emulator) serve the project config here
           const res = await fetch('/__/firebase/init.json', { cache: 'no-store' });
           if (!res.ok) throw new Error('firebase-config-missing');
