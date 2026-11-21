@@ -326,6 +326,12 @@ await t('gallery → social suggestions: gallery admins suggest, studio admins s
   assert.equal(await merge('socialSuggestions/s1', social, { status: 'dismissed', handledBy: 'soc@x.test' }), OK);
   assert.equal(await merge('socialSuggestions/s1', social, { album: 'غيره' }), NO); // only the outcome changes
   assert.equal(await merge('socialSuggestions/s1', galAdmin, { status: 'posted' }), NO);
+  // a published album posted straight from the studio: kept as «posted» (only as posted, only by the studio)
+  const done = { ...sg, status: 'posted', postIds: ['post1'], handledBy: 'soc@x.test' };
+  assert.equal(await setWithTime('socialSuggestions/s5', social, done, 'createdAt'), OK);
+  assert.equal(await setWithTime('socialSuggestions/s6', social, { ...done, status: 'pending' }, 'createdAt'), NO);
+  assert.equal(await setWithTime('socialSuggestions/s7', social, { ...done, postIds: 'post1' }, 'createdAt'), NO);
+  assert.equal(await setWithTime('socialSuggestions/s8', stranger, done, 'createdAt'), NO);
   // a draft photo: the studio may read it (to publish it), a stranger not
   await seed('gallery/d1', { thumb: 'x', published: false });
   await seed('galleryFull/d1', { src: 'x' });

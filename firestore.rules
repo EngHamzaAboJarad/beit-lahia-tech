@@ -592,6 +592,18 @@ service cloud.firestore {
         && isStr(request.resource.data.desc, 0, 600)
         && isStr(request.resource.data.by, 0, 120)
         && request.resource.data.createdAt == request.time;
+      // a published album posted from the social studio (no suggestion before it): kept as «posted», so its
+      // «انشر» turns into «تم النشر»
+      allow create: if can('studio')
+        && request.resource.data.keys().hasOnly(['photos', 'album', 'desc', 'by', 'status', 'postIds', 'handledBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.status == 'posted'
+        && request.resource.data.photos is list
+        && request.resource.data.photos.size() >= 1 && request.resource.data.photos.size() <= 60
+        && request.resource.data.postIds is list && request.resource.data.postIds.size() <= 10
+        && isStr(request.resource.data.album, 0, 80)
+        && isStr(request.resource.data.desc, 0, 600)
+        && isStr(request.resource.data.by, 0, 120)
+        && request.resource.data.createdAt == request.time;
       allow update: if can('studio')
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'postIds', 'handledBy', 'updatedAt'])
         && request.resource.data.status in ['pending', 'posted', 'dismissed']

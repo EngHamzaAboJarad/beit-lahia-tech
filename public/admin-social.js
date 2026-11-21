@@ -1511,6 +1511,13 @@ async function loadSuggestions() {
     state.suggest = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
   } catch (e) { console.warn('[suggest]', e); state.suggest = []; }
+  // what already went to social media: photo id → the post it went out in (the newest one wins)
+  try {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, SUGGEST), fs.where('status', '==', 'posted')));
+    const done = snap.docs.map((d) => d.data()).sort((a, b) => (a.updatedAt?.toMillis?.() || 0) - (b.updatedAt?.toMillis?.() || 0));
+    state.postedPhotos = new Map();
+    done.forEach((x) => (x.photos || []).forEach((id) => state.postedPhotos.set(id, (x.postIds || [])[0] || '')));
+  } catch (e) { console.warn('[suggest posted]', e); state.postedPhotos = new Map(); }
   // the albums already published on the site's gallery: any of them can go to social media too
   try {
     const snap = await fs.getDocs(fs.query(fs.collection(db, 'gallery'), fs.where('published', '==', true)));
@@ -1562,13 +1569,36 @@ async function deckFromSuggestion(sg, progress = () => {}) {
 }
 const suggestCaption = (sg) => String(sg.desc || '').trim() || String(sg.album || '').trim();
 async function markSuggestion(sg, status, postIds = []) {
-  if (sg.adhoc) return; // a published album picked from the list, not a stored suggestion
+  const { db, fs } = deps;
+  const by = deps.user()?.email || '';
   try {
-    const { db, fs } = deps;
-    await fs.updateDoc(fs.doc(db, SUGGEST, sg.id), { status, handledBy: deps.user()?.email || '', postIds, updatedAt: fs.serverTimestamp() });
+    if (sg.adhoc) { // a published album picked from the list: kept as a «posted» record, so it shows as posted
+      if (status === 'posted') {
+        await fs.addDoc(fs.collection(db, SUGGEST), { photos: sg.photos.slice(0, 60), album: String(sg.album || '').slice(0, 80),
+          desc: String(sg.desc || '').slice(0, 600), by, status, postIds, handledBy: by, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() });
+      }
+    } else {
+      await fs.updateDoc(fs.doc(db, SUGGEST, sg.id), { status, handledBy: by, postIds, updatedAt: fs.serverTimestamp() });
+    }
   } catch (e) { console.warn('[suggest]', e); }
+  if (status === 'posted') {
+    if (!state.postedPhotos) state.postedPhotos = new Map();
+    sg.photos.slice(0, MAX_PAGES).forEach((id) => state.postedPhotos.set(id, postIds[0] || ''));
+  }
   state.suggest = (state.suggest || []).filter((x) => x.id !== sg.id);
   renderSuggestions();
+}
+/** has this album already gone to social media? → the post (its status may still change: approval, failure) */
+function albumPost(sg) {
+  const done = state.postedPhotos;
+  const ids = sg.photos.slice(0, MAX_PAGES);
+  if (!ids.length) return null;
+  if (!done || !ids.every((id) => done.has(id))) {
+    // posted before this was kept: a post from the gallery deck carries the album's name and its photo count
+    return state.posts.find((p) => !p.story && p.template === 'custom' && p.title === sg.album && (p.pages || 1) === ids.length) || null;
+  }
+  const pid = done.get(ids[0]);
+  return state.posts.find((p) => p.id === pid) || { id: pid, status: 'sent' }; // 'sent': the posts list isn't here (yet)
 }
 async function acceptSuggestion(sg, btn) {
   const conn = state.conn || {};
@@ -1631,7 +1661,12 @@ function renderSuggestions() {
     });
     if (sg.photos.length > 5) thumbs.append(h('span', { class: 'sg-more' }, `+${sg.photos.length - 5}`));
     const when = sg.createdAt?.toDate ? sgFmt.format(sg.createdAt.toDate()) : '';
-    return h('li', { class: 'sg-item' },
+    // already sent to social media → «تم النشر» (or where it stands) instead of «انشر»; a failed one can go again
+    const post = sg.adhoc ? albumPost(sg) : null;
+    const sent = post && post.status !== 'failed';
+    const [doneLabel, doneCls] = !sent ? [] : post.status === 'published' || post.status === 'partial' ? ['تم النشر ✓', 'is-done'] : post.status === 'sent' ? ['انبعت للسوشيال ✓', 'is-done']
+      : post.status === 'pending' ? ['بانتظار الموافقة', 'is-wait'] : post.status === 'scheduled' || post.status === 'approved' ? ['مجدول', 'is-wait'] : ['عم ينتشر…', 'is-wait'];
+    return h('li', { class: `sg-item${sent ? ' is-posted' : ''}` },
       thumbs,
       h('div', { class: 'sg-info' },
         h('strong', {}, sg.album || 'صور متنوعة'),
@@ -1639,10 +1674,12 @@ function renderSuggestions() {
         sg.desc ? h('p', { class: 'sg-desc' }, sg.desc) : h('p', { class: 'muted small' }, 'ما في وصف: النص رح يكون اسم الألبوم.'),
         h('p', { class: 'muted small studio-progress', id: `sg-progress-${sg.id}`, 'aria-live': 'polite', hidden: true })),
       h('div', { class: 'sg-actions' },
-        h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => acceptSuggestion(sg, e.currentTarget) },
-          h('span', { class: 'btn-label' }, asksOwner() ? 'أرسل للموافقة' : 'انشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+        sent
+          ? h('span', { class: `sg-done ${doneCls}`, role: 'status' }, doneLabel)
+          : h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => acceptSuggestion(sg, e.currentTarget) },
+            h('span', { class: 'btn-label' }, post ? 'انشر من جديد' : asksOwner() ? 'أرسل للموافقة' : 'انشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => editSuggestion(sg, e.currentTarget) },
-          h('span', { class: 'btn-label' }, 'عدّل قبل النشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+          h('span', { class: 'btn-label' }, sent ? 'عدّل وانشر نسخة' : 'عدّل قبل النشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
         sg.adhoc ? '' : h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm sg-cancel', onclick: () => dismissSuggestion(sg) }, 'إلغاء')));
   };
   const open = (() => { try { return localStorage.getItem('blt-sg-albums') === '1'; } catch { return false; } })();
@@ -1996,6 +2033,7 @@ const toLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2
 /* =================== posts list =================== */
 async function loadPosts() {
   try { state.posts = (await api('/posts')).posts || []; renderPosts(); } catch (e) { deps.toast(e.message, true); }
+  if (state.albums?.length) renderSuggestions(); // the albums' «تم النشر» follows their posts' status
 }
 function upsertPost(p) {
   const i = state.posts.findIndex((x) => x.id === p.id);
