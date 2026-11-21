@@ -11,12 +11,20 @@ export const PERMS = [
   ['team', 'أعضاء المجتمع', ['team']],
   ['forms', 'الفورمات والاستبيان والمدربين', ['trainers', 'survey', 'forms']],
   ['workshops', 'الورشات والشهادات', ['workshop', 'cert']],
-  ['site', 'محتوى الموقع والفعاليات والمعرض والتواصل', ['content', 'events', 'gallery', 'social']],
+  ['content', 'محتوى الصفحة', ['content']],
+  ['events', 'الفعاليات', ['events']],
+  ['gallery', 'المعرض واستوديو المعرض', ['gallery', 'gstudio']],
+  ['contact', 'التواصل', ['social']],
+  ['blog', 'المدونة', ['blog']],
   ['studio', 'استوديو السوشيال والنشر', ['studio']],
   ['stats', 'الزيارات', ['stats']],
   ['settings', 'الإعدادات', ['settings']],
 ];
 const PERM_NAME = Object.fromEntries(PERMS.map(([k, n]) => [k, n]));
+// «محتوى الموقع» was one permission ('site'); it is now four. An old 'site' still opens all four.
+export const SITE_PERMS = ['content', 'events', 'gallery', 'contact'];
+export const expandPerms = (perms) => (Array.isArray(perms) && perms.includes('site')
+  ? [...new Set([...perms.filter((p) => p !== 'site'), ...SITE_PERMS])] : perms);
 
 const $ = (id) => document.getElementById(id);
 let deps; // { h, toast, setBusy, db, fs, au, auth }
@@ -63,7 +71,7 @@ export async function loadAccess() {
     rows = [
       ...a.docs.map((d) => ({ kind: 'admin', id: d.id, ...d.data() })),
       ...i.docs.map((d) => ({ kind: 'invite', id: d.id, ...d.data() })),
-    ].map((r) => ({ ...r, email: r.email || ownEmail(r), perms: Array.isArray(r.perms) ? r.perms : null, at: r.createdAt?.toMillis?.() || 0 }))
+    ].map((r) => ({ ...r, email: r.email || ownEmail(r), perms: Array.isArray(r.perms) ? expandPerms(r.perms) : null, at: r.createdAt?.toMillis?.() || 0 }))
       .sort((x, y) => (isOwnerRow(y) - isOwnerRow(x)) || (y.at - x.at));
     render();
     loadActivity();
@@ -364,6 +372,8 @@ export function initAccess(d) {
   deps = d;
   $('act-refresh').addEventListener('click', loadActivity);
   $('act-more').addEventListener('click', loadLog);
+  // the log scrolls on its own; reaching its end loads the older entries
+  $('act-log').addEventListener('scroll', (e) => { const el = e.currentTarget; if (el.scrollTop + el.clientHeight > el.scrollHeight - 120) loadLog(); }, { passive: true });
   $('act-who').addEventListener('change', () => { act.log = []; act.last = null; act.done = false; loadLog(); });
   $('act-type').addEventListener('change', renderLog);
   $('tab-btn-admins')?.addEventListener('click', () => { if (rows.length) loadActivity(); });

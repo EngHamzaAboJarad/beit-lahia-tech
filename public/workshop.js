@@ -385,6 +385,7 @@ function showPass(regId, name) {
   box.hidden = !regId;
   if (!regId) return;
   const link = passLink(location.origin, regId, wid, name);
+  try { localStorage.setItem(`blt-pass:${wid}`, JSON.stringify({ c: regId, n: name })); } catch { /* private mode */ }
   $('ws-pass-link').href = link;
   $('ws-pass-qr').href = link;
   const src = qrDataUrl(qrPayload(location.origin, regId, wid), 6, 2);

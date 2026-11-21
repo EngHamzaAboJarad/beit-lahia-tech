@@ -25,9 +25,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>  <link rel="stylesheet" href="/styles.css?v=18">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>  <link rel="stylesheet" href="/styles.css?v=19">
   <link rel="stylesheet" href="/brand.css?v=4">
-  <script type="module" src="/site.js?v=19"></script>
+  <link rel="stylesheet" href="/blog.css?v=1">
+  <script type="module" src="/site.js?v=21"></script>
   <link rel="modulepreload" href="/firebase-init.js">
   <link rel="modulepreload" href="/firebase-config.js">
   <link rel="modulepreload" href="/content-defaults.js">
@@ -64,6 +65,7 @@
         <a href="#events" id="nav-events" hidden>الفعاليات</a>
         <a href="#workshops">الورشات</a>
         <a href="#gallery" id="nav-gallery" hidden>المعرض</a>
+        <a href="/blog" id="nav-blog" hidden>المدونة</a>
         <a href="#fields">المجالات</a>
         <a href="#faq">أسئلة</a>
       </nav>
@@ -254,6 +256,18 @@
       </div>
     </section>
 
+    <!-- BLOG (مخفي لحد ما ينشر أول مقال من لوحة الإدارة) -->
+    <section class="section home-blog" id="blog-home" hidden>
+      <div class="container">
+        <div class="section-head reveal">
+          <h2>من المدونة</h2>
+          <p>آخر المقالات والأخبار من المجتمع.</p>
+        </div>
+        <div class="post-grid" id="home-posts"></div>
+        <div class="home-blog-more"><a class="btn btn-dark" href="/blog">كل المقالات</a></div>
+      </div>
+    </section>
+
     <!-- WORKSHOPS -->
     <section class="section" id="workshops">
       <div class="container">
@@ -277,7 +291,7 @@
           <h2 data-c="galleryHead.title">معرض الصور</h2>
           <p data-c="galleryHead.text">لحظات من لقاءات وأنشطة المجتمع.</p>
         </div>
-        <div class="gallery-grid" id="gallery-grid"></div>
+        <div class="album-grid" id="gallery-grid"></div>
       </div>
     </section>
 
@@ -373,12 +387,25 @@
           <a href="#top">الرئيسية</a>
           <a href="/join">سجّل معنا</a>
           <a href="/workshop">الورشات</a>
+          <a href="/blog">المدونة</a>
           <a href="/privacy">سياسة الخصوصية</a>
         </nav>
         <p class="footer-meta">بيت لاهيا — غزة، فلسطين · <span dir="ltr">© <span id="year">2026</span> Beit Lahia Tech</span></p>
       </div>
     </div>
   </footer>
+
+  <dialog class="album-view" id="album-view" aria-labelledby="av-title">
+    <div class="av-head">
+      <div class="av-title">
+        <p class="av-kicker">ألبوم</p>
+        <h2 id="av-title"></h2>
+        <p class="av-count" id="av-count"></p>
+      </div>
+      <button class="lb-close av-close" type="button" data-av="close" aria-label="إغلاق الألبوم"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="av-grid" id="av-grid"></div>
+  </dialog>
 
   <dialog class="lightbox" id="lightbox" aria-label="عارض الصور">
     <button class="lb-close" type="button" data-lb="close" aria-label="إغلاق"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>

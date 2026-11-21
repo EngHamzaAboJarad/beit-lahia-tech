@@ -20,6 +20,7 @@ const NOUN = {
   members: 'تسجيل بالمجتمع', team: 'عضو بالفريق', events: 'فعالية', gallery: 'صورة بالمعرض', galleryFull: 'صورة بالمعرض',
   workshops: 'ورشة', workshopRegs: 'تسجيل بورشة', trainers: 'طلب مدرّب', topicSurveys: 'رد على الاستبيان',
   certificates: 'شهادة', memberNotes: 'ملاحظة عن عضو', admins: 'مشرف', adminInvites: 'دعوة مشرف', socialTemplates: 'قالب سوشيال',
+  blog: 'مقال بالمدونة', blogBody: 'نص مقال', blogMedia: 'صورة بمقال',
 };
 const SITE = { content: 'محتوى الموقع', settings: 'الإعدادات', forms: 'إعدادات الفورمات' };
 const VERB = { add: 'أضاف', set: 'حفظ', update: 'عدّل', delete: 'حذف' };

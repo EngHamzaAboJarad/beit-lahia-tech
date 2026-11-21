@@ -6,10 +6,12 @@ import { iconSvg } from './icons.js';
 import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
-import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=9';
-import { initAccess, PERMS, OWNER_EMAIL } from './admin-access.js?v=4';
-import { withActivity, startActivity, logAction } from './admin-activity.js?v=2';
-import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref } from './admin-people.js?v=1';
+import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=10';
+import { initGalleryStudio, showGalleryStudio } from './admin-gallery-studio.js?v=2';
+import { initBlog, showBlog } from './admin-blog.js?v=1';
+import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
+import { withActivity, startActivity, logAction } from './admin-activity.js?v=3';
+import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref, getLiveLink, saveLiveLink, liveShareUrl, syncLiveKeys } from './admin-people.js?v=2';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -124,7 +126,7 @@ au.onAuthStateChanged(auth, async (user) => {
     return;
   }
   me.owner = (user.email || '').toLowerCase() === OWNER_EMAIL;
-  me.perms = Array.isArray(data.perms) && !me.owner ? data.perms : null;
+  me.perms = Array.isArray(data.perms) && !me.owner ? expandPerms(data.perms) : null;
   applyPerms();
   $('admin-email').textContent = user.email || '';
   try { localStorage.setItem('blt-admin', '1'); } catch { /* ignore */ } // this browser isn't counted in the visits
@@ -191,7 +193,7 @@ $('copy-uid').addEventListener('click', async () => {
 });
 
 /* =================== Tabs =================== */
-const TABS = ['overview', 'members', 'team', 'total', 'messages', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'social', 'studio', 'stats', 'settings', 'admins']; // same order as the sidebar
+const TABS = ['overview', 'members', 'team', 'total', 'messages', 'trainers', 'survey', 'forms', 'workshop', 'cert', 'content', 'events', 'gallery', 'gstudio', 'blog', 'social', 'studio', 'stats', 'settings', 'admins']; // same order as the sidebar
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // Page-head title per tab: the section's own first heading (hidden in place), else the sidebar label.
@@ -238,6 +240,8 @@ function selectTab(name, focus = false) {
     if (on && t === 'messages') renderMessages();
     if (on && t === 'overview') renderOverview(true);
     if (on && t === 'studio') showStudio();
+    if (on && t === 'gstudio') showGalleryStudio();
+    if (on && t === 'blog') showBlog();
     if (on && focus) btn.focus();
   });
   $('ph-title').textContent = TAB_META[name].title;
@@ -306,6 +310,8 @@ function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
   if (can('studio')) initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() });
+  if (can('gallery')) initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean) });
+  if (can('blog')) initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser });
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const hash = location.hash.slice(1);
   // a limited admin lands on their own first section (the overview has little for them)
@@ -315,7 +321,9 @@ function boot() {
   document.fonts?.ready.then(moveIndicator);
   if (can('members')) loadMembers();
   if (can('stats')) loadTraffic();
-  if (can('site')) { loadContent(); loadEvents(); loadGallery(); }
+  if (can('content')) loadContent();
+  if (can('events')) loadEvents();
+  if (can('gallery')) loadGallery();
   if (can('team')) loadTeam();
   loadSettings(); // site/settings is public
   if (can('workshops')) loadWorkshopAll();
@@ -507,7 +515,7 @@ function renderOvWorkshop(cur) {
 }
 
 const QUICK = [
-  ['events', 'فعالية جديدة'], ['gallery', 'رفع صور'], ['content', 'تعديل نصوص الموقع'],
+  ['events', 'فعالية جديدة'], ['blog', 'مقال جديد'], ['gallery', 'رفع صور'], ['content', 'تعديل نصوص الموقع'],
   ['team', 'أعضاء المجتمع'], ['forms', 'فتح وإغلاق الفورمات'], ['settings', 'نسخة احتياطية'],
 ];
 $('ov-quick').replaceChildren(...QUICK.map(([t, label], i) => h('button', { type: 'button', class: 'ov-q', 'data-goto': t, style: `--i:${i}` },
@@ -1201,32 +1209,98 @@ async function loadGallery() {
   } catch (e) { toast(errMsg(e), true); }
 }
 
+// Photos sharing an album show on the site as one stack of cards that opens on them; no album = «صور متنوعة».
+// Albums come in the order of their first photo, photos in their own order.
+const ALBUM_NONE = 'صور متنوعة';
+let albumsOpen = null; // which albums are unfolded in the list (kept across reloads of the list)
+const photoCount = (n) => (n === 1 ? 'صورة وحدة' : n === 2 ? 'صورتين' : n <= 10 ? `${n} صور` : `${n} صورة`);
+function galleryAlbums() {
+  const map = new Map();
+  gallery.forEach((p) => { const k = String(p.album || '').trim(); if (!map.has(k)) map.set(k, []); map.get(k).push(p); });
+  return [...map].map(([name, photos]) => ({ name, photos }));
+}
 function renderGalleryAdmin() {
   $('gallery-empty').hidden = gallery.length > 0;
-  $('gallery-list').replaceChildren(...gallery.map((p, i) => {
-    const cap = h('input', { type: 'text', value: p.caption || '', maxlength: 140, placeholder: 'وصف قصير (اختياري)', 'aria-label': 'وصف الصورة' });
-    cap.addEventListener('change', async () => {
-      try { await fs.updateDoc(fs.doc(db, 'gallery', p.id), { caption: cap.value.trim(), updatedAt: fs.serverTimestamp() }); p.caption = cap.value.trim(); toast('انحفظ الوصف'); } catch (e) { toast(errMsg(e), true); }
-    });
-    return h('li', { class: p.published ? 'g-item' : 'g-item is-draft' },
-      h('img', { src: p.thumb, alt: p.caption || '' }),
-      h('span', { class: p.published ? 'badge badge-live' : 'badge badge-draft' }, p.published ? 'منشورة' : 'مسودة'),
-      h('div', { class: 'field' }, cap),
-      h('div', { class: 'g-actions' },
-        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) }, p.published ? 'إخفاء' : 'انشر'),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لقدام', title: 'لقدام', disabled: i === 0, onclick: () => movePhoto(i, -1) }, svgIcon(ICONS.up)),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لورا', title: 'لورا', disabled: i === gallery.length - 1, onclick: () => movePhoto(i, 1) }, svgIcon(ICONS.down)),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'حذف الصورة', title: 'حذف', onclick: () => deletePhoto(p) }, svgIcon(ICONS.trash))));
+  const albums = galleryAlbums();
+  $('gallery-albums').replaceChildren(...albums.filter((a) => a.name).map((a) => h('option', { value: a.name })));
+  if (!albumsOpen) albumsOpen = new Set(albums.slice(0, 1).map((a) => a.name)); // the first album starts open
+  $('gallery-list').replaceChildren(...albums.map((a) => {
+    const live = a.photos.filter((p) => p.published).length;
+    const all = live === a.photos.length;
+    // each album folds; open, its photos run in a strip that scrolls sideways
+    const box = h('details', { class: 'g-album', open: albumsOpen.has(a.name) });
+    box.addEventListener('toggle', () => { if (box.open) albumsOpen.add(a.name); else albumsOpen.delete(a.name); });
+    box.append(
+      h('summary', { class: 'g-album-sum' },
+        h('span', { class: 'g-album-cover', 'aria-hidden': 'true' }, ...a.photos.slice(0, 3).map((p) => h('img', { src: p.thumb, alt: '' }))),
+        h('div', { class: 'g-album-title' },
+          h('h3', {}, a.name || ALBUM_NONE),
+          h('span', { class: 'muted small' }, `${photoCount(a.photos.length)} · ${live === a.photos.length ? 'كلها منشورة' : live ? `${live} منشورة` : 'كلها مسودات'}`)),
+        h('span', { class: 'g-album-chev', 'aria-hidden': 'true' })),
+      h('div', { class: 'g-album-body' },
+        h('div', { class: 'g-album-actions' },
+          a.name ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => renameAlbum(a) }, 'غيّر الاسم') : null,
+          h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, !all) }, all ? 'اخفي الألبوم' : 'انشر الألبوم كله')),
+        h('ul', { class: 'gallery-admin g-strip' }, ...a.photos.map((p, i) => galleryItem(p, i, a.photos)))));
+    return box;
   }));
 }
+function galleryItem(p, i, same) {
+  const ref = fs.doc(db, 'gallery', p.id);
+  const cap = h('input', { type: 'text', value: p.caption || '', maxlength: 140, placeholder: 'وصف قصير (اختياري)', 'aria-label': 'وصف الصورة' });
+  cap.addEventListener('change', async () => {
+    try { await fs.updateDoc(ref, { caption: cap.value.trim(), updatedAt: fs.serverTimestamp() }); p.caption = cap.value.trim(); toast('انحفظ الوصف'); } catch (e) { toast(errMsg(e), true); }
+  });
+  const alb = h('input', { type: 'text', value: p.album || '', maxlength: 80, list: 'gallery-albums', placeholder: ALBUM_NONE, 'aria-label': 'الألبوم' });
+  alb.addEventListener('change', async () => {
+    const v = alb.value.trim().slice(0, 80);
+    try {
+      await fs.updateDoc(ref, { album: v, updatedAt: fs.serverTimestamp() }); p.album = v;
+      toast(v ? `انتقلت لألبوم «${v}»` : `انتقلت لـ«${ALBUM_NONE}»`); renderGalleryAdmin();
+    } catch (e) { toast(errMsg(e), true); }
+  });
+  return h('li', { class: p.published ? 'g-item' : 'g-item is-draft' },
+    h('img', { src: p.thumb, alt: p.caption || '' }),
+    h('span', { class: p.published ? 'badge badge-live' : 'badge badge-draft' }, p.published ? 'منشورة' : 'مسودة'),
+    h('div', { class: 'field' }, cap),
+    h('label', { class: 'field g-album-in' }, h('span', { class: 'small muted' }, 'الألبوم'), alb),
+    h('div', { class: 'g-actions' },
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) }, p.published ? 'إخفاء' : 'انشر'),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لقدام', title: 'لقدام', disabled: i === 0, onclick: () => movePhoto(p, -1, same) }, svgIcon(ICONS.up)),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لورا', title: 'لورا', disabled: i === same.length - 1, onclick: () => movePhoto(p, 1, same) }, svgIcon(ICONS.down)),
+      h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'حذف الصورة', title: 'حذف', onclick: () => deletePhoto(p) }, svgIcon(ICONS.trash))));
+}
+async function renameAlbum(a) {
+  const v = (prompt('الاسم الجديد للألبوم', a.name) || '').trim().slice(0, 80);
+  if (!v || v === a.name) return;
+  try {
+    const batch = fs.writeBatch(db);
+    a.photos.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { album: v, updatedAt: fs.serverTimestamp() }));
+    await batch.commit();
+    toast(`صار اسمه «${v}»`);
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
+async function publishAlbum(a, on) {
+  const todo = a.photos.filter((p) => !!p.published !== on);
+  if (!todo.length) return;
+  try {
+    const batch = fs.writeBatch(db);
+    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), { published: on, updatedAt: fs.serverTimestamp() }));
+    await batch.commit();
+    toast(on ? `انشر الألبوم (${photoCount(todo.length)})` : 'انخفى الألبوم من الموقع');
+    await loadGallery();
+  } catch (e) { toast(errMsg(e), true); }
+}
 
-async function uploadFiles(files) {
+async function uploadFiles(files, captions = [], album) {
+  const albumName = String(album ?? $('gallery-album').value).trim().slice(0, 80);
   const list = [...files].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
-  if (!list.length) { toast('اختار صور JPG أو PNG أو WebP', true); return; }
+  if (!list.length) { toast('اختار صور JPG أو PNG أو WebP', true); return { done: 0, failed: 0 }; }
   const progress = $('gallery-progress');
   let done = 0; let failed = 0;
   const minOrder = gallery.reduce((m, p) => Math.min(m, p.order ?? 0), 0);
-  for (const file of list) {
+  for (const [k, file] of list.entries()) {
     progress.textContent = `جاري رفع ${done + failed + 1} من ${list.length}…`;
     try {
       const img = await loadImage(file);
@@ -1235,7 +1309,7 @@ async function uploadFiles(files) {
       const ref = fs.doc(fs.collection(db, 'gallery'));
       const batch = fs.writeBatch(db);
       batch.set(ref, {
-        thumb: thumb.data, caption: '', published: false, order: minOrder - list.length + done,
+        thumb: thumb.data, caption: String(captions[k] || '').slice(0, 140), album: albumName, published: false, order: minOrder - list.length + done,
         w: thumb.w, h: thumb.h, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp(),
       });
       batch.set(fs.doc(db, 'galleryFull', ref.id), { src: full.data });
@@ -1246,6 +1320,7 @@ async function uploadFiles(files) {
   progress.textContent = failed ? `انرفعت ${done}، وفشلت ${failed}.` : `انرفعت ${done} صورة كمسودة. انشرها لما تكون جاهزة.`;
   $('gallery-input').value = '';
   await loadGallery();
+  return { done, failed };
 }
 
 $('gallery-input').addEventListener('change', (e) => uploadFiles(e.target.files));
@@ -1261,13 +1336,14 @@ async function togglePhoto(p) {
     await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }
-async function movePhoto(i, d) {
-  const a = gallery[i]; const b = gallery[i + d];
-  if (!a || !b) return;
+// swap with the next / previous photo of the same album
+async function movePhoto(p, d, same) {
+  const q = same[same.indexOf(p) + d];
+  if (!q) return;
   try {
     const batch = fs.writeBatch(db);
     // re-number everything so the order is always clean
-    const next = [...gallery]; [next[i], next[i + d]] = [next[i + d], next[i]];
+    const next = [...gallery]; const i = next.indexOf(p); const j = next.indexOf(q); [next[i], next[j]] = [next[j], next[i]];
     next.forEach((p, k) => { if ((p.order ?? null) !== k) batch.update(fs.doc(db, 'gallery', p.id), { order: k, updatedAt: fs.serverTimestamp() }); });
     await batch.commit();
     await loadGallery();
@@ -1883,10 +1959,57 @@ function fillWorkshopForm() {
   $('wsa-hours').value = ws.hours;
   $('wsa-place').value = ws.place;
   $('wsa-mode').value = ws.mode;
+  syncLiveBox(true);
   renderTopicRows(ws.topics);
   $('wsa-group').value = ws.whatsappGroup;
   $('wsa-closed').value = ws.closedMessage;
 }
+
+/* ---------- online workshops: the meeting link (kept by the social worker) + the group link ---------- */
+let liveSaved = { wid: '', link: '' }; // what the worker has for the selected workshop
+// "2026-11-21" + "09:30" in Gaza time → Date (the offset is read from Intl, so summer time is right too)
+function gazaDate(ymd, hm) {
+  const [y, m, d] = ymd.split('-').map(Number); const [hh, mm] = hm.split(':').map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh, mm);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Gaza', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+    .formatToParts(new Date(guess)).map((x) => [x.type, Number(x.value)]));
+  const asGaza = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  return new Date(guess - (asGaza - guess));
+}
+const gazaHm = (ts) => (ts && typeof ts.toDate === 'function'
+  ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Gaza', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts.toDate()) : '');
+function syncLiveBox(load = false) {
+  const online = $('wsa-mode').value === 'online';
+  $('wsa-live-box').hidden = !online;
+  $('wsa-live-share').value = selId ? liveShareUrl(selId) : '';
+  if (!load) return;
+  const raw = workshops.find((w) => w.id === selId) || {};
+  $('wsa-live-from').value = gazaHm(raw.liveFrom);
+  $('wsa-live-to').value = gazaHm(raw.liveTo);
+  const wid = selId;
+  $('wsa-live').value = '';
+  liveSaved = { wid: '', link: '' };
+  if (!online || !wid) return;
+  $('wsa-live-note').textContent = 'جاري تحميل رابط اللقاء…';
+  getLiveLink(wid).then((link) => {
+    if (selId !== wid) return;
+    liveSaved = { wid, link };
+    if (!$('wsa-live').value) $('wsa-live').value = link;
+    $('wsa-live-note').textContent = 'بيوصل للمسجّل بس بعد ما يتسجّل حضوره. بينحفظ مع «احفظ معلومات الورشة».';
+    maybeSyncLiveKeys();
+  }).catch((e) => { if (selId === wid) $('wsa-live-note').textContent = `ما قدرت أجيب رابط اللقاء من خدمة النشر: ${e.message}`; });
+}
+// registrants of an online workshop that hasn't passed yet can be found by WhatsApp number on /live
+function maybeSyncLiveKeys(force = false) {
+  if (!selId || ws.mode !== 'online' || !allRegs.length) return Promise.resolve(0);
+  if (!force && ws.date && ws.date < todayYmd()) return Promise.resolve(0);
+  return syncLiveKeys(selId, { force }).catch((e) => { console.error('[liveKeys]', e); return 0; });
+}
+$('wsa-mode').addEventListener('change', () => syncLiveBox(true));
+$('wsa-live-copy').addEventListener('click', async () => {
+  const v = $('wsa-live-share').value;
+  try { await navigator.clipboard.writeText(v); toast('انسخ رابط الجروب'); } catch { $('wsa-live-share').select(); toast('ما قدرت أنسخ، انسخه بإيدك', true); }
+});
 
 /* ---------- workshop content (topics / agenda) ---------- */
 const MAX_TOPICS = 12;
@@ -1976,6 +2099,13 @@ $('wsa-form').addEventListener('submit', async (e) => {
   if (!title) { toast('اكتب اسم الورشة', true); $('wsa-title').focus(); return; }
   if (!(hours >= 1 && hours <= 100)) { toast('عدد الساعات لازم يكون بين 1 و 100', true); $('wsa-hours').focus(); return; }
   if (group && !safeUrl(group)) { toast('رابط القروب لازم يبدأ بـ https://', true); $('wsa-group').focus(); return; }
+  const liveLink = $('wsa-mode').value === 'online' ? $('wsa-live').value.trim() : '';
+  if (liveLink && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(liveLink)) { toast('رابط اللقاء لازم يكون رابط كامل بيبدأ بـ https://', true); $('wsa-live').focus(); return; }
+  const online = $('wsa-mode').value === 'online';
+  const lf = online ? $('wsa-live-from').value : ''; const lt = online ? $('wsa-live-to').value : '';
+  if ((lf || lt) && !(lf && lt)) { toast('حط وقت فتح الدخول ووقت تسكيره الاتنين، أو اتركهم فاضيين', true); $(lf ? 'wsa-live-to' : 'wsa-live-from').focus(); return; }
+  if (lf && !$('wsa-date').value) { toast('حط تاريخ الورشة عشان وقت الدخول يمشي عليه', true); $('wsa-date').focus(); return; }
+  if (lf && lf >= lt) { toast('وقت تسكير الدخول لازم يكون بعد وقت فتحه', true); $('wsa-live-to').focus(); return; }
   if (status === 'live' && !$('wsa-date').value && !confirm('ما حطيت تاريخ للورشة، رح يظهر «يُحدَّد قريباً» للزوار. تنشرها هيك؟')) { $('wsa-date').focus(); return; }
   const publishRaw = status === 'live' ? $('wsa-publish').value : '';
   const publishDate = publishRaw ? new Date(publishRaw) : null;
@@ -1996,6 +2126,9 @@ $('wsa-form').addEventListener('submit', async (e) => {
     topics: readTopicRows(),
     whatsappGroup: group,
     closedMessage: $('wsa-closed').value.trim() || DEFAULT_WORKSHOP.closedMessage,
+    // online check-in window (/live): Gaza times on the workshop's date; null = the whole day
+    liveFrom: lf ? fs.Timestamp.fromDate(gazaDate($('wsa-date').value, lf)) : null,
+    liveTo: lt ? fs.Timestamp.fromDate(gazaDate($('wsa-date').value, lt)) : null,
   };
   const btn = $('wsa-save');
   setBusy(btn, true);
@@ -2019,6 +2152,13 @@ $('wsa-form').addEventListener('submit', async (e) => {
     ws = mergeWorkshop({ ...ws, ...data, cert: ws.cert });
     wsaDirty = false;
     $('wsa-status').textContent = 'انحفظ';
+    if (data.mode === 'online') {
+      const wid = selId;
+      // the meeting link goes to the social worker (only when it changed), then the WhatsApp keys for /live
+      const linkJob = liveSaved.wid === wid && liveSaved.link === liveLink ? Promise.resolve()
+        : saveLiveLink(wid, liveLink).then((link) => { liveSaved = { wid, link }; });
+      Promise.all([linkJob, maybeSyncLiveKeys(true)]).catch((e) => toast(`انحفظت الورشة، بس رابط اللقاء ما انحفظ: ${e.message}`, true));
+    }
     if (!$('ci-date').value) $('ci-date').value = ws.date || todayYmd();
     syncSelectedUi();
     renderWorkshopList();
@@ -2232,6 +2372,7 @@ async function reloadLists() {
   renderRegs();
   renderWorkshopList();
   renderMessages();
+  maybeSyncLiveKeys(true); // new registrants of an online workshop: findable by number on /live
 }
 
 /* ---------- check-in (QR), registrant e-mails, profiles, messages: admin-people.js ---------- */
@@ -2259,7 +2400,7 @@ $('wr-export').addEventListener('click', () => {
     const c = r.certId ? certById(r.certId) : null;
     return [r.name, r.whatsapp || '', r.email || '', WS_STATUS[r.status] || r.status || '', WS_LEVEL[r.level] || r.level || '', r.laptop == null ? '' : r.laptop ? 'نعم' : 'لا',
       (r.aiTools || []).map(toolName).join(' / '), r.expectations || '', r.attended ? 'نعم' : 'لا',
-      r.attended && r.attendedAt ? dateTimeFmt.format(r.attendedAt.toDate()) : '', r.attended ? r.attendedBy || '' : '', c ? c.no : '', c ? certUrl(c.id) : '',
+      r.attended && r.attendedAt ? dateTimeFmt.format(r.attendedAt.toDate()) : '', r.attended ? (r.attendedBy === 'live' ? 'رابط اللقاء' : r.attendedBy || '') : '', c ? c.no : '', c ? certUrl(c.id) : '',
       r.createdAt ? dateTimeFmt.format(r.createdAt.toDate()) : ''];
   })].map((row) => row.map(esc).join(','));
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -3142,14 +3283,15 @@ $('backup-btn').addEventListener('click', async () => {
       all('members'), all('events'), all('gallery'), all('stats'), one('site', 'content'), one('site', 'settings'), one('site', 'forms'), all('team'),
       all('workshops'), all('workshopRegs'), all('certificates'), all('trainers'), all('topicSurveys'),
     ]);
+    const [blogAll, blogBodyAll] = await Promise.all([all('blog'), all('blogBody')]);
     const backup = {
       app: 'beit-lahia-tech', version: 1, exportedAt: new Date().toISOString(),
       members: membersAll, events: eventsAll, gallery: galleryAll, stats: statsAll, team: teamAll,
       workshops: workshopsAll, workshopRegs: regsAll, certificates: certsAll,
-      trainers: trainersAll, topicSurveys: surveysAll,
+      trainers: trainersAll, topicSurveys: surveysAll, blog: blogAll, blogBody: blogBodyAll,
       site: { content: siteContent, settings: siteSettings, forms: siteForms },
     };
-    if ($('backup-full').checked) backup.galleryFull = await all('galleryFull');
+    if ($('backup-full').checked) { backup.galleryFull = await all('galleryFull'); backup.blogMedia = await all('blogMedia'); }
     const blob = new Blob([JSON.stringify(backup, null, 1)], { type: 'application/json' });
     const a = h('a', { href: URL.createObjectURL(blob), download: `beit-lahia-backup-${gazaDay()}.json` });
     document.body.append(a); a.click(); a.remove();

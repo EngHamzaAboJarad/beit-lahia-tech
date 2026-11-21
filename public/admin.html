@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap">
   <link rel="stylesheet" href="/styles.css?v=18">
-  <link rel="stylesheet" href="/admin.css?v=40">
+  <link rel="stylesheet" href="/admin.css?v=44">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/admin.js?v=46"></script>
+  <script type="module" src="/admin.js?v=51"></script>
 </head>
 <body class="admin">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -107,6 +107,8 @@
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h5"/></svg><span>محتوى الصفحة</span></button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>الفعاليات</span></button>
         <button role="tab" type="button" id="tab-btn-gallery" aria-controls="tab-gallery" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4.5 4.5"/></svg><span>المعرض</span></button>
+        <button role="tab" type="button" id="tab-btn-gstudio" aria-controls="tab-gstudio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><rect x="6" y="8" width="12" height="8" rx="1.2"/><path d="M2.5 8.5v-4h4M21.5 15.5v4h-4"/></svg><span>استوديو المعرض</span></button>
+        <button role="tab" type="button" id="tab-btn-blog" aria-controls="tab-blog" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5"/><path d="M8 13h8M8 16.5h5"/></svg><span>المدونة</span></button>
         <button role="tab" type="button" id="tab-btn-social" aria-controls="tab-social" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.5L3.5 20.5l1.1-4.2A8.5 8.5 0 1 1 20.5 12Z"/></svg><span>التواصل</span></button>
         <span class="tab-group" role="presentation">السوشيال ميديا</span>
         <button role="tab" type="button" id="tab-btn-studio" aria-controls="tab-studio" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 15l3-3 2 2 3-4"/><circle cx="8.5" cy="8.5" r="1.3"/></svg><span>استوديو السوشيال</span></button>
@@ -688,6 +690,33 @@
               <input id="wsa-place" type="text" maxlength="100" placeholder="اسم القاعة، أو المنصة (Zoom / Meet)">
             </div>
           </div>
+          <fieldset class="field live-edit" id="wsa-live-box" hidden>
+            <legend>اللقاء الأونلاين وتسجيل الحضور</legend>
+            <div class="field">
+              <label for="wsa-live">رابط اللقاء (زوم / جوجل ميت) <span class="optional">(ما بيظهر لحدا)</span></label>
+              <input id="wsa-live" type="url" dir="ltr" maxlength="400" placeholder="https://meet.google.com/… أو https://zoom.us/j/…">
+              <p class="muted small" id="wsa-live-note">بيوصل للمسجّل بس بعد ما يتسجّل حضوره. بينحفظ مع «احفظ معلومات الورشة».</p>
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label for="wsa-live-from">الدخول بيفتح الساعة <span class="optional">(بتوقيت غزة)</span></label>
+                <input id="wsa-live-from" type="time" dir="ltr">
+              </div>
+              <div class="field">
+                <label for="wsa-live-to">وبيسكّر الساعة</label>
+                <input id="wsa-live-to" type="time" dir="ltr">
+              </div>
+            </div>
+            <p class="muted small">بيوم الورشة نفسه (التاريخ فوق). برّا هالوقت ما حدا بيقدر يسجّل حضوره أو ياخد رابط اللقاء. إذا تركتهم فاضيين: مفتوح يوم الورشة كله.</p>
+            <div class="field">
+              <label for="wsa-live-share">الرابط اللي بتنشره بالجروب</label>
+              <div class="copy-row">
+                <input id="wsa-live-share" type="text" dir="ltr" readonly>
+                <button class="btn btn-ghost-dark btn-sm" type="button" id="wsa-live-copy">انسخ</button>
+              </div>
+              <p class="muted small">انشره بالجروب بدل رابط زوم/ميت. اللي بيفتحه بيدخل ببطاقته أو برقم واتسابه، فبيتسجّل حضوره «حضر» وبعدين بيتحوّل على اللقاء. الدخول بيشتغل يوم الورشة بس (حسب التاريخ فوق).</p>
+            </div>
+          </fieldset>
           <fieldset class="field topics-edit">
             <legend>محتوى الورشة (شو رح نغطي)</legend>
             <p class="muted small">كل محور بيطلع ككرت بصفحة الورشة، بنفس الترتيب. المدة اختيارية. <span id="wsa-topics-total"></span></p>
@@ -918,9 +947,14 @@
       <section id="tab-gallery" role="tabpanel" aria-labelledby="tab-btn-gallery" hidden>
         <div class="tab-intro">
           <h2>معرض الصور</h2>
-          <p class="muted">سكشن المعرض مخفي من الصفحة الرئيسية لحد ما تنشر أول صورة. الصور بتتصغّر تلقائياً قبل الرفع.</p>
+          <p class="muted">سكشن المعرض مخفي من الصفحة الرئيسية لحد ما تنشر أول صورة. الصور بتنعرض على الموقع كألبومات (كروت فوق بعض)، وكل ألبوم بيفتح على صوره. الصور بتتصغّر تلقائياً قبل الرفع، وبتقدر تركّبها على خلفية الهوية من «استوديو المعرض».</p>
         </div>
         <div class="panel">
+          <div class="field g-album-pick">
+            <label for="gallery-album">الألبوم للصور الجديدة</label>
+            <input type="text" id="gallery-album" list="gallery-albums" maxlength="80" placeholder="مثلاً: ورشة المبرمج المعزّز · فاضي = «صور متنوعة»">
+            <datalist id="gallery-albums"></datalist>
+          </div>
           <label class="dropzone" id="dropzone">
             <input type="file" id="gallery-input" accept="image/jpeg,image/png,image/webp" multiple>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
@@ -928,8 +962,235 @@
             <span class="muted small">JPG أو PNG أو WebP — بتنرفع كمسودة، وبتنشرها لما تكون جاهزة</span>
           </label>
           <p class="muted small" id="gallery-progress" aria-live="polite"></p>
-          <ul class="gallery-admin" id="gallery-list"></ul>
+          <div class="g-albums" id="gallery-list"></div>
           <p class="empty" id="gallery-empty" hidden>ما في صور لسا.</p>
+        </div>
+      </section>
+
+      <!-- Gallery studio: frame photos and screen captures in the brand look -->
+      <section id="tab-gstudio" role="tabpanel" aria-labelledby="tab-btn-gstudio" hidden>
+        <div class="tab-intro">
+          <h2>استوديو المعرض</h2>
+          <p class="muted">ارفع صور الورشة أو لقطات الشاشة (ميت، زوم…)، قصّ الأشرطة الزايدة، موّه الوجوه والأسماء إذا بدك، واختار خلفية من الهوية. بتتطبّق على كل الصور مرة وحدة، وبعدين احفظها بالمعرض كمسودات أو نزّلها.</p>
+        </div>
+        <div class="studio gs">
+          <div class="panel studio-form gs-form">
+            <label class="dropzone gs-drop" id="gs-drop">
+              <input type="file" id="gs-input" accept="image/*" multiple>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+              <strong>اختار صور أو اسحبها لهون</strong>
+              <span class="muted small">أو الصق لقطة شاشة بـ Ctrl+V · لحد 40 صورة بالمرة</span>
+            </label>
+            <p class="muted small gs-progress" id="gs-progress" aria-live="polite" hidden></p>
+
+            <h3>الخلفية</h3>
+            <div class="gs-themes" id="gs-themes" role="radiogroup" aria-label="الخلفية"></div>
+
+            <h3>المقاس</h3>
+            <div class="gs-sizes" id="gs-sizes" role="group" aria-label="المقاس"></div>
+
+            <h3>النصوص</h3>
+            <div class="field"><select id="gs-ws" aria-label="عبّي النصوص من ورشة"></select></div>
+            <div class="field"><label for="gs-title">العنوان</label><input type="text" id="gs-title" maxlength="80" placeholder="مثلاً: ورشة المبرمج المعزّز"></div>
+            <div class="field"><label for="gs-sub">السطر التاني</label><input type="text" id="gs-sub" maxlength="90" placeholder="مثلاً: 21 نوفمبر 2026 · أونلاين"></div>
+            <div class="field"><label for="gs-tag">تحت <span class="muted small">(اختياري)</span></label><input type="text" id="gs-tag" maxlength="60" placeholder="مثلاً: #بيت_لاهيا_التقني"></div>
+
+            <h3>الشكل</h3>
+            <div class="gs-checks">
+              <label class="studio-chk"><input type="checkbox" id="gs-logo"><span>الشعار</span></label>
+              <label class="studio-chk"><input type="checkbox" id="gs-mosaic"><span>مربعات البكسل</span></label>
+              <label class="studio-chk"><input type="checkbox" id="gs-chrome"><span>شريط نافذة</span></label>
+              <label class="studio-chk"><input type="checkbox" id="gs-border"><span>إطار ملوّن</span></label>
+              <label class="studio-chk"><input type="checkbox" id="gs-footer"><span>عنوان الموقع</span></label>
+            </div>
+            <div class="gs-ranges">
+              <div class="field"><label for="gs-fit">الصورة</label>
+                <select id="gs-fit"><option value="contain">كاملة (بدون قص)</option><option value="cover">تعبّي المساحة</option></select></div>
+              <label class="gs-range"><span class="small muted">الهوامش</span><input type="range" id="gs-pad" min="2" max="14" step="0.5"></label>
+              <label class="gs-range"><span class="small muted">تدوير الزوايا</span><input type="range" id="gs-radius" min="0" max="70" step="1"></label>
+            </div>
+            <button class="btn btn-ghost-dark btn-sm gs-reset" type="button" id="gs-reset">رجّع الشكل الافتراضي</button>
+
+            <div class="gs-photo" id="gs-photo-box" hidden>
+              <h3>الصورة الحالية</h3>
+              <div class="field"><label for="gs-caption">وصفها بالمعرض</label><input type="text" id="gs-caption" maxlength="140"></div>
+            </div>
+
+            <div class="field gs-album-field">
+              <label for="gs-album">الألبوم بالمعرض</label>
+              <input type="text" id="gs-album" list="gs-albums" maxlength="80">
+              <datalist id="gs-albums"></datalist>
+              <span class="muted small">الصور بتنحفظ مع بعض بهالألبوم، وعلى الموقع بتطلع ككرت واحد بيفتح عليهم. فاضي = العنوان.</span>
+            </div>
+
+            <div class="studio-actions">
+              <button class="btn btn-primary" type="button" id="gs-save"><span class="btn-label" id="gs-save-label">احفظ بالمعرض</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark" type="button" id="gs-dl"><span class="btn-label">نزّل الحالية</span><span class="spinner" aria-hidden="true"></span></button>
+              <button class="btn btn-ghost-dark" type="button" id="gs-dl-all"><span class="btn-label">نزّل الكل</span><span class="spinner" aria-hidden="true"></span></button>
+            </div>
+            <p class="muted small">بتنحفظ كمسودات بتبويب «المعرض»، وما بتظهر على الموقع لحد ما تنشرها.</p>
+          </div>
+          <div class="panel studio-preview gs-preview">
+            <div class="ws-head">
+              <span class="ws-brand"><span class="ws-pix" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>استوديو المعرض</span></span>
+              <span class="ws-size" id="gs-size" dir="ltr" aria-live="polite"></span>
+            </div>
+            <div class="studio-toolbar" role="toolbar" aria-label="أدوات الصورة">
+              <button type="button" class="tb-btn" id="gs-prev" title="السابقة" aria-label="السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+              <span class="gs-count" id="gs-count" aria-live="polite"></span>
+              <button type="button" class="tb-btn" id="gs-next" title="التالية" aria-label="التالية"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+              <span class="tb-sep" aria-hidden="true"></span>
+              <button type="button" class="tb-btn gs-tb-wide" id="gs-crop-btn" title="قص وتمويه (Enter)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>قص وتمويه</span></button>
+              <button type="button" class="tb-btn" id="gs-del" title="شيلها من الاستوديو (Delete)" aria-label="شيلها من الاستوديو"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
+            </div>
+            <div class="ws-canvas">
+              <div class="gs-stage" id="gs-stage" tabindex="0" aria-label="المعاينة: الأسهم بين الصور، Enter للقص"></div>
+            </div>
+            <div class="gs-strip" id="gs-strip" aria-label="الصور"></div>
+            <p class="muted small studio-hint">دبل كليك على المعاينة بيفتح القص · الصور اللي بنفس المقاس بتاخد نفس القص لحالها</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Blog: posts list + editor -->
+      <section id="tab-blog" role="tabpanel" aria-labelledby="tab-btn-blog" hidden>
+        <div class="tab-intro">
+          <h2>المدونة</h2>
+          <p class="muted">اكتب مقالات وأخبار المجتمع، احفظها كمسودة، انشرها هلّق أو بموعد، ثبّت المهم فوق. المقالات بتطلع على <a href="/blog" target="_blank" rel="noopener">beitlahia.tech/blog</a> وآخر 3 على الصفحة الرئيسية.</p>
+        </div>
+
+        <div id="blog-list-view">
+          <div class="blog-stats" id="blog-stats" aria-live="polite"></div>
+          <div class="panel blog-list-panel">
+            <div class="blog-bar">
+              <label class="visually-hidden" for="blog-q">بحث بالمقالات</label>
+              <input type="search" id="blog-q" placeholder="ابحث بالعنوان أو الوسم…" autocomplete="off">
+              <div class="blog-filter" id="blog-filter" role="tablist" aria-label="حالة المقال">
+                <button type="button" role="tab" data-f="" aria-selected="true">الكل</button>
+                <button type="button" role="tab" data-f="published" aria-selected="false">منشور</button>
+                <button type="button" role="tab" data-f="scheduled" aria-selected="false">مجدول</button>
+                <button type="button" role="tab" data-f="draft" aria-selected="false">مسودة</button>
+              </div>
+              <button class="btn btn-primary btn-sm" type="button" id="blog-new">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>مقال جديد</span>
+              </button>
+            </div>
+            <ul class="blog-rows" id="blog-rows"></ul>
+            <p class="empty" id="blog-empty" hidden>ما في مقالات لسا. اضغط «مقال جديد» واكتب أول واحد.</p>
+          </div>
+        </div>
+
+        <div id="blog-editor" class="blog-editor" hidden>
+          <div class="be-top">
+            <button class="btn btn-ghost-dark btn-sm" type="button" id="be-back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg><span>كل المقالات</span>
+            </button>
+            <span class="be-state" id="be-state"></span>
+            <span class="be-dirty" id="be-dirty" hidden>فيه تعديلات ما انحفظت</span>
+            <span class="be-spacer"></span>
+            <a class="btn btn-ghost-dark btn-sm" id="be-view" href="#" target="_blank" rel="noopener" hidden>شوفه على الموقع</a>
+            <button class="btn btn-primary btn-sm" type="button" id="be-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
+          </div>
+
+          <div class="be-grid">
+            <div class="be-main panel">
+              <label class="visually-hidden" for="be-title">عنوان المقال</label>
+              <input class="be-title" type="text" id="be-title" maxlength="140" placeholder="عنوان المقال">
+              <div class="be-slug">
+                <span class="muted small" dir="ltr">beitlahia.tech/blog/</span>
+                <label class="visually-hidden" for="be-slug">رابط المقال</label>
+                <input type="text" id="be-slug" maxlength="90" dir="auto" placeholder="بيتعبّى من العنوان">
+              </div>
+
+              <div class="be-toolbar" role="toolbar" aria-label="تنسيق النص">
+                <button type="button" class="be-tb" data-md="h2" title="عنوان رئيسي">ع</button>
+                <button type="button" class="be-tb" data-md="h3" title="عنوان فرعي"><small>ع</small></button>
+                <span class="be-sep" aria-hidden="true"></span>
+                <button type="button" class="be-tb" data-md="bold" title="عريض (Ctrl+B)"><b>B</b></button>
+                <button type="button" class="be-tb" data-md="italic" title="مائل (Ctrl+I)"><i>I</i></button>
+                <button type="button" class="be-tb" data-md="link" title="رابط (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                <span class="be-sep" aria-hidden="true"></span>
+                <button type="button" class="be-tb" data-md="ul" title="قائمة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg></button>
+                <button type="button" class="be-tb" data-md="ol" title="قائمة مرقّمة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M4 5h1v4M4 9h2M4 14h2l-2 3h2"/></svg></button>
+                <button type="button" class="be-tb" data-md="quote" title="اقتباس"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17h3l2-4V7H5v6h3zM14 17h3l2-4V7h-6v6h3z"/></svg></button>
+                <button type="button" class="be-tb" data-md="code" title="كود"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/></svg></button>
+                <button type="button" class="be-tb" data-md="box" title="صندوق ملاحظة"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 9v4M12 16h.01"/></svg></button>
+                <button type="button" class="be-tb" data-md="hr" title="خط فاصل"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/></svg></button>
+                <span class="be-sep" aria-hidden="true"></span>
+                <label class="be-tb" title="صورة (أو الصقها أو اسحبها على النص)">
+                  <input type="file" id="be-img" accept="image/jpeg,image/png,image/webp" multiple hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4.5 4.5"/></svg>
+                </label>
+                <button type="button" class="be-tb" data-md="video" title="فيديو يوتيوب"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/></svg></button>
+                <span class="be-spacer"></span>
+                <div class="be-modes" role="tablist" aria-label="طريقة العرض">
+                  <button type="button" role="tab" data-mode="write" aria-selected="false">كتابة</button>
+                  <button type="button" role="tab" data-mode="split" aria-selected="true">جنب بعض</button>
+                  <button type="button" role="tab" data-mode="preview" aria-selected="false">معاينة</button>
+                </div>
+              </div>
+
+              <div class="be-panes" id="be-panes" data-mode="split">
+                <div class="be-write">
+                  <label class="visually-hidden" for="be-md">نص المقال</label>
+                  <textarea id="be-md" spellcheck="true" placeholder="اكتب المقال هون…&#10;&#10;## عنوان&#10;نص عادي، **عريض**، [رابط](https://…)&#10;- نقطة&#10;&#10;الصور: الصقها أو اسحبها هون"></textarea>
+                  <div class="be-drop" id="be-drop" aria-hidden="true">إفلت الصور هون</div>
+                </div>
+                <article class="be-preview post-body" id="be-preview" aria-label="المعاينة"></article>
+              </div>
+              <div class="be-foot muted small">
+                <span id="be-words"></span>
+                <span id="be-upload" aria-live="polite"></span>
+                <span class="be-help">## عنوان · **عريض** · *مائل* · [رابط](…) · - قائمة · &gt; اقتباس · :::tip صندوق ::: · @[youtube](رابط)</span>
+              </div>
+            </div>
+
+            <aside class="be-side">
+              <div class="panel be-card">
+                <h3>النشر</h3>
+                <div class="be-status" role="radiogroup" aria-label="حالة المقال">
+                  <label class="studio-chk"><input type="radio" name="be-status" value="draft" checked><span>مسودة</span></label>
+                  <label class="studio-chk"><input type="radio" name="be-status" value="published"><span>منشور</span></label>
+                </div>
+                <div class="field">
+                  <label for="be-at">موعد النشر <span class="muted small">(اختياري: فاضي = هلّق)</span></label>
+                  <input type="datetime-local" id="be-at">
+                </div>
+                <div class="field">
+                  <label for="be-date">التاريخ اللي بيظهر</label>
+                  <input type="date" id="be-date">
+                </div>
+                <label class="studio-chk"><input type="checkbox" id="be-pin"><span>ثبّته بأول المدونة</span></label>
+                <p class="muted small be-hint" id="be-hint"></p>
+              </div>
+
+              <div class="panel be-card">
+                <h3>صورة الغلاف</h3>
+                <label class="be-cover" id="be-cover">
+                  <input type="file" id="be-cover-in" accept="image/jpeg,image/png,image/webp" hidden>
+                  <img id="be-cover-img" alt="" hidden>
+                  <span class="be-cover-empty" id="be-cover-empty">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+                    <span>اختار صورة الغلاف</span>
+                  </span>
+                </label>
+                <div class="field"><label for="be-cover-alt">وصف الصورة</label><input type="text" id="be-cover-alt" maxlength="140" placeholder="لمين ما بيشوف الصورة"></div>
+                <button class="btn btn-ghost-dark btn-sm" type="button" id="be-cover-rm" hidden>شيل الغلاف</button>
+              </div>
+
+              <div class="panel be-card">
+                <h3>التفاصيل</h3>
+                <div class="field">
+                  <label for="be-excerpt">الملخص <span class="muted small" id="be-excerpt-n"></span></label>
+                  <textarea id="be-excerpt" rows="3" maxlength="320" placeholder="سطرين بيطلعوا بالقائمة وبالمشاركة. فاضي = أول النص"></textarea>
+                </div>
+                <div class="field"><label for="be-tags">الوسوم</label><input type="text" id="be-tags" maxlength="200" placeholder="مثلاً: ذكاء اصطناعي، ورشات، أخبار" list="be-tag-list"><datalist id="be-tag-list"></datalist></div>
+                <div class="field"><label for="be-author">الكاتب</label><input type="text" id="be-author" maxlength="80" placeholder="فريق بيت لاهيا التقني"></div>
+              </div>
+
+              <button class="btn btn-danger btn-sm be-delete" type="button" id="be-delete">احذف المقال</button>
+            </aside>
+          </div>
         </div>
       </section>
 
@@ -1404,6 +1665,37 @@
         <button class="btn btn-primary" type="button" id="crop-ok">استخدم الصورة</button>
         <button class="btn btn-ghost-dark" value="cancel">إلغاء</button>
       </div>
+    </form>
+  </dialog>
+  <dialog id="gs-crop-dlg" class="wa-dlg gs-crop-dlg">
+    <form method="dialog" class="wa-box">
+      <div class="wa-head"><strong>قص وتمويه</strong><span class="muted small" id="gs-crop-size" dir="ltr"></span></div>
+      <div class="studio-tabs gs-crop-modes" id="gs-crop-modes" role="tablist" aria-label="الأداة">
+        <button type="button" role="tab" data-mode="crop" aria-selected="true">قص</button>
+        <button type="button" role="tab" data-mode="blur" aria-selected="false">تمويه (بكسل)</button>
+      </div>
+      <div class="gs-crop-wrap">
+        <div class="gs-crop-stage" id="gs-crop-stage" data-mode="crop">
+          <img id="gs-crop-img" alt="" draggable="false">
+          <div class="gs-crop-dim" id="gs-crop-dim" aria-hidden="true"></div>
+          <div class="gs-crop-blurs" id="gs-crop-blurs"></div>
+          <div class="gs-crop-box" id="gs-crop-box"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><i data-h="n"></i><i data-h="s"></i><i data-h="e"></i><i data-h="w"></i></div>
+        </div>
+      </div>
+      <p class="muted small" id="gs-crop-hint"></p>
+      <div class="form-actions gs-crop-tools">
+        <label class="small muted gs-aspect">النسبة
+          <select id="gs-aspect"><option value="0">حرّة</option><option value="1.7778">16:9</option><option value="1.3333">4:3</option><option value="1">1:1</option><option value="0.8">4:5</option></select></label>
+        <button class="btn btn-ghost-dark btn-sm" type="button" id="gs-crop-trim">قص الحواف الفاضية</button>
+        <button class="btn btn-ghost-dark btn-sm" type="button" id="gs-crop-full">الصورة كاملة</button>
+        <button class="btn btn-ghost-dark btn-sm" type="button" id="gs-crop-clear">امسح التمويه</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="button" id="gs-crop-ok">تم</button>
+        <button class="btn btn-ghost-dark" type="button" id="gs-crop-all">طبّق على كل الصور بنفس المقاس</button>
+        <button class="btn btn-ghost-dark" value="cancel">إلغاء</button>
+      </div>
+      <label class="studio-chk small"><input type="checkbox" id="gs-crop-blurs-all"><span>وانقل مربعات التمويه كمان (إذا الناس بنفس الأماكن)</span></label>
     </form>
   </dialog>
 </body>

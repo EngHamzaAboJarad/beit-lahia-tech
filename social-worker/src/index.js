@@ -45,6 +45,7 @@
 // always comes along too (the thumbnail in the posts list).
 
 import { handleMail } from './mail.js';
+import { handleLive } from './live.js';
 
 const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
 const MAX_DESIGN = 3 * 1024 * 1024; // a design with an uploaded photo inside is ~1–2 MB of JSON
@@ -169,6 +170,8 @@ async function route(req, env, ctx) {
   }
   // e-mails to workshop registrants (check-in pass / certificate): see mail.js
   if (parts[0] === 'mail') return handleMail(req, env, parts, { requireAdmin, fail, json });
+  // online workshops: the meeting link behind /live (see live.js)
+  if (parts[0] === 'live') return handleLive(req, env, parts, { requireAdmin, fail, json });
 
   if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
   const user = await requireAdmin(req, env, 'studio');

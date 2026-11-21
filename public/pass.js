@@ -43,6 +43,15 @@ function render() {
   if (qr) $('pass-qr').replaceChildren(qr);
   $('pass-code').textContent = code.id;
   if (navigator.share) $('share-btn').hidden = false;
+  // remembered on this phone: the group's /live link then knows who's entering
+  if (code.wid) { try { localStorage.setItem(`blt-pass:${code.wid}`, JSON.stringify({ c: code.id, n: name })); } catch { /* private mode */ } }
+  if (ws && ws.mode === 'online' && code.wid) {
+    const live = $('live-btn');
+    live.href = `/live?w=${encodeURIComponent(code.wid)}&c=${encodeURIComponent(code.id)}${name ? `#${encodeURIComponent(name)}` : ''}`;
+    live.hidden = false;
+    $('save-btn').className = 'btn btn-ghost';
+    $('pass-tip').textContent = 'الورشة أونلاين: وقت اللقاء اضغط «ادخل اللقاء الأونلاين» (أو رابط الجروب)، فبيتسجّل حضورك وبتدخل. حضورك هو اللي بيطلّعلك الشهادة.';
+  }
 }
 
 // a 1080×1350 image of the pass (to keep in the gallery and show at the door without internet)

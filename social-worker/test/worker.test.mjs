@@ -47,6 +47,9 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes('firestore.googleapis.com')) {
     if (url.endsWith('/admins/admin1')) return new Response('{}', { status: 200 }); // no perms list = everything
     if (url.endsWith('/admins/social1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'studio' }] } } } }), { status: 200 });
+    if (url.endsWith('/admins/ws1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'workshops' }] } } } }), { status: 200 });
+    if (url.endsWith('/liveJoins/joinedCode12345')) return new Response(JSON.stringify({ fields: { workshopId: { stringValue: 'w1' } } }), { status: 200 });
+    if (url.includes('/liveJoins/')) return new Response('{}', { status: 404 });
     if (url.endsWith('/admins/content1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'site' }] } } } }), { status: 200 });
     return new Response('{}', { status: 403 });
   }
@@ -472,5 +475,31 @@ await t('workshop e-mails: «workshops» admins only, site links only, Cloudflar
   assert.match(c.data.results[1].error, /Email Sending/);
   assert.equal((await call('POST', '/mail/workshop', { token: admin, body: { kind: 'spam', items: [{}] } })).status, 400);
   delete env.MAIL;
+});
+await t('online workshops: the meeting link is saved by «workshops» admins and given only after check-in', async () => {
+  const wsk = await idToken('ws1');
+  assert.equal((await call('PUT', '/live/w1', { token: await idToken('content1'), body: { link: 'https://meet.google.com/abc-defg-hij' } })).status, 403);
+  assert.equal((await call('PUT', '/live/w1', { body: { link: 'https://meet.google.com/abc-defg-hij' } })).status, 401);
+  assert.equal((await call('PUT', '/live/w1', { token: wsk, body: { link: 'javascript:alert(1)' } })).status, 400);
+  assert.equal((await call('PUT', '/live/w1', { token: wsk, body: { link: 'http://zoom.us/j/1' } })).status, 400);
+  // before a link is saved
+  assert.equal((await call('POST', '/live/w1/enter', { body: { code: 'joinedCode12345' } })).status, 404);
+  const put = await call('PUT', '/live/w1', { token: wsk, body: { link: ' https://meet.google.com/abc-defg-hij ' } });
+  assert.equal(put.status, 200); assert.equal(put.data.link, 'https://meet.google.com/abc-defg-hij');
+  assert.equal((await call('GET', '/live/w1', { token: wsk })).data.link, 'https://meet.google.com/abc-defg-hij');
+  assert.equal((await call('GET', '/live/w1')).status, 401);
+  // a pass that checked in (liveJoins exists for this workshop) gets it
+  const ok = await call('POST', '/live/w1/enter', { body: { code: 'joinedCode12345' } });
+  assert.equal(ok.status, 200); assert.equal(ok.data.link, 'https://meet.google.com/abc-defg-hij');
+  // no check-in, another workshop's code, a bad code, another site
+  assert.equal((await call('POST', '/live/w1/enter', { body: { code: 'neverJoined1234' } })).status, 403);
+  assert.equal((await call('PUT', '/live/w2', { token: wsk, body: { link: 'https://zoom.us/j/123?pwd=x' } })).status, 200);
+  assert.equal((await call('POST', '/live/w2/enter', { body: { code: 'joinedCode12345' } })).status, 403);
+  assert.equal((await call('POST', '/live/w1/enter', { body: { code: 'x' } })).status, 400);
+  assert.equal((await call('POST', '/live/w1/enter', { body: { code: 'joinedCode12345' }, origin: 'https://evil.test' })).status, 403);
+  assert.equal((await call('POST', '/live/bad%20id/enter', { body: { code: 'joinedCode12345' } })).status, 404);
+  // removing it
+  assert.equal((await call('PUT', '/live/w1', { token: wsk, body: { link: '' } })).data.link, '');
+  assert.equal((await call('POST', '/live/w1/enter', { body: { code: 'joinedCode12345' } })).status, 404);
 });
 console.log(`\n${n} tests passed`);

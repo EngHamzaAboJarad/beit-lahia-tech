@@ -8,7 +8,8 @@ const USERS = [
   { email: 'habojarad305@gmail.com', perms: null, name: 'صاحب المنصة' },   // owner: everything + «المشرفين»
   { email: 'social@test.local', perms: ['studio'], name: 'مسؤول السوشيال' },
   { email: 'site@test.local', perms: ['site', 'stats'], name: 'محرر الموقع' },
-  { email: 'studio-site@test.local', perms: ['studio', 'site'], name: 'سوشيال + محتوى الموقع' },
+  { email: 'studio-site@test.local', perms: ['studio', 'site'], name: 'سوشيال + محتوى الموقع' },   // the old 'site' = content + events + gallery + contact
+  { email: 'gallery@test.local', perms: ['gallery'], name: 'مسؤول المعرض' },
 ];
 
 for (const u of USERS) {

@@ -185,8 +185,8 @@ function redo() {
 
 /* =================== text measuring with the real fonts =================== */
 const mctx = document.createElement('canvas').getContext('2d');
-const measure = (text, px, weight, family) => { mctx.font = `${weight} ${px}px ${family}`; return mctx.measureText(text).width; };
-const fontsReady = Promise.all(['400', '600', '700', '800'].flatMap((w) => [`${w} 40px Cairo`, `${w} 40px Montserrat`]).map((f) => document.fonts.load(f, 'ابت abc'))).catch(() => {});
+export const measure = (text, px, weight, family) => { mctx.font = `${weight} ${px}px ${family}`; return mctx.measureText(text).width; };
+export const fontsReady = Promise.all(['400', '600', '700', '800'].flatMap((w) => [`${w} 40px Cairo`, `${w} 40px Montserrat`]).map((f) => document.fonts.load(f, 'ابت abc'))).catch(() => {});
 
 /* =================== template pickers =================== */
 function thumb(design, on, onPick) {
@@ -744,7 +744,7 @@ async function uploadReady(file) {
 
 /* =================== export: SVG → canvas, fonts + images embedded =================== */
 let fontCssP;
-function fontCss() {
+export function fontCss() { // the brand fonts as CSS with the font files inlined (an SVG drawn as an image can't fetch)
   fontCssP = fontCssP || (async () => {
     let css = await (await fetch(FONT_URL)).text();
     const urls = [...new Set([...css.matchAll(/url\((https:[^)]+)\)/g)].map((m) => m[1]))];
@@ -754,7 +754,7 @@ function fontCss() {
   })().catch((e) => { fontCssP = null; throw e; });
   return fontCssP;
 }
-async function toDataUrl(src) {
+export async function toDataUrl(src) {
   if (!src || src.startsWith('data:')) return src;
   const blob = await (await fetch(src)).blob();
   return new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
