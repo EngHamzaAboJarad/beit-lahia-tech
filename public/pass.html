@@ -50,7 +50,7 @@
     @media print { body.page-pass { background: #fff; } .pass-bar, .pass-actions { display: none !important; } .pass { box-shadow: none; border: 1px solid #ccc; } }
   </style>
   <script src="/vendor/qrcode.js"></script>
-  <script type="module" src="/pass.js?v=1"></script>
+  <script type="module" src="/pass.js?v=2"></script>
 </head>
 <body class="page-pass">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -87,10 +87,11 @@
           <strong class="pass-name" id="pass-name"></strong>
           <div class="pass-qr" id="pass-qr" role="img" aria-label="رمز QR لتسجيل الحضور"></div>
           <span class="pass-code" id="pass-code"></span>
-          <p class="pass-tip">ورجّي هالرمز للفريق عالباب يوم الورشة، وهو بيسجّل حضورك بثانية. حضورك هو اللي بيطلّعلك الشهادة.</p>
+          <p class="pass-tip" id="pass-tip">ورجّي هالرمز للفريق عالباب يوم الورشة، وهو بيسجّل حضورك بثانية. حضورك هو اللي بيطلّعلك الشهادة.</p>
         </div>
       </article>
       <div class="pass-actions">
+        <a class="btn btn-primary" id="live-btn" href="#" hidden>ادخل اللقاء الأونلاين</a>
         <button class="btn btn-primary" type="button" id="save-btn">احفظ البطاقة كصورة</button>
         <button class="btn btn-ghost" type="button" id="share-btn" hidden>شارك الرابط</button>
       </div>

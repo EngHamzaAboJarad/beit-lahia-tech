@@ -4,6 +4,7 @@
     "public": "public",
     "cleanUrls": true,
     "trailingSlash": false,
+    "rewrites": [{ "source": "/blog/**", "destination": "/post.html" }],
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "_*.html"],
     "headers": [
       {

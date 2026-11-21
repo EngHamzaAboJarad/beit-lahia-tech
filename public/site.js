@@ -422,23 +422,71 @@ function renderMembers(list, show) {
 }
 
 /* ---------- Gallery (hidden until the admin publishes photos) ---------- */
-let photos = [];
+// Photos come in albums: each album is a stack of cards; a stack opens on all its photos,
+// and a photo opens the lightbox, which walks through that album.
+let photos = []; // the album the lightbox walks through
 let lbIndex = 0;
+const ALBUM_NONE = 'صور متنوعة';
+const photoCount = (n) => (n === 1 ? 'صورة وحدة' : n === 2 ? 'صورتين' : n <= 10 ? `${n} صور` : `${n} صورة`);
+const SVGNS = 'http://www.w3.org/2000/svg';
+function stackIcon() {
+  const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>'; // fixed markup, no data
+  return s;
+}
+
+function albumsOf(list) {
+  const map = new Map();
+  list.forEach((p) => { const k = String(p.album || '').trim(); if (!map.has(k)) map.set(k, []); map.get(k).push(p); });
+  return [...map].map(([name, items]) => ({ name: name || ALBUM_NONE, photos: items }));
+}
 
 function renderGallery(list) {
   const section = document.getElementById('gallery');
   const grid = document.getElementById('gallery-grid');
   if (!section || !grid || !list.length) return;
-  photos = list;
+  const albums = albumsOf(list);
   grid.setAttribute('data-stagger', '');
-  grid.replaceChildren(...list.map((p, i) => h('button', {
-    type: 'button', class: 'gallery-item', 'aria-label': p.caption ? `عرض الصورة: ${p.caption}` : `عرض الصورة ${i + 1}`,
-  }, h('img', { src: p.thumb, alt: p.caption || '', loading: 'lazy', decoding: 'async', width: p.w || null, height: p.h || null }),
-  p.caption ? h('span', { class: 'gallery-cap' }, p.caption) : null)));
-  grid.querySelectorAll('.gallery-item').forEach((b, i) => b.addEventListener('click', () => openLightbox(i)));
+  grid.replaceChildren(...albums.map((a) => {
+    // three cards: the cover in front, the next photos (or brand-coloured cards) behind it
+    const layers = [0, 1, 2].map((k) => {
+      const p = a.photos[k];
+      return p ? h('img', { class: `album-layer l${k}`, src: p.thumb, alt: '', loading: 'lazy', decoding: 'async' })
+        : h('span', { class: `album-layer l${k} is-blank` });
+    }).reverse();
+    const badge = h('span', { class: 'album-badge' }, stackIcon(), String(a.photos.length));
+    const card = h('button', { type: 'button', class: 'album-card', 'aria-label': `افتح ألبوم ${a.name}: ${photoCount(a.photos.length)}` },
+      h('span', { class: 'album-stack', 'aria-hidden': 'true' }, ...layers, badge),
+      h('span', { class: 'album-info' }, h('strong', {}, a.name), h('span', {}, photoCount(a.photos.length))));
+    card.addEventListener('click', () => openAlbum(a));
+    return card;
+  }));
   section.hidden = false;
   const nav = document.getElementById('nav-gallery');
   if (nav) nav.hidden = false;
+}
+
+const av = document.getElementById('album-view');
+function openAlbum(a) {
+  if (!av) return;
+  photos = a.photos;
+  document.getElementById('av-title').textContent = a.name;
+  document.getElementById('av-count').textContent = photoCount(a.photos.length);
+  const grid = document.getElementById('av-grid');
+  grid.replaceChildren(...a.photos.map((p, i) => {
+    const b = h('button', {
+      type: 'button', class: 'gallery-item', style: `--i:${Math.min(i, 24)};--r:${((i * 37) % 9) - 4}deg`,
+      'aria-label': p.caption ? `عرض الصورة: ${p.caption}` : `عرض الصورة ${i + 1}`,
+    }, h('img', { src: p.thumb, alt: p.caption || '', loading: 'lazy', decoding: 'async', width: p.w || null, height: p.h || null }),
+    p.caption ? h('span', { class: 'gallery-cap' }, p.caption) : null);
+    b.addEventListener('click', () => openLightbox(i));
+    return b;
+  }));
+  av.showModal();
+  av.scrollTop = 0;
+}
+if (av) {
+  av.addEventListener('click', (e) => { if (e.target.closest('[data-av="close"]')) av.close(); });
 }
 
 const lb = document.getElementById('lightbox');
@@ -481,6 +529,23 @@ if (lb) {
     const dx = e.changedTouches[0].clientX - x0; x0 = null;
     if (Math.abs(dx) > 50) showPhoto(lbIndex + (dx > 0 ? 1 : -1)); // RTL: swipe right = next
   });
+}
+
+/* ---------- «من المدونة»: the 3 newest posts (hidden until there is one) ---------- */
+async function renderHomeBlog() {
+  const section = document.getElementById('blog-home');
+  if (!section) return;
+  try {
+    const [{ fetchPosts, postCard }, { db, fs }] = await Promise.all([import('./blog-ui.js'), getDbLite()]);
+    const posts = (await fetchPosts(db, fs)).slice(0, 3);
+    if (!posts.length) return;
+    const grid = document.getElementById('home-posts');
+    grid.setAttribute('data-stagger', '');
+    grid.replaceChildren(...posts.map((p) => postCard(p)));
+    section.hidden = false;
+    const nav = document.getElementById('nav-blog');
+    if (nav) nav.hidden = false;
+  } catch (e) { console.warn('[blog]', e); }
 }
 
 /* ---------- Putting live data on the page ---------- */
@@ -545,6 +610,7 @@ afterLoad(async () => {
     }
     renderMembers(team, live.settings?.showMembers === true);
     renderGallery(gallery);
+    await renderHomeBlog();
     setupReveals();
     journey.refresh();
   } catch (e) {

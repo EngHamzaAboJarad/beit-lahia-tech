@@ -666,6 +666,61 @@ img.brand-mark { display: block; }
 .gallery-item:hover .gallery-cap, .gallery-item:focus-visible .gallery-cap { opacity: 1; transform: none; }
 @media (hover: none) { .gallery-cap { opacity: 1; transform: none; } }
 
+/* Gallery albums: a stack of photo cards per album */
+.album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 40px 34px; padding-top: 14px; }
+.album-card { display: grid; gap: 18px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; border-radius: 18px; }
+.album-card:focus-visible { outline: 3px solid var(--emerald); outline-offset: 8px; }
+.album-stack { position: relative; display: block; aspect-ratio: 4 / 3; margin: 14px 18px 0; }
+.album-layer {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 16px;
+  border: 5px solid #fff; background: var(--night); box-shadow: 0 18px 34px -18px rgba(11, 16, 32, .5);
+  transition: transform .5s var(--ease-out, ease), box-shadow .35s ease;
+}
+.album-layer.l2 { z-index: 1; transform: rotate(-7deg) translate(14px, 8px); }
+.album-layer.l1 { z-index: 2; transform: rotate(4deg) translate(-10px, -4px); }
+.album-layer.l0 { z-index: 3; }
+.album-layer.is-blank.l1 { background: var(--emerald); }
+.album-layer.is-blank.l2 { background: var(--strawberry); }
+.album-card:hover .l2, .album-card:focus-visible .l2 { transform: rotate(-13deg) translate(38px, 6px); }
+.album-card:hover .l1, .album-card:focus-visible .l1 { transform: rotate(9deg) translate(-32px, -10px); }
+.album-card:hover .l0, .album-card:focus-visible .l0 { transform: translateY(-8px); box-shadow: 0 30px 46px -22px rgba(11, 16, 32, .6); }
+.album-badge {
+  position: absolute; z-index: 4; bottom: 16px; inset-inline-start: 16px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px; background: rgba(11, 16, 32, .84); color: #fff;
+  font-family: var(--font-head); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
+  transition: transform .5s var(--ease-out, ease);
+}
+.album-badge svg { width: 16px; height: 16px; fill: none; stroke: var(--emerald); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.album-card:hover .album-badge, .album-card:focus-visible .album-badge { transform: translateY(-8px); }
+.album-info { display: grid; gap: 2px; padding-inline: 18px; }
+.album-info strong { font-family: var(--font-head); font-size: 19px; font-weight: 700; line-height: 1.4; }
+.album-info span { font-size: 14.5px; color: var(--slate); }
+
+/* An open album: every photo of it, dealt onto a dark sheet */
+.album-view {
+  width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; overflow-y: auto; overscroll-behavior: contain;
+  color: var(--white, #fff);
+  background: radial-gradient(70% 40% at 100% 0%, rgba(53, 230, 155, .14), transparent 70%), radial-gradient(60% 40% at 0% 100%, rgba(242, 41, 100, .12), transparent 70%), var(--night);
+}
+.album-view::backdrop { background: rgba(7, 11, 20, .6); }
+.album-view[open] { animation: fade .25s ease; }
+.av-head {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 22px clamp(16px, 4vw, 48px) 26px; background: linear-gradient(var(--night) 72%, transparent);
+}
+.av-title { min-width: 0; }
+.av-kicker { margin: 0; font-size: 13px; font-weight: 700; color: var(--emerald); }
+.av-head h2 { margin: 2px 0 0; font-size: clamp(22px, 3.2vw, 34px); line-height: 1.35; color: #fff; }
+.av-count { margin: 4px 0 0; font-size: 14px; color: #9AA6BC; }
+.lb-close.av-close { position: static; flex: none; }
+.av-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px; padding: 0 clamp(16px, 4vw, 48px) 56px; }
+.av-grid .gallery-item { background: #151C2D; animation: av-deal .55s var(--ease-out, ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
+@keyframes av-deal { from { opacity: 0; transform: translateY(26px) scale(.94) rotate(var(--r, 0deg)); } }
+@media (prefers-reduced-motion: reduce) {
+  .album-layer, .album-badge { transition: none; }
+  .av-grid .gallery-item { animation: none; }
+}
+
 /* Lightbox */
 .lightbox {
   width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;

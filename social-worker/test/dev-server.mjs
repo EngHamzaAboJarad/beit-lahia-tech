@@ -44,6 +44,10 @@ globalThis.fetch = async (url, init) => {
   const ok = (d) => new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json' } });
   const bad = (m) => new Response(JSON.stringify({ error: { message: m } }), { status: 400 });
   if (url.includes('securetoken@system')) return ok({ keys: [jwk] });
+  // /live check-ins: read from the local Firestore emulator (firebase emulators:start --project demo-bitlahia)
+  if (url.includes('firestore.googleapis.com') && url.includes('/liveJoins/')) {
+    return realFetch(url.replace(/^https:\/\/firestore\.googleapis\.com\/v1\/projects\/[^/]+/, 'http://127.0.0.1:8080/v1/projects/demo-bitlahia'));
+  }
   if (url.includes('firestore.googleapis.com')) return new Response('{}', { status: 200 });
   if (url.includes('graph.facebook.com')) {
     console.log('[meta]', init?.method || 'GET', url.replace(/(access_token|client_secret|fb_exchange_token|input_token)=[^&]+/g, '$1=…'));

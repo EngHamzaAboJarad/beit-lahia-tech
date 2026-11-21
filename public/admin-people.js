@@ -9,6 +9,8 @@
 // • Profile: one drawer per person (merged by WhatsApp number / e-mail like «الإجمالي العام»): community
 //   registration, workshops + attendance, certificates, and private admin notes (memberNotes, «members» only).
 // • E-mails (through the social worker › /mail): check-in passes, and certificates right after they're issued.
+// • Online workshops: the Zoom / Meet link lives in the social worker (› /live/:wid), never in Firestore. The group
+//   gets /live?w=<id>; a registrant checks in there (pass code, or WhatsApp number → liveKeys) and only then gets it.
 import { waDigits, passLink, parseCheckinCode } from './checkin-shared.js';
 import { mergeWorkshop, arDate, placeText, WS_STATUS, WS_LEVEL } from './workshop-shared.js';
 
@@ -53,6 +55,42 @@ async function workerPost(path, body) {
   if (!res.ok) throw new Error(data.error || `خطأ ${res.status}`);
   return data;
 }
+async function workerCall(method, path, body) {
+  const token = await d.getToken();
+  const res = await fetch(`${WORKER}${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `خطأ ${res.status}`);
+  return data;
+}
+
+/* =================== online workshops: the meeting link + WhatsApp keys =================== */
+/** the saved Zoom / Meet link of a workshop ('' = none) */
+export async function getLiveLink(wid) { return (await workerCall('GET', `/live/${encodeURIComponent(wid)}`)).link || ''; }
+/** save it ('' removes it) → the saved link */
+export async function saveLiveLink(wid, link) { return (await workerCall('PUT', `/live/${encodeURIComponent(wid)}`, { link })).link || ''; }
+/** the link registrants open (posted in the group instead of the meeting link) */
+export const liveShareUrl = (wid) => `${location.origin}/live?w=${encodeURIComponent(wid)}`;
+
+const keysSynced = new Set();
+/**
+ * liveKeys/{wid}_{WhatsApp digits} = { id } for every registration of an online workshop, so /live can find a
+ * registrant by number. Idempotent; once per workshop per page load unless forced (after saving the workshop).
+ */
+export async function syncLiveKeys(wid, { force = false } = {}) {
+  if (!wid || (!force && keysSynced.has(wid))) return 0;
+  const regs = d.state().allRegs.filter((r) => r.workshopId === wid);
+  const seen = new Set();
+  const rows = regs.map((r) => ({ id: r.id, key: `${wid}_${waDigits(r.whatsapp)}` }))
+    .filter((x) => /_\d{8,15}$/.test(x.key) && !seen.has(x.key) && seen.add(x.key));
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = d.fs.writeBatch(d.db);
+    rows.slice(i, i + 400).forEach((x) => batch.set(d.fs.doc(d.db, 'liveKeys', x.key), { id: x.id }));
+    await batch.commit();
+  }
+  keysSynced.add(wid);
+  return rows.length;
+}
+
 function wsForMail(wid) {
   const m = mergeWorkshop(wsById(wid) || null);
   return { title: m.title, titleAr: m.titleAr, date: m.date ? arDate(m.date) : '', time: m.time, place: placeText(m) };
@@ -156,7 +194,7 @@ export function setAttendance(r, value) {
 }
 export const attendedText = (r) => {
   const t = tsMs(r.attendedAt);
-  return [t ? `الساعة ${timeFmt.format(new Date(t))}` : '', r.attendedBy ? `سجّله ${r.attendedBy}` : ''].filter(Boolean).join(' · ');
+  return [t ? `الساعة ${timeFmt.format(new Date(t))}` : '', r.attendedBy === 'live' ? 'دخل من رابط اللقاء' : r.attendedBy ? `سجّله ${r.attendedBy}` : ''].filter(Boolean).join(' · ');
 };
 
 /* =================== scanner =================== */

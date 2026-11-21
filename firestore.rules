@@ -24,8 +24,12 @@ service cloud.firestore {
     function can(p) {
       return isAdmin() && (isFull() || p in adminData().perms);
     }
+    // محتوى الموقع صار 4 صلاحيات لحالها؛ 'site' القديمة لسا بتفتح الأربعة (للمشرفين اللي انضافوا قبل التقسيم)
+    function canSite(p) {
+      return can(p) || can('site');
+    }
     function permKeys() {
-      return ['members', 'team', 'forms', 'workshops', 'site', 'studio', 'stats', 'settings'];
+      return ['members', 'team', 'forms', 'workshops', 'content', 'events', 'gallery', 'contact', 'blog', 'site', 'studio', 'stats', 'settings'];
     }
 
     function isStr(v, min, max) {
@@ -96,7 +100,7 @@ service cloud.firestore {
     match /site/{docId} {
       allow read: if docId in ['content', 'settings', 'forms'];
       allow write: if request.resource.size() < 200 * 1024 && (
-        (docId == 'content' && can('site'))
+        (docId == 'content' && canSite('content'))
         || (docId == 'forms' && can('forms'))
         || (docId == 'settings' && (isFull() || (isAdmin() && settingsKeys().hasOnly(allowedSettingsKeys())))));
     }
@@ -108,7 +112,7 @@ service cloud.firestore {
         .concat(can('settings') ? ['registrationOpen', 'closedMessage', 'whatsappGroup'] : [])
         .concat(can('team') ? ['showMembers'] : [])
         .concat(can('workshops') ? ['currentWorkshop', 'nextWorkshop'] : [])
-        .concat(can('site') ? ['contactWhatsapp', 'contactEmail', 'socialLinks'] : []);
+        .concat(canSite('contact') ? ['contactWhatsapp', 'contactEmail', 'socialLinks'] : []);
     }
 
     // ---------- الورشات ----------
@@ -122,6 +126,8 @@ service cloud.firestore {
         && request.resource.data.open is bool
         && isStr(request.resource.data.title, 1, 60)
         && (request.resource.data.get('publishAt', null) == null || request.resource.data.publishAt is timestamp)
+        && (request.resource.data.get('liveFrom', null) == null || request.resource.data.liveFrom is timestamp)
+        && (request.resource.data.get('liveTo', null) == null || request.resource.data.liveTo is timestamp)
         && request.resource.size() < 400 * 1024;
       allow delete: if can('workshops');
     }
@@ -148,7 +154,59 @@ service cloud.firestore {
       allow create: if isValidWorkshopReg(request.resource.data)
         && workshopOpenFor(request.resource.data.workshopId);
       allow read, delete: if can('workshops');
-      allow update: if can('workshops') && isValidRegUpdate(request.resource.data, request.resource.data.diff(resource.data).affectedKeys());
+      allow update: if (can('workshops') && isValidRegUpdate(request.resource.data, request.resource.data.diff(resource.data).affectedKeys()))
+        || isLiveSelfCheckin(regId);
+    }
+
+    // ---------- حضور الورشات الأونلاين (صفحة /live) ----------
+    // اللي معه رمز دخول (رقم التسجيل) بيسجّل حضوره بنفسه يوم الورشة الأونلاين: بينعمل liveJoins/{regId}
+    // (بس لتسجيل حقيقي بنفس الورشة) وبيتعلّم التسجيل «حضر» (attendedBy = 'live'). خدمة النشر بتقرأ liveJoins
+    // وبعدها بس بتعطيه رابط زوم/ميت. liveKeys/{wid}_{أرقام الواتساب} = { id } بيكتبها الأدمن، عشان اللي
+    // ما معه البطاقة يدخل برقم الواتساب.
+    function liveOpenFor(wid) {
+      let path = /databases/$(database)/documents/workshops/$(wid);
+      let w = get(path).data;
+      return w.get('mode', 'onsite') == 'online' && w.get('status', '') in ['live', 'done']
+        && ((hasLiveTimes(w) && request.time >= w.liveFrom && request.time < w.liveTo)
+          || (!hasLiveTimes(w) && liveDayOpen(w)));
+    }
+    // وقت الدخول اللي حدّده الأدمن (liveFrom / liveTo)، مثلاً 9:30 لـ 2:30
+    function hasLiveTimes(w) {
+      return w.get('liveFrom', null) is timestamp && w.get('liveTo', null) is timestamp;
+    }
+    // بدونه: يوم الورشة بتوقيت غزة (UTC+2/+3)، مع هامش: من 8 بالليل قبلها لـ 6 الصبح بعدها
+    function liveDayOpen(w) {
+      let p = w.get('date', '').split('-');
+      return p.size() == 3
+        && request.time >= timestamp.date(int(p[0]), int(p[1]), int(p[2])) - duration.value(6, 'h')
+        && request.time < timestamp.date(int(p[0]), int(p[1]), int(p[2])) + duration.value(28, 'h');
+    }
+    function isLiveSelfCheckin(regId) {
+      let k = request.resource.data.diff(resource.data).affectedKeys();
+      return k.hasOnly(['attended', 'attendedAt', 'attendedBy'])
+        && resource.data.get('attended', false) != true
+        && request.resource.data.attended == true
+        && request.resource.data.attendedAt == request.time
+        && request.resource.data.attendedBy == 'live'
+        && existsAfter(/databases/$(database)/documents/liveJoins/$(regId))
+        && liveOpenFor(resource.data.workshopId);
+    }
+    match /liveJoins/{regId} {
+      allow get: if true;
+      allow list, delete: if can('workshops');
+      allow create: if request.resource.data.keys().hasOnly(['workshopId', 'at'])
+        && request.resource.data.at == request.time
+        && request.resource.data.workshopId is string
+        && get(/databases/$(database)/documents/workshopRegs/$(regId)).data.workshopId == request.resource.data.workshopId
+        && liveOpenFor(request.resource.data.workshopId);
+    }
+    match /liveKeys/{key} {
+      allow get: if true;
+      allow list, delete: if can('workshops');
+      allow create, update: if can('workshops')
+        && request.resource.data.keys().hasOnly(['id'])
+        && isStr(request.resource.data.id, 12, 40)
+        && key.matches('^[A-Za-z0-9_-]{1,40}_[0-9]{8,15}$');
     }
     function isValidRegUpdate(d, k) {
       return k.hasOnly(['attended', 'attendedAt', 'attendedBy', 'certId', 'workshopId', 'passMailedAt', 'certMailedAt'])
@@ -278,9 +336,9 @@ service cloud.firestore {
     // ---------- الفعاليات ----------
     // الزوار بيشوفوا المنشور بس؛ الأدمن بيشوف ويعدّل الكل.
     match /events/{eventId} {
-      allow read: if resource.data.published == true || can('site');
-      allow create, update: if can('site') && isValidEvent(request.resource.data);
-      allow delete: if can('site');
+      allow read: if resource.data.published == true || canSite('events');
+      allow create, update: if canSite('events') && isValidEvent(request.resource.data);
+      allow delete: if canSite('events');
     }
 
     function isValidEvent(d) {
@@ -322,27 +380,83 @@ service cloud.firestore {
     }
 
     // ---------- معرض الصور ----------
-    // gallery: الصورة المصغّرة + الوصف (الزوار بيشوفوا المنشور بس)
+    // gallery: الصورة المصغّرة + الوصف + الألبوم (الزوار بيشوفوا المنشور بس). album فاضي = «صور متنوعة».
     match /gallery/{photoId} {
-      allow read: if resource.data.published == true || can('site');
-      allow create, update: if can('site')
-        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
+      allow read: if resource.data.published == true || canSite('gallery');
+      allow create, update: if canSite('gallery')
+        && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'published', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
         && isStr(request.resource.data.thumb, 30, 120000)
         && request.resource.data.thumb.matches('^data:image/(jpeg|png|webp);base64,.*')
         && isStr(request.resource.data.caption, 0, 140)
+        && (!('album' in request.resource.data) || isStr(request.resource.data.album, 0, 80))
         && request.resource.data.published is bool;
-      allow delete: if can('site');
+      allow delete: if canSite('gallery');
     }
     // galleryFull: الصورة بحجمها الكامل، بتنقرأ بس إذا الصورة منشورة
     match /galleryFull/{photoId} {
-      allow get: if can('site')
+      allow get: if canSite('gallery')
         || get(/databases/$(database)/documents/gallery/$(photoId)).data.published == true;
-      allow list: if can('site');
-      allow create, update: if can('site')
+      allow list: if canSite('gallery');
+      allow create, update: if canSite('gallery')
         && request.resource.data.keys().hasOnly(['src'])
         && isStr(request.resource.data.src, 30, 950000)
         && request.resource.data.src.matches('^data:image/(jpeg|png|webp);base64,.*');
-      allow delete: if can('site');
+      allow delete: if canSite('gallery');
+    }
+
+    // ---------- المدونة ----------
+    // blog: بطاقة المقال (العنوان، الرابط، الملخص، صورة صغيرة، الوسوم…) وهي اللي بتنعرض بالقوائم.
+    // status: draft (للمشرفين بس) / published. publishAt (اختياري) = نشر مجدول: المقال بيضل مخفي لحد هالوقت.
+    // القائمة بتنقرأ بشرط status == 'published' (الصفحة بتخفي المجدول لحد موعده)، والمقال نفسه ونصّه ما بينفتحوا قبل الموعد.
+    function postLive(p) {
+      return p.status == 'published' && published(p);
+    }
+    function postOf(id) {
+      return get(/databases/$(database)/documents/blog/$(id)).data;
+    }
+    match /blog/{postId} {
+      allow get: if can('blog') || postLive(resource.data);
+      allow list: if can('blog') || resource.data.status == 'published';
+      allow create, update: if can('blog') && isValidPost(request.resource.data);
+      allow delete: if can('blog');
+    }
+    function isValidPost(d) {
+      return d.keys().hasOnly(['title', 'slug', 'excerpt', 'cover', 'coverAlt', 'tags', 'author', 'date', 'status', 'publishAt',
+                               'pinned', 'readMin', 'createdAt', 'updatedAt'])
+        && isStr(d.title, 1, 140)
+        && isStr(d.slug, 1, 90) && d.slug.matches('^[^\\s/?#%&]+$')
+        && d.status in ['draft', 'published']
+        && (!('excerpt' in d) || isStr(d.excerpt, 0, 320))
+        && (!('cover' in d) || d.cover == '' || (isStr(d.cover, 30, 160000) && d.cover.matches('^data:image/(jpeg|png|webp);base64,.*')))
+        && (!('coverAlt' in d) || isStr(d.coverAlt, 0, 140))
+        && (!('tags' in d) || (d.tags is list && d.tags.size() <= 8))
+        && (!('author' in d) || isStr(d.author, 0, 80))
+        && (!('date' in d) || isStr(d.date, 0, 10))
+        && (!('publishAt' in d) || d.publishAt == null || d.publishAt is timestamp)
+        && (!('pinned' in d) || d.pinned is bool)
+        && (!('readMin' in d) || d.readMin is int);
+    }
+    // blogBody: نص المقال (Markdown) والغلاف بحجمه الكامل، بينقرأ بس إذا المقال نفسه منشور ووصل موعده
+    match /blogBody/{postId} {
+      allow get: if can('blog') || postLive(postOf(postId));
+      allow list: if can('blog');
+      allow create, update: if can('blog')
+        && request.resource.data.keys().hasOnly(['md', 'cover'])
+        && isStr(request.resource.data.md, 0, 300000)
+        && (!('cover' in request.resource.data) || request.resource.data.cover == ''
+            || (isStr(request.resource.data.cover, 30, 650000) && request.resource.data.cover.matches('^data:image/(jpeg|png|webp);base64,.*')));
+      allow delete: if can('blog');
+    }
+    // blogMedia: الصور جوّا المقالات (كل صورة doc لحالها، post = رقم المقال)
+    match /blogMedia/{mediaId} {
+      allow get: if can('blog') || postLive(postOf(resource.data.post));
+      allow list: if can('blog');
+      allow create, update: if can('blog')
+        && request.resource.data.keys().hasOnly(['src', 'post', 'w', 'h'])
+        && isStr(request.resource.data.post, 1, 40)
+        && isStr(request.resource.data.src, 30, 900000)
+        && request.resource.data.src.matches('^data:image/(jpeg|png|webp);base64,.*');
+      allow delete: if can('blog');
     }
 
     // ---------- الأدمنز والمشرفين ----------
@@ -360,7 +474,7 @@ service cloud.firestore {
       return d.keys().hasOnly(['email', 'name', 'perms', 'addedBy', 'createdAt', 'updatedAt'])
         && isStr(d.email, 0, 120)
         && (!('name' in d) || isStr(d.name, 0, 80))
-        && d.perms is list && d.perms.size() <= 8 && d.perms.hasOnly(permKeys())
+        && d.perms is list && d.perms.size() <= 13 && d.perms.hasOnly(permKeys())
         && (!('addedBy' in d) || isStr(d.addedBy, 0, 120));
     }
     function inviteFor(email) {
