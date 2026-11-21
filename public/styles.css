@@ -679,16 +679,21 @@ img.brand-mark { display: block; }
 .album-view::backdrop { background: rgba(7, 11, 20, .6); }
 .album-view[open] { animation: fade .25s ease; }
 .av-head {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding: 22px clamp(16px, 4vw, 48px) 26px; background: linear-gradient(var(--night) 72%, transparent);
+  /* scrolls away with the page (a long description would otherwise cover the photos); only ✕ stays */
+  position: relative; display: flex; align-items: flex-start; gap: 16px;
+  padding: 22px clamp(16px, 4vw, 48px) 28px; padding-inline-end: calc(clamp(16px, 4vw, 48px) + 64px);
 }
 .av-title { min-width: 0; }
 .av-kicker { margin: 0; font-size: 13px; font-weight: 700; color: var(--emerald); }
 .av-head h2 { margin: 2px 0 0; font-size: clamp(22px, 3.2vw, 34px); line-height: 1.35; color: #fff; }
 .av-count { margin: 4px 0 0; font-size: 14px; color: #9AA6BC; }
-.av-desc { max-width: 68ch; margin: 12px 0 0; font-size: 16px; line-height: 1.85; color: #D5DCE8; white-space: pre-line; }
+.av-desc { max-width: 68ch; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .08); font-size: 16px; line-height: 1.85; color: #D5DCE8; white-space: pre-line; overflow-wrap: anywhere; }
 .av-desc[hidden] { display: none; }
-.lb-close.av-close { position: static; flex: none; }
+.lb-close.av-close {
+  position: fixed; top: 20px; inset-inline-end: clamp(16px, 4vw, 48px); z-index: 3;
+  background: rgba(11, 16, 32, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.lb-close.av-close:hover { background: rgba(40, 48, 70, .9); }
 .av-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px; padding: 0 clamp(16px, 4vw, 48px) 56px; }
 .av-grid .gallery-item { background: #151C2D; animation: av-deal .55s var(--ease-out, ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
 @keyframes av-deal { from { opacity: 0; transform: translateY(26px) scale(.94) rotate(var(--r, 0deg)); } }
