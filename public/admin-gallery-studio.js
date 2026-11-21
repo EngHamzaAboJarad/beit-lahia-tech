@@ -4,8 +4,10 @@
 // blurred, Beit Lahia at night…), a size and the texts, then save them all to the gallery as drafts
 // or download them. Nothing is stored until you save: the photos live in memory, and the look you
 // picked is remembered in this browser.
+// «بوست جاهز»: a post / carousel designed elsewhere. The pictures stay as they are (crop and pixelate
+// only, no background or texts), in the order you set, each with its caption, under one description.
 import { NIGHT, NIGHT2, MINT, BERRY, MOSAICS, renderElement } from './social-templates.js';
-import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=12';
+import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=13';
 import { arDate } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
@@ -34,7 +36,9 @@ const DEFAULTS = {
   theme: 'night', size: 'wide', title: '', sub: '', tag: '',
   logo: true, mosaic: true, chrome: false, footer: true, border: true, fit: 'contain', pad: 6, radius: 26,
   capOn: false, // write each photo's caption on the picture too, under the card
+  asIs: false, // «بوست جاهز»: the pictures as they are, no frame
 };
+const SOCIAL_MAX = 10; // a carousel on Instagram
 export const CAP_MAX = 280; // a photo's caption
 export const DESC_MAX = 600; // the post (album) description
 
@@ -94,6 +98,7 @@ async function addFiles(list) {
   if (!files.length) { deps.toast('اختار صور (JPG أو PNG أو WebP)', true); return; }
   const room = MAX_PHOTOS - state.photos.length;
   if (room <= 0) { deps.toast(`الاستوديو بياخد ${MAX_PHOTOS} صورة بالمرة. احفظ أو احذف شوي أول.`, true); return; }
+  if (st().asIs) files.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
   const take = files.slice(0, room);
   const prog = $('gs-progress');
   let failed = 0;
@@ -118,6 +123,12 @@ async function addFiles(list) {
   refresh();
 }
 
+function moveCurrent(d) {
+  const k = state.cur; const j = k + d;
+  if (k < 0 || j < 0 || j >= state.photos.length) return;
+  [state.photos[k], state.photos[j]] = [state.photos[j], state.photos[k]];
+  state.cur = j; refresh();
+}
 function removeCurrent() {
   const p = curPhoto(); if (!p) return;
   [p.fullUrl, p.smallUrl, p.img.src].forEach((u) => u && URL.revokeObjectURL(u));
@@ -266,12 +277,20 @@ function frameSvg(p, s, src, css = '') {
   const style = `${css}.ar{font-family:Cairo,Tahoma,sans-serif}.en{font-family:Montserrat,Arial,sans-serif}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><style>${style}</style><defs>${defs}</defs>${out}</svg>`;
 }
+// «بوست جاهز»: just the picture (cropped and pixelated), at its own size
+function plainSvg(p, href) {
+  const W = p ? p.cw : 1080; const H = p ? p.ch : 1350;
+  const body = p ? `<image href="${href}" width="${W}" height="${H}" preserveAspectRatio="none"/>` : `<rect width="${W}" height="${H}" fill="${NIGHT2}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${body}</svg>`;
+}
 const screenSrc = (p) => ({ photo: p?.fullUrl, bg: p?.smallUrl, cityBg: THEMES.city.photo });
 const thumbSrc = (p) => ({ photo: p?.smallUrl, bg: p?.smallUrl, cityBg: THEMES.city.photo });
 
 /* =================== export: the frame as a JPEG =================== */
 async function exportPhoto(p) {
-  const s = st(); const [W, H] = SIZES[s.size] || SIZES.wide;
+  const s = st();
+  if (s.asIs) return p.fullBlob; // a ready design: the picture itself
+  const [W, H] = SIZES[s.size] || SIZES.wide;
   const th = THEMES[s.theme] || THEMES.night;
   const [css, photo, bg, cityBg] = await Promise.all([
     fontCss().catch(() => ''), blobToDataUrl(p.fullBlob),
@@ -326,7 +345,7 @@ async function saveAll() {
       caps.push((p.caption || '').trim().slice(0, CAP_MAX));
     }
     prog.textContent = 'جاري الرفع على المعرض…';
-    const album = ($('gs-album').value.trim() || st().title.trim()).slice(0, 80);
+    const album = ($('gs-album').value.trim() || fallbackAlbum()).slice(0, 80);
     const desc = $('gs-desc').value.trim().slice(0, DESC_MAX);
     const { done, failed, ids = [] } = await deps.saveToGallery(files, caps, album, desc);
     // «اقترحها على السوشيال»: the saved photos wait in the social studio, to publish or cancel there
@@ -346,8 +365,19 @@ async function saveAll() {
 
 /* =================== the screen =================== */
 function renderStage() {
-  const s = st(); const p = curPhoto(); const [W, H] = SIZES[s.size] || SIZES.wide;
+  const s = st(); const p = curPhoto();
   const stage = $('gs-stage');
+  if (s.asIs) {
+    const W = p ? p.cw : 1080; const H = p ? p.ch : 1350;
+    stage.style.setProperty('--ar', String(H / W));
+    $('gs-size').textContent = p ? `${W} × ${H}` : '';
+    stage.classList.toggle('is-empty', !p);
+    stage.innerHTML = p ? plainSvg(p, p.fullUrl)
+      : plainSvg(null).replace('</svg>', `<text x="540" y="640" font-size="44" font-weight="700" fill="#9AA6BC" text-anchor="middle" direction="rtl" font-family="Cairo,Tahoma,sans-serif">ارفع صور البوست الجاهز</text><text x="540" y="710" font-size="32" font-weight="600" fill="#6B7891" text-anchor="middle" direction="rtl" font-family="Cairo,Tahoma,sans-serif">(كاروسيل: بترتيب أسماء الملفات)</text></svg>`);
+    renderNav(p);
+    return;
+  }
+  const [W, H] = SIZES[s.size] || SIZES.wide;
   stage.style.setProperty('--ar', String(H / W));
   $('gs-size').textContent = `${W} × ${H}`;
   if (!p) {
@@ -358,16 +388,22 @@ function renderStage() {
     stage.classList.remove('is-empty');
     stage.innerHTML = frameSvg(p, s, screenSrc(p)); // texts are escaped by the renderer
   }
+  renderNav(p);
+}
+function renderNav(p) {
   $('gs-count').textContent = state.photos.length ? `${state.cur + 1} / ${state.photos.length}` : '';
-  ['gs-prev', 'gs-next', 'gs-crop-btn', 'gs-del'].forEach((id) => { $(id).disabled = !p; });
-  if (p) { $('gs-prev').disabled = state.cur === 0; $('gs-next').disabled = state.cur === state.photos.length - 1; }
+  ['gs-prev', 'gs-next', 'gs-crop-btn', 'gs-del', 'gs-move-prev', 'gs-move-next'].forEach((id) => { $(id).disabled = !p; });
+  if (p) {
+    $('gs-prev').disabled = $('gs-move-prev').disabled = state.cur === 0;
+    $('gs-next').disabled = $('gs-move-next').disabled = state.cur === state.photos.length - 1;
+  }
 }
 function renderStrip() {
   const s = st();
   const items = state.photos.map((p, k) => {
     const b = deps.h('button', { type: 'button', class: 'gs-thumb', 'aria-current': String(k === state.cur), 'aria-label': `صورة ${k + 1}`, onclick: () => { state.cur = k; refresh(); } });
     const art = deps.h('span', { class: 'gs-thumb-art', 'aria-hidden': 'true' });
-    art.innerHTML = frameSvg(p, s, thumbSrc(p));
+    art.innerHTML = s.asIs ? plainSvg(p, p.smallUrl) : frameSvg(p, s, thumbSrc(p));
     b.append(art, deps.h('span', { class: 'gs-n' }, String(k + 1)));
     if (p.blurs.length) b.append(deps.h('span', { class: 'gs-flag', title: 'فيها تمويه' }, '▦'));
     if ((p.caption || '').trim()) b.append(deps.h('span', { class: 'gs-capflag', title: p.caption.trim() }, 'كابشن'));
@@ -387,24 +423,32 @@ function renderForm() {
   [['gs-logo', 'logo'], ['gs-mosaic', 'mosaic'], ['gs-chrome', 'chrome'], ['gs-footer', 'footer'], ['gs-border', 'border']].forEach(([id, k]) => { $(id).checked = !!s[k]; });
   $('gs-fit').value = s.fit; $('gs-pad').value = s.pad; $('gs-radius').value = s.radius;
   $('gs-photo-box').hidden = !p;
+  document.querySelectorAll('.gs-mode [role="tab"]').forEach((b) => b.setAttribute('aria-selected', String((b.id === 'gs-mode-ready') === !!s.asIs)));
+  $('gs-mode-note').hidden = !s.asIs;
+  $('gs-frame-opts').hidden = !!s.asIs;
+  $('gs-cap-on-box').hidden = !!s.asIs;
+  $('gs-album-note').textContent = s.asIs
+    ? `صور البوست بتنحفظ مع بعض بهالألبوم، بنفس الترتيب، وعلى الموقع بتطلع ككرت واحد.${n > SOCIAL_MAX ? ` على السوشيال الكاروسيل لحد ${SOCIAL_MAX} صور: أول ${SOCIAL_MAX} بس بتنتشر.` : ''}`
+    : 'الصور بتنحفظ مع بعض بهالألبوم، وعلى الموقع بتطلع ككرت واحد بيفتح عليهم. فاضي = العنوان.';
   if (p && document.activeElement !== $('gs-caption')) $('gs-caption').value = p.caption;
   $('gs-cap-on').checked = !!s.capOn;
   capCount();
   $('gs-cap-all').disabled = n < 2;
-  $('gs-album').placeholder = s.title.trim() || 'صور متنوعة';
+  $('gs-album').placeholder = s.asIs ? 'مثلاً: 5 نصائح لأول مشروع' : s.title.trim() || 'صور متنوعة';
   descCount();
-  $('gs-save-label').textContent = n ? `احفظ بالمعرض (${n})` : 'احفظ بالمعرض';
+  $('gs-save-label').textContent = s.asIs ? (n ? `احفظ البوست (${n} ${n === 1 ? 'صورة' : n === 2 ? 'صورتين' : 'صور'})` : 'احفظ البوست') : n ? `احفظ بالمعرض (${n})` : 'احفظ بالمعرض';
   ['gs-save', 'gs-dl-all'].forEach((id) => { $(id).disabled = !n; });
   $('gs-dl').disabled = !p;
 }
 function refresh() { renderForm(); renderStage(); renderStrip(); }
+const fallbackAlbum = () => (st().asIs ? '' : st().title.trim());
 const capCount = () => { const v = $('gs-caption').value.length; $('gs-cap-n').textContent = v ? `${v} / ${CAP_MAX}` : ''; };
 const descCount = () => { const v = $('gs-desc').value.length; $('gs-desc-n').textContent = v ? `${v} / ${DESC_MAX}` : ''; };
 // picking an album that already has a description brings it back (unless you've written your own)
 let descTyped = false;
 function albumChanged() {
   if (descTyped && $('gs-desc').value.trim()) return;
-  const name = $('gs-album').value.trim() || st().title.trim();
+  const name = $('gs-album').value.trim() || fallbackAlbum();
   const saved = deps.albumDesc?.(name) || '';
   $('gs-desc').value = saved; descTyped = false;
   $('gs-desc-note').textContent = saved ? 'هاد الوصف المحفوظ لهالألبوم. عدّله هون وبيتحدّث للبوست كله.' : 'بيطلع فوق صور الألبوم على الموقع. اختياري.';
@@ -615,6 +659,10 @@ function wire() {
   $('gs-prev').addEventListener('click', () => { if (state.cur > 0) { state.cur--; refresh(); } });
   $('gs-next').addEventListener('click', () => { if (state.cur < state.photos.length - 1) { state.cur++; refresh(); } });
   $('gs-del').addEventListener('click', removeCurrent);
+  $('gs-move-prev').addEventListener('click', () => moveCurrent(-1));
+  $('gs-move-next').addEventListener('click', () => moveCurrent(1));
+  $('gs-mode-frame').addEventListener('click', () => { setStyle({ asIs: false }); refresh(); });
+  $('gs-mode-ready').addEventListener('click', () => { setStyle({ asIs: true }); refresh(); });
   $('gs-crop-btn').addEventListener('click', openCrop);
   $('gs-stage').addEventListener('dblclick', openCrop);
   $('gs-stage').addEventListener('keydown', (e) => {

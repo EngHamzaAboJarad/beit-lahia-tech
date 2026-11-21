@@ -422,7 +422,8 @@ await t('carousel: page 1 with the post, pages 2… after it, then one multi-pho
   assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], pages: 11 } })).status, 400);
   assert.equal((await call('POST', '/posts', { token: admin, body: { image: jpeg, platforms: ['facebook'], pages: 2, video: true } })).status, 400);
   const before = calls.length;
-  const { post } = (await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'سلايدات', platforms: ['facebook', 'instagram'], pages: 3 } })).data;
+  const { post } = (await call('POST', '/posts', { token: admin, body: { image: jpeg, caption: 'سلايدات', captions: ['الأولى', '', ' الثالثة '], platforms: ['facebook', 'instagram'], pages: 3 } })).data;
+  assert.deepEqual(post.captions, ['الأولى', '', 'الثالثة']);
   assert.equal(post.status, 'uploading');
   assert.equal((await call('PUT', `/posts/${post.id}/page/4`, { token: admin, raw: jpg })).status, 400);
   assert.equal((await call('PUT', `/posts/${post.id}/page/2`, { token: admin, raw: jpg })).data.post.status, 'uploading');
@@ -432,6 +433,7 @@ await t('carousel: page 1 with the post, pages 2… after it, then one multi-pho
   const mine = calls.slice(before);
   const photos = mine.filter((c) => c.url.endsWith('/PAGE/photos'));
   assert.equal(photos.length, 3); assert.ok(photos.every((c) => c.body.published === 'false'));
+  assert.deepEqual(photos.map((c) => c.body.caption), ['الأولى', undefined, 'الثالثة']); // each picture its own caption
   assert.deepEqual(photos.map((c) => c.body.url), [1, 2, 3].map((k) => `https://social.example/img/${post.id}${k === 1 ? '' : '-p' + k}.jpg`));
   const feed = mine.find((c) => c.url.endsWith('/PAGE/feed'));
   assert.equal(feed.body.message, 'سلايدات'); assert.equal(JSON.parse(feed.body['attached_media[2]']).media_fbid, 'ph9');
@@ -440,6 +442,7 @@ await t('carousel: page 1 with the post, pages 2… after it, then one multi-pho
   assert.equal(media.filter((b) => b.is_carousel_item === 'true').length, 3);
   const box = media.find((b) => b.media_type === 'CAROUSEL');
   assert.equal(box.children, 'C1,C1,C1'); assert.equal(box.caption, 'سلايدات');
+  assert.ok(media.filter((b) => b.is_carousel_item === 'true').every((b) => b.caption === undefined)); // IG items take none
   assert.equal(done.results.instagram.pages, 3);
 });
 await t('stories in a row: one per page, and a retry only adds the missing ones', async () => {

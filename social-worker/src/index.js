@@ -22,11 +22,11 @@
 //   GET    /img/:id.jpg         public: the post image (Instagram/Facebook download it from here)
 //   GET    /vid/:id.mp4         public: the post video, when it has music (Range requests supported)
 //   GET    /posts               admin: latest posts (scheduled, published, failed)
-//   POST   /posts               admin: { image, video?: true, duration?, music?, caption, platforms[], scheduledAt?, template, title, story? }
+//   POST   /posts               admin: { image, video?: true, duration?, music?, caption, captions?[], platforms[], scheduledAt?, template, title, story? }
 //   PUT    /posts/:id/video     admin: the MP4 of a post made with { video: true } (raw bytes) → publish/schedule
 //   PUT    /posts/:id/page/:n   admin: page n (2…10) of a post made with { pages: N } (raw JPEG) → after the last one: publish/schedule
 //   PATCH  /posts/:id           admin: { scheduledAt } move a scheduled post (the studio calendar)
-//   PUT    /posts/:id           admin: edit a scheduled post { image, caption?, title?, video?, scheduledAt? }
+//   PUT    /posts/:id           admin: edit a scheduled post { image, caption?, captions?[], title?, video?, scheduledAt? }
 //   PUT|GET /posts/:id/design   admin: the post's editable design (studio JSON), to open it again in the editor
 //   POST   /posts/:id/publish   admin: publish now (a scheduled post, or retry a failed one)
 //   DELETE /posts/:id           admin: cancel a scheduled post / remove a failed one
@@ -40,7 +40,7 @@
 //   post  + video → Facebook page video        · Instagram reel (also shown in the feed)
 //   story + image → Facebook page photo story  · Instagram story
 //   story + video → Facebook page video story  · Instagram story (video, with its music)
-//   post  + pages → Facebook multi-photo post  · Instagram carousel (2…10 pictures, one caption)
+//   post  + pages → Facebook multi-photo post (captions[k] on picture k) · Instagram carousel (2…10 pictures, one caption)
 //   story + pages → one story per page, in order, on both
 // The video is made in the admin panel (the design + the chosen music, as MP4/H.264/AAC); the image
 // always comes along too (the thumbnail in the posts list).
@@ -264,6 +264,7 @@ async function route(req, env, ctx) {
     post.music = post.video ? String(body.music || '').slice(0, 120) : '';
     await dropPages(env, post);
     post.pages = pageCountOf(body, post.video);
+    post.captions = captionsOf(body, post.pages, post.story);
     post.got = [];
     post.status = post.video || post.pages > 1 ? 'uploading' : 'scheduled';
     post.results = {};
@@ -328,6 +329,14 @@ function pageCountOf(body, video) {
   if (!Number.isInteger(n) || n < 1 || n > MAX_PAGES) throw fail(400, `عدد الصفحات لازم يكون من 1 لـ ${MAX_PAGES}`);
   if (n > 1 && video) throw fail(400, 'الموسيقى بتشتغل مع صفحة وحدة بس');
   return n;
+}
+// a carousel's own caption under each picture (Facebook shows it when the picture is opened; an
+// Instagram carousel takes one text only, the post's). [] when there are none.
+const MAX_PIC_CAPTION = 500;
+function captionsOf(body, pages, story) {
+  if (story || pages < 2 || !Array.isArray(body.captions)) return [];
+  const list = body.captions.slice(0, pages).map((c) => (typeof c === 'string' ? c.trim().slice(0, MAX_PIC_CAPTION) : ''));
+  return list.some(Boolean) ? list : [];
 }
 async function dropPages(env, post) {
   for (let k = 2; k <= MAX_PAGES; k++) await env.SOCIAL.delete(`img:${post.id}-p${k}`);
@@ -405,6 +414,7 @@ async function createPost(env, body, user) {
     duration,
     music: video ? String(body.music || '').slice(0, 120) : '',
     pages,
+    captions: captionsOf(body, pages, body.story === true),
     preparedBy: direct ? null : user.uid,
     status: video || pages > 1 ? 'uploading' : !direct ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
     scheduledAt,
@@ -843,7 +853,10 @@ async function facebookPages(env, meta, post, urls) {
   const tk = meta.pageToken; const page = meta.pageId;
   if (!post.story) {
     const ids = [];
-    for (const url of urls) ids.push((await graphCall(env, `${page}/photos`, { url, published: 'false' }, 'POST', tk)).id);
+    for (const [k, url] of urls.entries()) {
+      const caption = post.captions?.[k] || '';
+      ids.push((await graphCall(env, `${page}/photos`, { url, published: 'false', ...(caption ? { caption } : {}) }, 'POST', tk)).id);
+    }
     const media = Object.fromEntries(ids.map((id, i) => [`attached_media[${i}]`, JSON.stringify({ media_fbid: id })]));
     const r = await graphCall(env, `${page}/feed`, { message: post.caption, ...media }, 'POST', tk);
     return { id: r.id, pages: urls.length };

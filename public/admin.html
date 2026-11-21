@@ -13,11 +13,11 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/styles.css?v=22">
-  <link rel="stylesheet" href="/admin.css?v=51">
+  <link rel="stylesheet" href="/admin.css?v=52">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js" defer></script>
-  <script type="module" src="/admin.js?v=62"></script>
+  <script type="module" src="/admin.js?v=63"></script>
   <!-- everything the sign-in check needs starts downloading together, instead of one file after another:
        Firebase (app + auth + firestore) and the panel's own modules. The studios load only when opened. -->
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
@@ -1029,10 +1029,15 @@
       <section id="tab-gstudio" role="tabpanel" aria-labelledby="tab-btn-gstudio" hidden>
         <div class="tab-intro">
           <h2>استوديو المعرض</h2>
-          <p class="muted">ارفع صور الورشة أو لقطات الشاشة (ميت، زوم…)، قصّ الأشرطة الزايدة، موّه الوجوه والأسماء إذا بدك، واختار خلفية من الهوية. بتتطبّق على كل الصور مرة وحدة، وبعدين احفظها بالمعرض كمسودات أو نزّلها.</p>
+          <p class="muted">ارفع صور الورشة أو لقطات الشاشة (ميت، زوم…)، قصّ الأشرطة الزايدة، موّه الوجوه والأسماء إذا بدك، واختار خلفية من الهوية. بتتطبّق على كل الصور مرة وحدة، وبعدين احفظها بالمعرض كمسودات أو نزّلها. وعندك بوست أو كاروسيل مصمّم جاهز؟ اختار «بوست جاهز» وبينحفظ زي ما هو، مع وصف للبوست وكابشن لكل صورة.</p>
         </div>
         <div class="studio gs">
           <div class="panel studio-form gs-form">
+            <div class="studio-tabs gs-mode" role="tablist" aria-label="شو بدك تعمل">
+              <button type="button" role="tab" id="gs-mode-frame" aria-selected="true">صور بإطار الهوية</button>
+              <button type="button" role="tab" id="gs-mode-ready" aria-selected="false">بوست جاهز (كما هو)</button>
+            </div>
+            <p class="muted small gs-mode-note" id="gs-mode-note" hidden>كاروسيل أو تصميم جاهز من برا المنصة: الصور بتنحفظ زي ما هي بدون خلفية ولا نصوص (بتقدر تقص أو تموّه بس). رتّبها بالأسهم فوق المعاينة، واكتب وصف البوست تحت وكابشن لكل صورة تحت المعاينة.</p>
             <label class="dropzone gs-drop" id="gs-drop">
               <input type="file" id="gs-input" accept="image/*" multiple>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
@@ -1041,6 +1046,7 @@
             </label>
             <p class="muted small gs-progress" id="gs-progress" aria-live="polite" hidden></p>
 
+            <div class="gs-frame-opts" id="gs-frame-opts">
             <h3>الخلفية</h3>
             <div class="gs-themes" id="gs-themes" role="radiogroup" aria-label="الخلفية"></div>
 
@@ -1068,13 +1074,14 @@
               <label class="gs-range"><span class="small muted">تدوير الزوايا</span><input type="range" id="gs-radius" min="0" max="70" step="1"></label>
             </div>
             <button class="btn btn-ghost-dark btn-sm gs-reset" type="button" id="gs-reset">رجّع الشكل الافتراضي</button>
+            </div>
 
             <h3>البوست بالمعرض</h3>
             <div class="field gs-album-field">
               <label for="gs-album">اسم الألبوم</label>
               <input type="text" id="gs-album" list="gs-albums" maxlength="80">
               <datalist id="gs-albums"></datalist>
-              <span class="muted small">الصور بتنحفظ مع بعض بهالألبوم، وعلى الموقع بتطلع ككرت واحد بيفتح عليهم. فاضي = العنوان.</span>
+              <span class="muted small" id="gs-album-note">الصور بتنحفظ مع بعض بهالألبوم، وعلى الموقع بتطلع ككرت واحد بيفتح عليهم. فاضي = العنوان.</span>
             </div>
             <div class="field gs-album-field">
               <label for="gs-desc">وصف البوست <span class="muted small" id="gs-desc-n"></span></label>
@@ -1099,6 +1106,8 @@
               <button type="button" class="tb-btn" id="gs-prev" title="السابقة" aria-label="السابقة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
               <span class="gs-count" id="gs-count" aria-live="polite"></span>
               <button type="button" class="tb-btn" id="gs-next" title="التالية" aria-label="التالية"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+              <button type="button" class="tb-btn" id="gs-move-prev" title="قدّمها بالترتيب" aria-label="قدّمها بالترتيب"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
+              <button type="button" class="tb-btn" id="gs-move-next" title="أخّرها بالترتيب" aria-label="أخّرها بالترتيب"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></svg></button>
               <span class="tb-sep" aria-hidden="true"></span>
               <button type="button" class="tb-btn gs-tb-wide" id="gs-crop-btn" title="قص وتمويه (Enter)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>قص وتمويه</span></button>
               <button type="button" class="tb-btn" id="gs-del" title="شيلها من الاستوديو (Delete)" aria-label="شيلها من الاستوديو"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
@@ -1110,7 +1119,7 @@
               <label class="gs-cap-label" for="gs-caption"><span>كابشن الصورة</span><span class="gs-cap-n" id="gs-cap-n" dir="ltr"></span></label>
               <textarea id="gs-caption" rows="2" maxlength="280" placeholder="اكتب جملة عن هالصورة… بتطلع تحتها بالمعرض (اختياري)"></textarea>
               <div class="gs-cap-tools">
-                <label class="gs-cap-chk"><input type="checkbox" id="gs-cap-on"><span>اكتبه على الصورة كمان</span></label>
+                <label class="gs-cap-chk" id="gs-cap-on-box"><input type="checkbox" id="gs-cap-on"><span>اكتبه على الصورة كمان</span></label>
                 <button class="gs-cap-btn" type="button" id="gs-cap-all">نفس الكابشن لكل الصور</button>
                 <span class="gs-cap-hint">Ctrl+Enter للصورة الجاية</span>
               </div>
@@ -1423,12 +1432,12 @@
             <div class="studio-head tpl-head">
               <h2>القوالب</h2>
               <label class="btn btn-ghost-dark btn-sm tpl-upload">
-                <input type="file" id="tpl-upload" accept="image/jpeg,image/png,image/webp" hidden>
+                <input type="file" id="tpl-upload" accept="image/jpeg,image/png,image/webp" multiple hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-                <span>ارفع صورة جاهزة</span>
+                <span>ارفع تصميم جاهز</span>
               </label>
             </div>
-            <p class="muted small tpl-upload-hint">عندك تصميم جاهز؟ ارفعه وبينتشر زي ما هو (وبتقدر تضيفله عناصر من «التصميم» إذا بدك).</p>
+            <p class="muted small tpl-upload-hint">عندك تصميم جاهز؟ ارفع صورة وحدة، أو اختار لحد 10 صور مرة وحدة لكاروسيل (بترتيب أسماء الملفات: 1، 2، 3…). بينتشر زي ما هو، وبتكتب نص للمنشور وكابشن لكل صورة.</p>
             <div class="tpl-picker" id="tpl-picker" role="radiogroup" aria-label="القوالب"></div>
             <div class="tpl-mine" id="tpl-mine-wrap" hidden>
               <h3>قوالبي</h3>
@@ -1519,6 +1528,14 @@
             <div class="studio-pages-wrap">
               <div class="ws-label"><span>الصفحات</span><span class="muted small studio-pages-note" id="studio-pages-note"></span></div>
               <div class="studio-pages" id="studio-pages" aria-label="صفحات التصميم"></div>
+            </div>
+            <div class="gs-capbar" id="studio-pgcap" hidden>
+              <label class="gs-cap-label" for="studio-pgcap-text"><span id="studio-pgcap-label">كابشن الصورة</span><span class="gs-cap-n" id="studio-pgcap-n" dir="ltr"></span></label>
+              <textarea id="studio-pgcap-text" rows="2" maxlength="500" placeholder="جملة عن هالصورة بالذات… (اختياري)"></textarea>
+              <div class="gs-cap-tools">
+                <span class="gs-cap-note">بيطلع على فيسبوك تحت الصورة لما حدا يفتحها. كاروسيل إنستغرام بياخد «نص المنشور» بس.</span>
+                <span class="gs-cap-hint">Ctrl+Enter للصفحة الجاية</span>
+              </div>
             </div>
             <p class="muted small studio-hint">اسحب العنصر لتحرّكه · المربع الأخضر بالزاوية بيكبّر ويصغّر · الدائرة فوقه بتدوّره · الأسهم بتحرّك بدقة · PageUp / PageDown بين الصفحات</p>
           </div>

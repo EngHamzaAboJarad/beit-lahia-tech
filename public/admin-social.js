@@ -74,7 +74,7 @@ function blankPage(from = state.design) {
 function addPage(copy) {
   if (pageCount() >= MAX_PAGES) { deps.toast(`أكثر شي ${MAX_PAGES} صفحات`, true); return; }
   checkpoint(true);
-  const pg = copy ? (({ more, name, id, v, ...rest }) => clone(rest))(state.design) : blankPage();
+  const pg = copy ? (({ more, name, id, v, caption, ...rest }) => clone(rest))(state.design) : blankPage();
   const more = state.deck.more || (state.deck.more = []);
   more.splice(state.page, 0, pg); // right after the current page
   state.page += 1; state.design = pages()[state.page]; state.sel = -1;
@@ -86,8 +86,8 @@ function removePage(k) {
   checkpoint(true);
   if (k === 0) { // page 1 is the design itself: page 2 takes its place, keeping the name and id
     const [next, ...rest] = state.deck.more;
-    const { more, ...head } = state.deck;
-    setDeck({ ...head, w: next.w, h: next.h, bg: next.bg, els: next.els, more: rest }, 0);
+    const { more, caption, ...head } = state.deck; // each page keeps its own caption
+    setDeck({ ...head, w: next.w, h: next.h, bg: next.bg, els: next.els, ...(next.caption ? { caption: next.caption } : {}), more: rest }, 0);
   } else {
     state.deck.more.splice(k - 1, 1);
     setDeck(state.deck, Math.min(state.page, pageCount() - 1));
@@ -100,9 +100,9 @@ function movePage(k, dir) {
   checkpoint(true);
   const all = pages().map((pg) => { const { more, ...rest } = pg; return rest; });
   [all[k], all[j]] = [all[j], all[k]];
-  const head = state.deck; const { more, ...meta } = head;
+  const head = state.deck; const { more, caption, ...meta } = head;
   const first = all[0];
-  setDeck({ ...meta, w: first.w, h: first.h, bg: first.bg, els: first.els, more: all.slice(1).map(({ name, id, v, ...pg }) => pg) }, j);
+  setDeck({ ...meta, w: first.w, h: first.h, bg: first.bg, els: first.els, ...(first.caption ? { caption: first.caption } : {}), more: all.slice(1).map(({ name, id, v, ...pg }) => pg) }, j);
   state.sel = -1; refreshAll(); renderPages();
 }
 function renderPages() {
@@ -125,9 +125,24 @@ function renderPages() {
       h('button', { type: 'button', class: 'pg-new', onclick: () => addPage(true), title: 'نسخة من الصفحة الحالية' }, h('span', { 'aria-hidden': 'true' }, '+'), 'نسخة'),
       h('button', { type: 'button', class: 'pg-new is-blank', onclick: () => addPage(false), title: 'صفحة فاضية بنفس الخلفية' }, h('span', { 'aria-hidden': 'true' }, '+'), 'فاضية')) : '',
   );
+  renderPageCaption();
   $('studio-pages-note').textContent = n > 1
     ? `${n} صفحات: المنشور بيطلع كاروسيل (سحب يمين وشمال)، والستوري بتطلع ${n} ستوريات ورا بعض.`
     : 'ضيف صفحة ثانية لتعمل كاروسيل (بوست فيه أكثر من صورة) أو ستوري متتالي.';
+}
+
+// a carousel's own caption for each picture (page.caption): Facebook shows it under the picture
+const PAGE_CAP_MAX = 500;
+const pageCaptions = () => pages().map((pg) => String(pg.caption || '').trim().slice(0, PAGE_CAP_MAX));
+function renderPageCaption() {
+  const box = $('studio-pgcap'); if (!box) return;
+  const n = pageCount();
+  box.hidden = n < 2;
+  if (n < 2) return;
+  $('studio-pgcap-label').textContent = `كابشن الصورة ${state.page + 1} من ${n}`;
+  const ta = $('studio-pgcap-text');
+  if (document.activeElement !== ta) ta.value = state.design.caption || '';
+  const v = ta.value.length; $('studio-pgcap-n').textContent = v ? `${v} / ${PAGE_CAP_MAX}` : '';
 }
 
 /* =================== persistence (the working design survives a reload) =================== */
@@ -713,11 +728,11 @@ function shapeFor(w, h) {
   if (r > 1.91) return [1080, 565];          // too wide → 1.91:1
   return [1080, Math.round(1080 / r)];       // keep its own shape
 }
-function readFullImage(file) {
+function readFullImage(file, max = 2160) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const k = Math.min(1, 2160 / Math.max(img.width, img.height)); // keep it sharp (2×) but bounded
+      const k = Math.min(1, max / Math.max(img.width, img.height)); // keep it sharp (2×) but bounded
       const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(img.src);
@@ -727,22 +742,45 @@ function readFullImage(file) {
     img.src = URL.createObjectURL(file);
   });
 }
-async function uploadReady(file) {
-  if (!file) return;
-  if (dirty() && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح الصورة الجاهزة وتتركها؟')) return;
-  let pic;
-  try { pic = await readFullImage(file); } catch { deps.toast('ما قدرنا نقرأ الصورة', true); return; }
-  const [w, h] = shapeFor(pic.w, pic.h);
-  const d = {
-    v: 1, id: 'upload', name: (file.name || 'تصميم جاهز').replace(/\.[a-z0-9]+$/i, '').slice(0, 60), w, h,
-    bg: { color: '#0B1020', grid: false },
-    els: [{ type: 'image', src: pic.src, x: 0, y: 0, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }],
-  };
+// one image: published as it is. Several (a carousel designed elsewhere): one page each, in the order of
+// the file names (slide-1, slide-2 … slide-10), all on the first one's shape; an image of another shape
+// sits whole inside its page.
+const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+function readyPage(pic, W, H) {
+  const page = (x, y, w, h) => ({ w: W, h: H, bg: { color: '#0B1020', grid: false }, els: [{ type: 'image', src: pic.src, x, y, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }] });
+  if (Math.abs(pic.w / pic.h - W / H) < 0.03) return page(0, 0, W, H);
+  const k = Math.min(W / pic.w, H / pic.h); const w = Math.round(pic.w * k); const h = Math.round(pic.h * k);
+  return page(Math.round((W - w) / 2), Math.round((H - h) / 2), w, h);
+}
+async function uploadReady(fileList) {
+  const all = [...(fileList || [])].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type)).sort(byName);
+  if (!all.length) { if (fileList?.length) deps.toast('اختار صور JPG أو PNG أو WebP', true); return; }
+  const many = all.length > 1;
+  if (dirty() && !confirm(`عندك تعديلات على القالب الحالي ما انحفظت. تفتح ${many ? 'الصور الجاهزة' : 'الصورة الجاهزة'} وتتركها؟`)) return;
+  const files = all.slice(0, MAX_PAGES);
+  const pics = [];
+  for (const f of files) {
+    try { pics.push(await readFullImage(f, many ? 1620 : 2160)); } catch { /* skip a broken one */ }
+  }
+  if (!pics.length) { deps.toast('ما قدرنا نقرأ الصورة', true); return; }
+  const first = pics[0];
+  const [w, h] = shapeFor(first.w, first.h);
+  const base = (files[0].name || 'تصميم جاهز').replace(/\.[a-z0-9]+$/i, '');
+  const name = (many ? base.replace(/[-_ ]*\d+$/, '').trim() || 'كاروسيل جاهز' : base).slice(0, 60);
+  const [head, ...rest] = many ? pics.map((pic) => readyPage(pic, w, h))
+    : [{ w, h, bg: { color: '#0B1020', grid: false }, els: [{ type: 'image', src: first.src, x: 0, y: 0, w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }] }];
+  const d = { v: 1, id: 'upload', name, ...head, ...(rest.length ? { more: rest } : {}) };
   stopEditing();
   state.src = { kind: 'upload', id: 'upload' }; setDeck(d); state.base = JSON.stringify(d);
   state.sel = -1; state.undo = []; state.redo = [];
   setPane('content'); refreshAll(); renderPickers(); renderPages(); autoFormats();
-  const cropped = Math.abs(pic.w / pic.h - w / h) > 0.01;
+  if (many) {
+    const skipped = files.length - pics.length; const over = all.length - files.length;
+    deps.toast(`كاروسيل من ${pics.length} صور (${w}×${h})${h === 1920 ? ': بيطلع ستوريات ورا بعض' : ''}. اكتب نص المنشور، وكابشن لكل صورة تحت الصفحات.`
+      + (over ? ` أخدنا أول ${MAX_PAGES} بس (حد إنستغرام).` : '') + (skipped ? ` ما قدرنا نقرأ ${skipped}.` : ''), !!(over || skipped));
+    return;
+  }
+  const cropped = Math.abs(first.w / first.h - w / h) > 0.01;
   deps.toast(cropped ? `الصورة انقصّت من النص لمقاس ${w}×${h} عشان تناسب إنستغرام` : `جاهزة للنشر (${w}×${h})`);
 }
 
@@ -1243,7 +1281,7 @@ function syncPublishUi() {
   $('studio-publish').disabled = !['facebook', 'instagram'].some((k) => c[k] && $(`pub-${k}`).checked) || (!post && !story);
   const tall = isTall(state.design);
   const hints = [];
-  if (n > 1 && post) hints.push(`المنشور: كاروسيل من ${n} صور بنص واحد (سحب يمين وشمال).`);
+  if (n > 1 && post) hints.push(`المنشور: كاروسيل من ${n} صور (سحب يمين وشمال). ${pageCaptions().some(Boolean) ? 'كابشن كل صورة بيطلع تحتها على فيسبوك.' : 'فيك تكتب كابشن لكل صورة تحت الصفحات.'}`);
   if (n > 1 && story) hints.push(`الستوري: ${n} ستوريات ورا بعض، بنفس الترتيب.`);
   if (n > 1 && state.music) hints.push('الموسيقى بتشتغل مع صفحة وحدة بس، فرح ينتشر بدونها.');
   if (story && n === 1) hints.push(m ? 'الستوري: فيديو بالموسيقى على فيسبوك وإنستغرام (بيضل 24 ساعة).' : 'الستوري: صورة على فيسبوك وإنستغرام (بتضل 24 ساعة).');
@@ -1298,7 +1336,7 @@ async function publish() {
     for (const pg of pages()) bases.push(await rasterCanvas(pg));
     const clip = m ? await renderClip(m.audio, { start: m.start, dur: m.dur, volume: m.vol, fade: m.fade }) : null;
     for (const fmt of formats) {
-      done.push(await publishJob({ design: d, base: bases[0], more: bases.slice(1), fmt, caption: $('studio-caption').value, platforms, scheduledAt,
+      done.push(await publishJob({ design: d, base: bases[0], more: bases.slice(1), fmt, caption: $('studio-caption').value, captions: pageCaptions(), platforms, scheduledAt,
         template: slug(), clip, motion: m?.motion, musicName: m ? musicLabel(m) : '', progress }));
     }
     if (state.src.kind === 'suggest') {
@@ -1316,7 +1354,7 @@ async function publish() {
 }
 
 // one design, one format (post / story), to the chosen platforms: now or at scheduledAt
-async function publishJob({ design, base = null, more = [], fmt, caption = '', platforms, scheduledAt = null, template, clip = null, motion = 'zoom-in', musicName = '', progress = () => {}, label = '' }) {
+async function publishJob({ design, base = null, more = [], fmt, caption = '', captions = [], platforms, scheduledAt = null, template, clip = null, motion = 'zoom-in', musicName = '', progress = () => {}, label = '' }) {
   const name = label || (more.length ? (fmt === 'story' ? 'الستوريات' : 'الكاروسيل') : fmt === 'story' ? 'الستوري' : 'المنشور');
   const later = !!scheduledAt;
   const frame = frameFor(fmt, base || (await rasterCanvas(design)), !!clip);
@@ -1330,7 +1368,7 @@ async function publishJob({ design, base = null, more = [], fmt, caption = '', p
   let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
     image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : caption, platforms, scheduledAt,
     template: template || slugOf(design), title: titleOf(design), story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: musicName,
-    pages: 1 + more.length,
+    pages: 1 + more.length, ...(fmt === 'post' && more.length && captions.some(Boolean) ? { captions: captions.slice(0, 1 + more.length) } : {}),
   }) });
   upsertPost(post);
   await saveDesign(post.id, design);
@@ -1443,6 +1481,7 @@ async function saveEdit(btn) {
     let { post } = await api(`/posts/${p.id}`, { method: 'PUT', body: JSON.stringify({
       image: await blobToBase64(jpeg), caption: $('ed-caption')?.value ?? p.caption, title: titleOf(state.deck),
       video: !!video, duration: clip ? clip.duration : 0, music: m ? musicLabel(m) : '', scheduledAt: t.toISOString(), pages: n,
+      ...(fmt === 'post' && n > 1 && pageCaptions().some(Boolean) ? { captions: pageCaptions() } : {}),
     }) });
     upsertPost(post);
     await saveDesign(p.id, state.deck);
@@ -1463,7 +1502,7 @@ async function saveEdit(btn) {
 // photos + its description. Here it can be published as it is (a carousel post with the description as text),
 // opened in the editor first, or cancelled. The photos come from galleryFull (full size), the thumbs from gallery.
 const SUGGEST = 'socialSuggestions';
-const thumbCache = new Map();
+const docCache = new Map(); // 'gallery/<id>' | 'galleryFull/<id>' → a promise of the doc's data ({} when gone)
 async function loadSuggestions() {
   if (!deps.db) return;
   const { db, fs } = deps;
@@ -1479,7 +1518,7 @@ async function loadSuggestions() {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
     const map = new Map();
     photos.forEach((p) => {
-      thumbCache.set(`gallery/${p.id}`, Promise.resolve(p.thumb || ''));
+      docCache.set(`gallery/${p.id}`, Promise.resolve(p));
       const k = String(p.album || '').trim();
       if (!map.has(k)) map.set(k, { id: `album:${k}`, adhoc: true, album: k || 'صور متنوعة', desc: '', photos: [], createdAt: p.createdAt });
       const a = map.get(k); a.photos.push(p.id); if (!a.desc && p.albumDesc) a.desc = p.albumDesc;
@@ -1488,14 +1527,15 @@ async function loadSuggestions() {
   } catch (e) { console.warn('[suggest albums]', e); state.albums = []; }
   renderSuggestions();
 }
-async function photoSrc(col, id, key) {
+function photoDoc(col, id) {
   const k = `${col}/${id}`;
-  if (!thumbCache.has(k)) {
+  if (!docCache.has(k)) {
     const { db, fs } = deps;
-    thumbCache.set(k, fs.getDoc(fs.doc(db, col, id)).then((s) => (s.exists() ? s.data()[key] || '' : '')).catch(() => ''));
+    docCache.set(k, fs.getDoc(fs.doc(db, col, id)).then((s) => (s.exists() ? s.data() : {})).catch(() => ({})));
   }
-  return thumbCache.get(k);
+  return docCache.get(k);
 }
+const photoSrc = async (col, id, key) => (await photoDoc(col, id))[key] || '';
 const loadImg = (src) => new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
 /** the suggestion's photos as pages of one deck: the first photo's shape (between 1.91:1 and 4:5), each photo whole inside */
 async function deckFromSuggestion(sg, progress = () => {}) {
@@ -1503,18 +1543,18 @@ async function deckFromSuggestion(sg, progress = () => {}) {
   const imgs = [];
   for (const [k, id] of ids.entries()) {
     progress(`عم نجيب الصورة ${k + 1} من ${ids.length}…`);
-    const src = await photoSrc('galleryFull', id, 'src');
+    const [src, caption] = await Promise.all([photoSrc('galleryFull', id, 'src'), photoSrc('gallery', id, 'caption')]);
     if (!src) continue;
-    try { imgs.push({ src, img: await loadImg(src) }); } catch { /* skip a broken one */ }
+    try { imgs.push({ src, caption: String(caption || '').trim(), img: await loadImg(src) }); } catch { /* skip a broken one */ }
   }
   if (!imgs.length) throw new Error('صور الاقتراح مش موجودة (يمكن انحذفت من المعرض)');
   const W = 1080;
   const first = imgs[0].img;
   const H = Math.round(Math.min(1350, Math.max(566, (W * first.naturalHeight) / first.naturalWidth)));
-  const page = ({ src, img }) => {
+  const page = ({ src, caption, img }) => {
     const s = Math.min(W / img.naturalWidth, H / img.naturalHeight);
     const w = Math.round(img.naturalWidth * s); const h = Math.round(img.naturalHeight * s);
-    return { w: W, h: H, bg: { color: '#0B1020', grid: false },
+    return { w: W, h: H, bg: { color: '#0B1020', grid: false }, ...(caption && imgs.length > 1 ? { caption } : {}), // each photo's gallery caption
       els: [{ type: 'image', src, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }] };
   };
   const [head, ...rest] = imgs.map(page);
@@ -1547,7 +1587,8 @@ async function acceptSuggestion(sg, btn) {
     progress('عم نجهّز الصفحات…');
     const bases = [];
     for (const pg of [deck, ...(deck.more || [])]) bases.push(await rasterCanvas(pg));
-    const post = await publishJob({ design: deck, base: bases[0], more: bases.slice(1), fmt: 'post', caption: suggestCaption(sg), platforms, label: n > 1 ? 'الكاروسيل' : 'المنشور', progress });
+    const captions = [deck, ...(deck.more || [])].map((pg) => pg.caption || '');
+    const post = await publishJob({ design: deck, base: bases[0], more: bases.slice(1), fmt: 'post', caption: suggestCaption(sg), captions, platforms, label: n > 1 ? 'الكاروسيل' : 'المنشور', progress });
     await markSuggestion(sg, 'posted', [post.id]);
     deps.toast(post.status === 'pending' ? 'انبعت للموافقة ✓' : post.status === 'failed' || post.status === 'partial' ? 'في مشكلة بالنشر: شوف القائمة' : 'انتشر ✓', post.status === 'failed' || post.status === 'partial');
   } catch (e) {
@@ -1608,7 +1649,7 @@ function renderSuggestions() {
   box.replaceChildren(
     h('div', { class: 'studio-head' }, h('h2', {}, list.length ? `من استوديو المعرض (${list.length})` : 'من المعرض')),
     list.length
-      ? h('p', { class: 'muted small' }, 'صور انحفظت بالمعرض واقترحوها للسوشيال. «انشر» بينزلها كاروسيل والنص وصف الألبوم، «عدّل قبل النشر» بيفتحها بالمحرر، و«إلغاء» بيشيل الاقتراح (الصور بتضل بالمعرض).')
+      ? h('p', { class: 'muted small' }, 'صور انحفظت بالمعرض واقترحوها للسوشيال. «انشر» بينزلها كاروسيل والنص وصف الألبوم (وكابشن كل صورة تحتها على فيسبوك)، «عدّل قبل النشر» بيفتحها بالمحرر، و«إلغاء» بيشيل الاقتراح (الصور بتضل بالمعرض).')
       : h('p', { class: 'muted small' }, 'ما في اقتراحات جديدة من استوديو المعرض. فيك تنشر أي ألبوم منشور بالمعرض من تحت.'),
     list.length ? h('ul', { class: 'sg-list' }, list.map(row)) : '',
     albums.length ? h('details', { class: 'sg-albums', open, ontoggle: (e) => { try { localStorage.setItem('blt-sg-albums', e.currentTarget.open ? '1' : '0'); } catch { /* private */ } } },
@@ -2028,7 +2069,17 @@ export function initStudio(d) {
   $('st-tab-content').addEventListener('click', () => setPane('content'));
   $('st-tab-design').addEventListener('click', () => setPane('design'));
   $('tpl-reset').addEventListener('click', resetToSource);
-  $('tpl-upload').addEventListener('change', (e) => { uploadReady(e.target.files[0]); e.target.value = ''; });
+  $('tpl-upload').addEventListener('change', (e) => { uploadReady(e.target.files); e.target.value = ''; });
+  $('studio-pgcap-text').addEventListener('input', (e) => {
+    checkpoint();
+    const v = e.target.value.slice(0, PAGE_CAP_MAX);
+    if (v.trim()) state.design.caption = v; else delete state.design.caption;
+    $('studio-pgcap-n').textContent = v.length ? `${v.length} / ${PAGE_CAP_MAX}` : '';
+    persist(); syncPublishUi();
+  });
+  $('studio-pgcap-text').addEventListener('keydown', (e) => { // Ctrl+Enter: the next page, straight to its caption
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && state.page < pageCount() - 1) { e.preventDefault(); goPage(state.page + 1); $('studio-pgcap-text').focus(); }
+  });
   $('tpl-save-new').addEventListener('click', saveNew);
   $('tpl-save').addEventListener('click', saveChanges);
   $('tpl-delete').addEventListener('click', deleteMine);

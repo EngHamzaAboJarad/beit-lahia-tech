@@ -9,8 +9,8 @@ import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './f
 // the studios (~300 KB with their templates and video encoder) load after sign-in, without holding it up;
 // boot() starts them, and opening their tab waits for them if they're not there yet
 const once = (load) => { let p = null; return () => { p = p || load(); p.catch(() => { p = null; }); return p; }; };
-const studioMod = once(() => import('./admin-social.js?v=12'));
-const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=5'));
+const studioMod = once(() => import('./admin-social.js?v=13'));
+const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=6'));
 const blogMod = once(() => import('./admin-blog.js?v=2'));
 let studioReady = null; let galleryStudioReady = null; let blogReady = null; // the module, once its init() ran
 const lazyFail = (e) => { console.error('[admin module]', e); toast('ما قدرت أفتح هالقسم. حدّث الصفحة.', true); };
