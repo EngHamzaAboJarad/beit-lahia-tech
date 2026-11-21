@@ -330,13 +330,26 @@ service cloud.firestore {
       allow get: if true;
       allow list: if can('workshops');
       allow create, update: if can('workshops')
-        && request.resource.data.keys().hasOnly(['name', 'no', 'date', 'regId', 'workshopId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'no', 'date', 'regId', 'workshopId', 'design', 'createdAt'])
         && isStr(request.resource.data.name, 2, 80)
         && isStr(request.resource.data.no, 1, 40)
         && isStr(request.resource.data.date, 0, 40)
         && (!('regId' in request.resource.data) || isStr(request.resource.data.regId, 0, 40))
-        && (!('workshopId' in request.resource.data) || isStr(request.resource.data.workshopId, 1, 40));
+        && (!('workshopId' in request.resource.data) || isStr(request.resource.data.workshopId, 1, 40))
+        && (!('design' in request.resource.data) || request.resource.data.design.matches('^[a-f0-9]{32}$'));
       allow delete: if can('workshops');
+    }
+
+    // ---------- تصاميم الشهادات الصادرة ----------
+    // نسخة ثابتة من التصميم اللي انصدرت فيه الشهادة (certificates/{id}.design): تعديل تصميم الورشة بعدين ما بيغيّرها.
+    // الـ id هو hash المحتوى، فما بتنعدّل: تصميم جديد = مستند جديد.
+    match /certDesigns/{designId} {
+      allow get: if true;
+      allow create: if can('workshops')
+        && designId.matches('^[a-f0-9]{32}$')
+        && request.resource.data.keys().hasOnly(['wid', 'cert', 'title', 'titleAr', 'hours', 'createdAt'])
+        && request.resource.data.cert is map
+        && isStr(request.resource.data.wid, 1, 40);
     }
 
     // ---------- الفعاليات ----------

@@ -26,8 +26,17 @@ try {
   const current = setSnap && setSnap.exists() ? validWid(setSnap.data().currentWorkshop) : '';
   const certData = certSnap && certSnap.exists() ? certSnap.data() : null;
   const wid = (certData ? validWid(certData.workshopId) : validWid(params.get('w'))) || current;
-  const wsSnap = wid ? await fs.getDoc(fs.doc(db, 'workshops', wid)).catch(() => null) : null;
-  const ws = mergeWorkshop(wsSnap && wsSnap.exists() ? wsSnap.data() : null);
+  // an issued certificate is drawn with the design it was issued with (certDesigns, see admin.js › certSnapshot);
+  // older ones without it, and the blank one, with the workshop's current design
+  const designId = certData && /^[a-f0-9]{32}$/.test(certData.design || '') ? certData.design : '';
+  const designSnap = designId ? await fs.getDoc(fs.doc(db, 'certDesigns', designId)).catch(() => null) : null;
+  let ws;
+  if (designSnap && designSnap.exists()) {
+    ws = mergeWorkshop(designSnap.data());
+  } else {
+    const wsSnap = wid ? await fs.getDoc(fs.doc(db, 'workshops', wid)).catch(() => null) : null;
+    ws = mergeWorkshop(wsSnap && wsSnap.exists() ? wsSnap.data() : null);
+  }
 
   if (id && !(certSnap && certSnap.exists())) {
     missing();

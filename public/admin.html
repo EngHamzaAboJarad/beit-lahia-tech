@@ -13,11 +13,11 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/styles.css?v=22">
-  <link rel="stylesheet" href="/admin.css?v=45">
+  <link rel="stylesheet" href="/admin.css?v=46">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js" defer></script>
-  <script type="module" src="/admin.js?v=55"></script>
+  <script type="module" src="/admin.js?v=56"></script>
   <!-- everything the sign-in check needs starts downloading together, instead of one file after another:
        Firebase (app + auth + firestore) and the panel's own modules. The studios load only when opened. -->
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
@@ -853,6 +853,10 @@
 
             <div class="panel">
               <h3 id="cl-title">الشهادات الصادرة</h3>
+              <div class="cert-sync" id="cert-sync" hidden>
+                <p class="muted small" id="cert-sync-text"></p>
+                <button class="btn btn-ghost btn-sm" type="button" id="cert-sync-btn"><span class="btn-label">طبّق التصميم الحالي عليها</span><span class="spinner" aria-hidden="true"></span></button>
+              </div>
               <div class="form-actions"><button class="btn btn-primary btn-sm" type="button" id="wa-bulk">إرسال الشهادات بالواتساب</button></div>
               <p class="muted small">بيفتح محادثة واتساب لكل طالب برسالة تهنئة ورابط شهادته، وإنت بتضغط إرسال. بيتذكر مين انبعتله.</p>
               <ul class="cert-list" id="cert-list"></ul>

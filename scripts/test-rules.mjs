@@ -14,6 +14,7 @@ const token = (uid, email, verified = true) => `${b64({ alg: 'none', typ: 'JWT' 
 })}.`;
 
 const val = (v) => (v && typeof v === 'object' && 'ts' in v ? { timestampValue: new Date(v.ts).toISOString() } : Array.isArray(v) ? { arrayValue: { values: v.map(val) } }
+  : v && typeof v === 'object' ? { mapValue: { fields: fields(v) } }
   : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? { integerValue: String(v) }
     : v === 'NOW' ? { timestampValue: new Date().toISOString() } : { stringValue: v });
 const fields = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, val(v)]));
@@ -299,6 +300,20 @@ await t('workshop registration closes by itself once the workshop day is over', 
   assert.equal(await setWithTime('workshopRegs/dayOk', null, reg('wToday'), 'createdAt'), OK);
   assert.equal(await setWithTime('workshopRegs/dayOver', null, reg('wPast'), 'createdAt'), NO);
   assert.equal(await setWithTime('workshopRegs/isDone', null, reg('wDone'), 'createdAt'), NO);
+});
+await t('certificate designs: frozen copies, created by workshop admins, read by anyone, never edited', async () => {
+  const id = 'a'.repeat(32);
+  const d = { wid: 'w1', cert: { title: 'شهادة' }, title: 'ورشة', titleAr: 'ورشة', hours: 3 };
+  assert.equal(await setWithTime(`certDesigns/${id}`, site, d, 'createdAt'), NO);
+  assert.equal(await setWithTime(`certDesigns/${id}`, wsAdmin, d, 'createdAt'), OK);
+  assert.equal(await setWithTime(`certDesigns/${id}`, wsAdmin, { ...d, title: 'غير' }, 'createdAt'), NO); // no edits
+  assert.equal(await setWithTime('certDesigns/not-a-hash', wsAdmin, d, 'createdAt'), NO);
+  assert.equal(await setWithTime(`certDesigns/${'b'.repeat(32)}`, wsAdmin, { ...d, extra: 1 }, 'createdAt'), NO);
+  assert.equal(await get(`certDesigns/${id}`, null), OK);
+  const c = { name: 'سارة أحمد', no: 'BLT-001', date: '1 يناير', workshopId: 'w1', design: id };
+  assert.equal(await setWithTime('certificates/c9', wsAdmin, c, 'createdAt'), OK);
+  assert.equal(await setWithTime('certificates/c8', wsAdmin, { ...c, design: 'nope' }, 'createdAt'), NO);
+  assert.equal(await merge('certificates/c9', wsAdmin, { design: 'c'.repeat(32) }), OK); // re-point to a newer design
 });
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);

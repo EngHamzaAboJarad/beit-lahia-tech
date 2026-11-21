@@ -1729,6 +1729,7 @@ let allCerts = [];
 let ws = mergeWorkshop(null); // the selected workshop
 let regs = [];  // the selected workshop's registrations
 let certs = []; // the selected workshop's certificates
+let savedDesignId = ''; // the selected workshop's saved certificate design (certDesigns id)
 let certDraft = structuredClone(ws.cert);
 let certDirty = false;
 let wsaDirty = false;
@@ -1788,6 +1789,8 @@ async function loadWorkshopAll() {
     await migrateWorkshops();
     await promoteScheduled();
   } catch (e) { console.error(e); toast(errMsg(e), true); }
+  // certificates issued before designs were kept get the design they show today, so later edits leave them be
+  await freezeAllIssued();
   let saved = '';
   try { saved = localStorage.getItem(SEL_KEY) || ''; } catch { /* ignore */ }
   const pick = [saved, currentId].find((id) => id && workshops.some((w) => w.id === id)) || (sortedWorkshops()[0] || {}).id || '';
@@ -2479,6 +2482,53 @@ $('wr-export').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
+/* ---------- frozen certificate designs ---------- */
+// An issued certificate keeps the design it was issued with: certDesigns/{id} holds what renderCertificate
+// draws (the cert texts + signers, the workshop's titles and hours) and certificates/{cid}.design points to it.
+// The id is a hash of that content, so the same design is saved once however many certificates use it.
+const certSnapshot = (w) => ({ cert: w.cert, title: w.title || '', titleAr: w.titleAr || '', hours: w.hours ?? null });
+const stable = (v) => (Array.isArray(v) ? `[${v.map(stable).join(',')}]`
+  : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}`
+    : JSON.stringify(v ?? null));
+async function certDesignId(snap) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stable(snap)));
+  return [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+const designsSaved = new Set(); // certDesigns ids known to exist
+/** saves the design of `merged` (a merged workshop) once, returns its id */
+async function ensureDesign(wid, merged) {
+  const snap = certSnapshot(merged);
+  const id = await certDesignId(snap);
+  if (designsSaved.has(id)) return id;
+  const ref = fs.doc(db, 'certDesigns', id);
+  const got = await fs.getDoc(ref).catch(() => null);
+  if (!got || !got.exists()) await fsPlain.setDoc(ref, { wid, ...snap, createdAt: fs.serverTimestamp() });
+  designsSaved.add(id);
+  return id;
+}
+/** points these certificates at the design `id` */
+async function setCertDesign(list, id) {
+  for (let i = 0; i < list.length; i += 400) {
+    const batch = fsPlain.writeBatch(db);
+    list.slice(i, i + 400).forEach((c) => batch.update(fs.doc(db, 'certificates', c.id), { design: id }));
+    await batch.commit();
+    list.slice(i, i + 400).forEach((c) => { c.design = id; });
+  }
+}
+/** certificates of `wid` issued before designs were kept: freeze them on the workshop's saved design */
+async function freezeIssued(wid) {
+  const raw = workshops.find((w) => w.id === wid);
+  const todo = allCerts.filter((c) => c.workshopId === wid && !c.design);
+  if (!raw || !todo.length) return 0;
+  await setCertDesign(todo, await ensureDesign(wid, mergeWorkshop(raw)));
+  return todo.length;
+}
+async function freezeAllIssued() {
+  for (const wid of new Set(allCerts.filter((c) => !c.design && c.workshopId).map((c) => c.workshopId))) {
+    try { await freezeIssued(wid); } catch (e) { console.warn('[cert designs]', e); }
+  }
+}
+
 /* ---------- issuing certificates ---------- */
 // numbering counts every certificate with the same prefix (all workshops), so a number never repeats
 function nextNumbers(count) {
@@ -2501,16 +2551,17 @@ function canIssue() {
 
 async function issue(people, date) {
   const nos = nextNumbers(people.length);
+  const design = await ensureDesign(selId, ws); // the saved design (an unsaved draft isn't in `ws`)
   const batch = fs.writeBatch(db);
   const made = people.map((p, i) => {
     const ref = fs.doc(fs.collection(db, 'certificates'));
-    const data = { name: p.name, no: nos[i], date, workshopId: selId, createdAt: fs.serverTimestamp() };
+    const data = { name: p.name, no: nos[i], date, workshopId: selId, design, createdAt: fs.serverTimestamp() };
     if (p.regId) {
       data.regId = p.regId;
       batch.update(fs.doc(db, 'workshopRegs', p.regId), { certId: ref.id });
     }
     batch.set(ref, data);
-    return { id: ref.id, name: p.name, no: nos[i], date, regId: p.regId || '', workshopId: selId };
+    return { id: ref.id, name: p.name, no: nos[i], date, regId: p.regId || '', workshopId: selId, design };
   });
   await batch.commit();
   allCerts.push(...made);
@@ -2576,6 +2627,7 @@ async function loadCerts() {
 function renderCerts() {
   const list = [...certs].sort((a, b) => String(b.no).localeCompare(String(a.no), 'en', { numeric: true }));
   $('cl-title').textContent = `الشهادات الصادرة (${list.length})`;
+  renderDesignSync(list);
   $('cert-empty').hidden = list.length > 0;
   $('cert-list').replaceChildren(...list.map((c) => {
     const reg = c.regId ? allRegs.find((r) => r.id === c.regId) : null;
@@ -2586,6 +2638,33 @@ function renderCerts() {
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': `إلغاء شهادة ${c.name}`, title: 'إلغاء الشهادة', onclick: () => revokeCert(c) }, svgIcon(ICONS.trash))));
   }));
 }
+
+// how many issued certificates show another design than the saved one → offer to bring them up to date
+function renderDesignSync(list) {
+  const box = $('cert-sync');
+  const wid = selId; const merged = ws;
+  certDesignId(certSnapshot(merged)).then((id) => {
+    if (wid !== selId) return;
+    savedDesignId = id;
+    const old = list.filter((c) => c.design && c.design !== id).length;
+    box.hidden = !old;
+    $('cert-sync-text').textContent = old
+      ? `${old === 1 ? 'شهادة وحدة صادرة' : old === 2 ? 'شهادتين صادرات' : old <= 10 ? `${old} شهادات صادرة` : `${old} شهادة صادرة`} بتصميم أقدم. بتضل زي ما انصدرت، إلا إذا بدك تطبّق عليها التصميم المحفوظ هلّق.`
+      : '';
+  });
+}
+$('cert-sync-btn').addEventListener('click', async () => {
+  if (certDirty) { toast('احفظ تعديلات الشهادة أول', true); return; }
+  const list = certs.filter((c) => c.design !== savedDesignId);
+  if (!list.length || !confirm(`تطبيق التصميم المحفوظ هلّق على ${list.length} شهادة صادرة؟ روابطهم رح تبين بالتصميم الجديد.`)) return;
+  const btn = $('cert-sync-btn');
+  setBusy(btn, true);
+  try {
+    await setCertDesign(list, await ensureDesign(selId, ws));
+    toast('تطبّق التصميم على الشهادات الصادرة');
+    renderCerts();
+  } catch (e) { toast(errMsg(e), true); } finally { setBusy(btn, false); }
+});
 
 async function revokeCert(c) {
   if (!confirm(`إلغاء شهادة «${c.name}» (${c.no})؟ رابطها رح يبطّل يشتغل.`)) return;
@@ -2754,6 +2833,8 @@ $('cert-form').addEventListener('submit', async (e) => {
   const btn = $('cf-save');
   setBusy(btn, true);
   try {
+    // the certificates already issued keep the design they have now (frozen before the new one is saved)
+    await freezeIssued(selId);
     const cert = structuredClone(certDraft);
     await fs.setDoc(fs.doc(db, 'workshops', selId), { cert, updatedAt: fs.serverTimestamp() }, { merge: true });
     const raw = workshops.find((w) => w.id === selId);
@@ -2761,7 +2842,8 @@ $('cert-form').addEventListener('submit', async (e) => {
     ws = mergeWorkshop({ ...ws, cert });
     certDirty = false;
     $('cf-status').textContent = 'انحفظ';
-    toast('انحفظت الشهادة، وصارت ظاهرة على كل روابط هاي الورشة');
+    renderCerts();
+    toast('انحفظ التصميم. الشهادات الجاية بتطلع فيه، والصادرة قبل بتضل زي ما هي.');
   } catch (e2) { toast(errMsg(e2), true); } finally { setBusy(btn, false); }
 });
 window.addEventListener('beforeunload', (e) => { if (certDirty || wsaDirty) { e.preventDefault(); e.returnValue = ''; } });
