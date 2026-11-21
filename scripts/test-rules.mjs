@@ -286,6 +286,17 @@ await t('online check-in: WhatsApp keys are written by «workshops» admins, rea
   assert.equal(await del('liveJoins/liveReg000001', visitor), NO);
   assert.equal(await del('liveJoins/liveReg000001', wsAdmin), OK);
 });
+await t('workshop registration closes by itself once the workshop day is over', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const ws = (date) => ({ status: 'live', open: true, title: 'W', no: '1', date });
+  await seed('workshops/wToday', ws(today));
+  await seed('workshops/wPast', ws('2020-01-01'));
+  await seed('workshops/wDone', { ...ws(today), status: 'done' });
+  const reg = (wid) => ({ workshopId: wid, name: 'سارة أحمد', whatsapp: '+970599123456', consent: true });
+  assert.equal(await setWithTime('workshopRegs/dayOk', null, reg('wToday'), 'createdAt'), OK);
+  assert.equal(await setWithTime('workshopRegs/dayOver', null, reg('wPast'), 'createdAt'), NO);
+  assert.equal(await setWithTime('workshopRegs/isDone', null, reg('wDone'), 'createdAt'), NO);
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

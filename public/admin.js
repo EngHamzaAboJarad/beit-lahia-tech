@@ -3,7 +3,7 @@ import { getDb, getAuth } from './firebase-init.js';
 import { gazaDay } from './track.js';
 import { DEFAULT_CONTENT, DEFAULT_SETTINGS, EVENT_TYPES, withDefaults, safeUrl, isEmail, SOCIAL_PLATFORMS, socialInfo, renderFooterLinks } from './content-defaults.js';
 import { iconSvg } from './icons.js';
-import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText } from './workshop-shared.js';
+import { DEFAULT_WORKSHOP, mergeWorkshop, normalizeTopic, renderCertificate, fitSheet, arDate, WS_STATUS, WS_LEVEL, WS_STATES, AI_TOOLS, isScheduled, FORM_FIELDS, placeText, dayOver } from './workshop-shared.js';
 
 import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './forms-shared.js';
 import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?v=10';
@@ -1680,6 +1680,7 @@ const publishFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', mon
 const isPublic = (m) => m.status === 'done' || (m.status === 'live' && !isScheduled(m));
 /** badge text + class: draft / scheduled (with time) / live / done */
 function stateBadge(m) {
+  if (m.status === 'live' && dayOver(m, todayYmd())) return { cls: 'badge-done', text: 'انعقدت · التسجيل مسكّر لحاله' };
   if (isScheduled(m)) return { cls: 'badge-scheduled', text: `مجدولة: ${publishFmt.format(m.publishAt.toDate())}` };
   return { cls: `badge-${m.status}`, text: WS_STATES[m.status] };
 }

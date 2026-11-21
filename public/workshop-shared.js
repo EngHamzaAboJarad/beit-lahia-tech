@@ -112,6 +112,19 @@ export function mergeWorkshop(saved) {
 }
 
 /** «منشورة» with a publish time still in the future */
+/** the workshop's day (YYYY-MM-DD) is behind us: it counts as held even before an admin archives it (the rules agree) */
+export const dayOver = (w, today) => /^\d{4}-\d{2}-\d{2}$/.test(w?.date || '') && w.date < today;
+/** how a visitor sees a workshop: held / registration open / registration closed */
+export function wsPublicState(w, today) {
+  if (w.status === 'done' || dayOver(w, today)) return 'held';
+  return w.open ? 'open' : 'closed';
+}
+export const WS_PUBLIC = {
+  held: { text: 'تم عقدها', cls: 'is-held' },
+  open: { text: 'التسجيل مفتوح', cls: 'is-open' },
+  closed: { text: 'التسجيل مسكّر', cls: 'is-closed' },
+};
+
 export function isScheduled(w, now = Date.now()) {
   return !!(w && w.status === 'live' && w.publishAt && w.publishAt.toMillis() > now);
 }

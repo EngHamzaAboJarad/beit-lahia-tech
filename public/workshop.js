@@ -4,7 +4,8 @@
 // (status 'done') shows «الورشة انتهت» instead of the form; past workshops are listed at the bottom.
 import { getDbLite as getDb } from './firebase-init.js';
 import { DEFAULT_SETTINGS, renderFooterLinks } from './content-defaults.js';
-import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP, placeText } from './workshop-shared.js';
+import { mergeWorkshop, arDate, hoursWord, accentAI, AI_TOOLS, DEFAULT_WORKSHOP, placeText, dayOver, WS_PUBLIC } from './workshop-shared.js';
+import { gazaDay } from './track.js';
 import { passLink, qrPayload, qrDataUrl } from './checkin-shared.js';
 
 const $ = (id) => document.getElementById(id);
@@ -60,15 +61,15 @@ function renderContent() {
   }));
   $('topics').hidden = ws.topics.length === 0;
   applyFormFields();
-  const done = ws.status === 'done';
+  const done = ws.status === 'done' || dayOver(ws, gazaDay()); // held: archived, or its day is over
   if (!wid || done || !ws.open) {
     $('ws-eyebrow').classList.add(done ? 'is-done' : 'is-closed');
-    $('ws-eyebrow-text').textContent = !wid ? 'ورشة عمل' : done ? `ورشة عمل · انتهت${ws.date ? ` (${arDate(ws.date)})` : ''}` : 'ورشة عمل · التسجيل مسكّر';
+    $('ws-eyebrow-text').textContent = !wid ? 'ورشة عمل' : done ? `ورشة عمل · تم عقدها${ws.date ? ` (${arDate(ws.date)})` : ''}` : 'ورشة عمل · التسجيل مسكّر';
     $('cta-book').hidden = true;
-    $('closed-title').textContent = !wid ? 'الورشة مش موجودة' : done ? 'الورشة انتهت' : 'التسجيل بالورشة مسكّر';
+    $('closed-title').textContent = !wid ? 'الورشة مش موجودة' : done ? 'تم عقد الورشة ✓' : 'التسجيل بالورشة مسكّر';
     $('closed-msg').textContent = !wid
       ? 'ما لقينا هاي الورشة. ممكن الرابط غلط أو الورشة لسا ما انفتحت. تابعنا عشان توصلك الورشات الجاية.'
-      : done ? 'شكراً لكل اللي حضروا ✦ تابعنا عشان توصلك الورشات الجاية.' : ws.closedMessage;
+      : done ? 'الورشة انعقدت والتسجيل فيها انسكّر. شكراً لكل اللي حضروا ✦ تابعنا عشان توصلك الورشات الجاية.' : ws.closedMessage;
     form.hidden = true;
     $('success').hidden = true;
     $('closed').hidden = false;
@@ -90,6 +91,8 @@ function renderPast(list) {
     const a = Object.assign(document.createElement('a'), { className: 'ws-past-card', href: `/workshop?w=${encodeURIComponent(x.id)}` });
     const date = document.createElement('span'); date.className = 'ws-past-date';
     date.append(document.createElement('i'), x.date ? arDate(x.date) : 'ورشة سابقة');
+    const chip = document.createElement('span'); chip.className = `ws-state ${WS_PUBLIC.held.cls}`; chip.textContent = WS_PUBLIC.held.text;
+    date.append(chip);
     const h3 = document.createElement('h3'); h3.textContent = x.titleAr || x.title;
     a.append(date, h3);
     if (x.titleAr && x.title) {

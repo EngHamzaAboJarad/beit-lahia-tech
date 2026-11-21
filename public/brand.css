@@ -227,3 +227,28 @@ a { color: var(--emerald-deep); }
   .hero-photo img, .mosaic rect.tw, .ws-teaser-art rect { animation: none !important; }
   .ws-teaser-art rect { opacity: 1; }
 }
+
+/* ---------- Workshop state chips (home page list + /workshop archive) ---------- */
+.ws-state { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; font-family: var(--font-body); font-size: 13px; font-weight: 800; line-height: 1.6; white-space: nowrap; }
+.ws-state::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+.ws-state.is-held { background: #EEF1F5; color: var(--slate); }
+.ws-state.is-held::before { content: "✓"; width: auto; height: auto; background: none; font-size: 12px; }
+.ws-state.is-open { background: var(--emerald-tint); color: var(--emerald-deeper); }
+.ws-state.is-open::before { animation: ws-blip 1.6s ease-in-out infinite; }
+.ws-state.is-closed { background: #FFF1F2; color: var(--strawberry-deep); }
+@keyframes ws-blip { 50% { opacity: .25; } }
+.ws-past-date .ws-state { margin-inline-start: auto; }
+.ws-past-date { display: flex !important; width: 100%; }
+
+/* the list under the home teaser */
+.ws-home-list { list-style: none; margin: 22px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 14px; }
+.ws-home-card { display: grid; gap: 8px; height: 100%; box-sizing: border-box; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--night); text-decoration: none; transition: transform .3s var(--ease-out, ease), box-shadow .3s ease, border-color .2s ease; }
+.ws-home-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: #CBD5E1; }
+.ws-home-card:focus-visible { outline: 3px solid var(--emerald); outline-offset: 3px; }
+.ws-home-card .ws-state { justify-self: start; }
+.ws-home-card strong { font-family: var(--font-head); font-size: 18px; font-weight: 700; line-height: 1.5; }
+.ws-home-meta { font-size: 14px; color: var(--slate); }
+.ws-home-go { margin-top: auto; font-size: 14px; font-weight: 800; color: var(--emerald-deep); }
+.ws-home-card.is-open { border-color: color-mix(in srgb, var(--emerald) 55%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--emerald) 18%, transparent); }
+.ws-home-card.is-held .ws-home-go { color: var(--slate); }
+@media (prefers-reduced-motion: reduce) { .ws-state.is-open::before { animation: none; } .ws-home-card { transition: none; } }

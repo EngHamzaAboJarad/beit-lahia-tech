@@ -531,6 +531,41 @@ if (lb) {
   });
 }
 
+/* ---------- the workshops with their state (held / open / closed), under the workshops teaser ---------- */
+async function renderHomeWorkshops(settings) {
+  const list = document.getElementById('ws-home-list');
+  if (!list) return;
+  try {
+    const [{ mergeWorkshop, arDate, placeText, wsPublicState, WS_PUBLIC }, { gazaDay }, { db, fs }] = await Promise.all([
+      import('./workshop-shared.js'), import('./track.js'), getDbLite()]);
+    const today = gazaDay();
+    const byId = new Map();
+    // held ones (archived), plus the current / next one (only readable once published)
+    const done = await fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done'))).catch(() => null);
+    done?.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
+    for (const id of [settings?.nextWorkshop, settings?.currentWorkshop]) {
+      if (!id || byId.has(id) || !/^[A-Za-z0-9_-]{1,40}$/.test(id)) continue;
+      const s = await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null);
+      if (s?.exists()) byId.set(id, { id, ...s.data() });
+    }
+    const rank = { open: 0, closed: 1, held: 2 };
+    const items = [...byId.values()].map((raw) => { const w = mergeWorkshop(raw); return { id: raw.id, w, st: wsPublicState(w, today) }; })
+      .sort((a, b) => rank[a.st] - rank[b.st] || String(b.w.date || '').localeCompare(String(a.w.date || '')))
+      .slice(0, 6);
+    if (!items.length) return;
+    list.setAttribute('data-stagger', '');
+    list.replaceChildren(...items.map(({ id, w, st }) => {
+      const s = WS_PUBLIC[st];
+      return h('li', {}, h('a', { class: `ws-home-card ${s.cls}`, href: `/workshop?w=${encodeURIComponent(id)}` },
+        h('span', { class: `ws-state ${s.cls}` }, s.text),
+        h('strong', {}, w.titleAr || w.title),
+        h('span', { class: 'ws-home-meta' }, [w.date ? arDate(w.date) : '', placeText(w)].filter(Boolean).join(' · ')),
+        h('span', { class: 'ws-home-go', 'aria-hidden': 'true' }, st === 'open' ? 'سجّل ←' : 'التفاصيل ←')));
+    }));
+    list.hidden = false;
+  } catch (e) { console.warn('[workshops]', e); }
+}
+
 /* ---------- «من المدونة»: the 3 newest posts (hidden until there is one) ---------- */
 async function renderHomeBlog() {
   const section = document.getElementById('blog-home');
@@ -610,7 +645,7 @@ afterLoad(async () => {
     }
     renderMembers(team, live.settings?.showMembers === true);
     renderGallery(gallery);
-    await renderHomeBlog();
+    await Promise.all([renderHomeBlog(), renderHomeWorkshops(live.settings)]);
     setupReveals();
     journey.refresh();
   } catch (e) {
