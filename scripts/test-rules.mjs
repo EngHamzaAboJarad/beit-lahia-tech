@@ -315,6 +315,24 @@ await t('certificate designs: frozen copies, created by workshop admins, read by
   assert.equal(await setWithTime('certificates/c8', wsAdmin, { ...c, design: 'nope' }, 'createdAt'), NO);
   assert.equal(await merge('certificates/c9', wsAdmin, { design: 'c'.repeat(32) }), OK); // re-point to a newer design
 });
+await t('gallery → social suggestions: gallery admins suggest, studio admins see the drafts and publish or cancel', async () => {
+  const sg = { photos: ['p1', 'p2'], album: 'ألبوم', desc: 'وصف', by: 'gal@x.test', status: 'pending' };
+  assert.equal(await setWithTime('socialSuggestions/s1', galAdmin, sg, 'createdAt'), OK);
+  assert.equal(await setWithTime('socialSuggestions/s2', social, sg, 'createdAt'), NO); // studio alone can't suggest
+  assert.equal(await setWithTime('socialSuggestions/s3', galAdmin, { ...sg, status: 'posted' }, 'createdAt'), NO);
+  assert.equal(await setWithTime('socialSuggestions/s4', galAdmin, { ...sg, photos: [] }, 'createdAt'), NO);
+  assert.equal(await get('socialSuggestions/s1', social), OK);
+  assert.equal(await get('socialSuggestions/s1', stranger), NO);
+  assert.equal(await merge('socialSuggestions/s1', social, { status: 'dismissed', handledBy: 'soc@x.test' }), OK);
+  assert.equal(await merge('socialSuggestions/s1', social, { album: 'غيره' }), NO); // only the outcome changes
+  assert.equal(await merge('socialSuggestions/s1', galAdmin, { status: 'posted' }), NO);
+  // a draft photo: the studio may read it (to publish it), a stranger not
+  await seed('gallery/d1', { thumb: 'x', published: false });
+  await seed('galleryFull/d1', { src: 'x' });
+  assert.equal(await get('gallery/d1', social), OK);
+  assert.equal(await get('galleryFull/d1', social), OK);
+  assert.equal(await get('galleryFull/d1', stranger), NO);
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

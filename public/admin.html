@@ -13,11 +13,11 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/styles.css?v=22">
-  <link rel="stylesheet" href="/admin.css?v=48">
+  <link rel="stylesheet" href="/admin.css?v=49">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js" defer></script>
-  <script type="module" src="/admin.js?v=59"></script>
+  <script type="module" src="/admin.js?v=60"></script>
   <!-- everything the sign-in check needs starts downloading together, instead of one file after another:
        Firebase (app + auth + firestore) and the panel's own modules. The studios load only when opened. -->
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
@@ -1077,6 +1077,7 @@
               <span class="muted small" id="gs-desc-note">بيطلع فوق صور الألبوم على الموقع. اختياري.</span>
             </div>
 
+            <label class="studio-chk gs-suggest"><input type="checkbox" id="gs-suggest" checked> <span>اقترحها على استوديو السوشيال (بتوصل هناك جاهزة للنشر أو الإلغاء)</span></label>
             <div class="studio-actions">
               <button class="btn btn-primary" type="button" id="gs-save"><span class="btn-label" id="gs-save-label">احفظ بالمعرض</span><span class="spinner" aria-hidden="true"></span></button>
               <button class="btn btn-ghost-dark" type="button" id="gs-dl"><span class="btn-label">نزّل الحالية</span><span class="spinner" aria-hidden="true"></span></button>
@@ -1409,6 +1410,7 @@
         <div class="studio-conn" id="studio-conn" aria-live="polite"></div>
         <div class="panel studio-connect" id="studio-connect" hidden></div>
         <div class="panel studio-notify" id="studio-notify" hidden></div>
+        <div class="panel studio-suggest" id="studio-suggest" hidden></div>
         <div class="panel studio-campaign" id="studio-campaign" hidden></div>
         <div class="studio">
           <div class="panel studio-form">

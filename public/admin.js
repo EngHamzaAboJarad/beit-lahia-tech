@@ -9,8 +9,8 @@ import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './f
 // the studios (~300 KB with their templates and video encoder) load after sign-in, without holding it up;
 // boot() starts them, and opening their tab waits for them if they're not there yet
 const once = (load) => { let p = null; return () => { p = p || load(); p.catch(() => { p = null; }); return p; }; };
-const studioMod = once(() => import('./admin-social.js?v=10'));
-const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=3'));
+const studioMod = once(() => import('./admin-social.js?v=11'));
+const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=4'));
 const blogMod = once(() => import('./admin-blog.js?v=1'));
 let studioReady = null; let galleryStudioReady = null; let blogReady = null; // the module, once its init() ran
 const lazyFail = (e) => { console.error('[admin module]', e); toast('ما قدرت أفتح هالقسم. حدّث الصفحة.', true); };
@@ -365,7 +365,7 @@ function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
   if (can('studio')) studioReady = studioMod().then((m) => { m.initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() }); return m; });
-  if (can('gallery')) galleryStudioReady = galleryStudioMod().then((m) => { m.initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' }); return m; });
+  if (can('gallery')) galleryStudioReady = galleryStudioMod().then((m) => { m.initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, suggestToSocial, canStudio: can('studio'), workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' }); return m; });
   if (can('blog')) blogReady = blogMod().then((m) => { m.initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser }); return m; });
   [studioReady, galleryStudioReady, blogReady].forEach((p) => p?.catch((e) => console.error('[admin module]', e)));
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
@@ -1387,6 +1387,7 @@ async function uploadFiles(files, captions = [], album, desc = '') {
   if (!list.length) { toast('اختار صور JPG أو PNG أو WebP', true); return { done: 0, failed: 0 }; }
   const progress = $('gallery-progress');
   let done = 0; let failed = 0;
+  const ids = []; // the new photos, in order (the gallery studio may suggest them to the social studio)
   const minOrder = gallery.reduce((m, p) => Math.min(m, p.order ?? 0), 0);
   for (const [k, file] of list.entries()) {
     progress.textContent = `جاري رفع ${done + failed + 1} من ${list.length}…`;
@@ -1402,6 +1403,7 @@ async function uploadFiles(files, captions = [], album, desc = '') {
       });
       batch.set(fs.doc(db, 'galleryFull', ref.id), { src: full.data });
       await batch.commit();
+      ids.push(ref.id);
       done++;
     } catch (e) { console.error(e); failed++; }
   }
@@ -1415,7 +1417,15 @@ async function uploadFiles(files, captions = [], album, desc = '') {
   progress.textContent = failed ? `انرفعت ${done}، وفشلت ${failed}.` : `انرفعت ${done} صورة كمسودة. انشرها لما تكون جاهزة.`;
   $('gallery-input').value = '';
   await loadGallery();
-  return { done, failed };
+  return { done, failed, ids };
+}
+
+/** the gallery studio's «اقترحها على السوشيال»: a pending suggestion the social studio shows (admin-social.js) */
+async function suggestToSocial(ids, album, desc) {
+  await fs.addDoc(fs.collection(db, 'socialSuggestions'), {
+    photos: ids.slice(0, 60), album: String(album || '').slice(0, 80), desc: String(desc || '').slice(0, DESC_MAX),
+    by: auth.currentUser?.email || '', status: 'pending', createdAt: fs.serverTimestamp(),
+  });
 }
 
 $('gallery-input').addEventListener('change', (e) => uploadFiles(e.target.files));

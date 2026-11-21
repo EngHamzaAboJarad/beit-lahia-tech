@@ -41,6 +41,8 @@ const state = {
   pen: { on: false, color: '#FFFFFF', width: 14, brush: 'pen' }, // drawing on the canvas
   music: null, // { file, name, audio: AudioBuffer, start, dur, vol, fade, motion } (memory only: the file is big)
   campaign: null, // a workshop campaign being prepared (memory only)
+  suggest: null, // pending suggestions from the gallery studio (socialSuggestions)
+  albums: null,  // the albums published on the site's gallery
   postsView: (() => { try { return localStorage.getItem('blt-studio-view') || 'cal'; } catch { return 'cal'; } })(),
   calMonth: null, calSel: null,
   notify: null,
@@ -1297,6 +1299,10 @@ async function publish() {
       done.push(await publishJob({ design: d, base: bases[0], more: bases.slice(1), fmt, caption: $('studio-caption').value, platforms, scheduledAt,
         template: slug(), clip, motion: m?.motion, musicName: m ? musicLabel(m) : '', progress }));
     }
+    if (state.src.kind === 'suggest') {
+      const sg = (state.suggest || []).find((x) => x.id === state.src.id);
+      if (sg) await markSuggestion(sg, 'posted', done.map((p) => p.id));
+    }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
     if (bad.length) deps.toast(`${STATUS[bad[0].status][0]}: شوف التفاصيل بالقائمة`, true);
     else if (done.some(p => p.status === 'pending')) deps.toast('انبعت للموافقة ✓');
@@ -1447,6 +1453,165 @@ async function saveEdit(btn) {
   } catch (e) {
     console.error(e); deps.toast(e.message || 'ما زبط الحفظ', true);
   } finally { progress(''); deps.setBusy(btn, false); }
+}
+
+
+/* =================== suggestions from the gallery studio =================== */
+// «استوديو المعرض» › «اقترحه على السوشيال» leaves a suggestion (Firestore › socialSuggestions): the album's new
+// photos + its description. Here it can be published as it is (a carousel post with the description as text),
+// opened in the editor first, or cancelled. The photos come from galleryFull (full size), the thumbs from gallery.
+const SUGGEST = 'socialSuggestions';
+const thumbCache = new Map();
+async function loadSuggestions() {
+  if (!deps.db) return;
+  const { db, fs } = deps;
+  try {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, SUGGEST), fs.where('status', '==', 'pending')));
+    state.suggest = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+  } catch (e) { console.warn('[suggest]', e); state.suggest = []; }
+  // the albums already published on the site's gallery: any of them can go to social media too
+  try {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, 'gallery'), fs.where('published', '==', true)));
+    const photos = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    const map = new Map();
+    photos.forEach((p) => {
+      thumbCache.set(`gallery/${p.id}`, Promise.resolve(p.thumb || ''));
+      const k = String(p.album || '').trim();
+      if (!map.has(k)) map.set(k, { id: `album:${k}`, adhoc: true, album: k || 'صور متنوعة', desc: '', photos: [], createdAt: p.createdAt });
+      const a = map.get(k); a.photos.push(p.id); if (!a.desc && p.albumDesc) a.desc = p.albumDesc;
+    });
+    state.albums = [...map.values()];
+  } catch (e) { console.warn('[suggest albums]', e); state.albums = []; }
+  renderSuggestions();
+}
+async function photoSrc(col, id, key) {
+  const k = `${col}/${id}`;
+  if (!thumbCache.has(k)) {
+    const { db, fs } = deps;
+    thumbCache.set(k, fs.getDoc(fs.doc(db, col, id)).then((s) => (s.exists() ? s.data()[key] || '' : '')).catch(() => ''));
+  }
+  return thumbCache.get(k);
+}
+const loadImg = (src) => new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
+/** the suggestion's photos as pages of one deck: the first photo's shape (between 1.91:1 and 4:5), each photo whole inside */
+async function deckFromSuggestion(sg, progress = () => {}) {
+  const ids = sg.photos.slice(0, MAX_PAGES);
+  const imgs = [];
+  for (const [k, id] of ids.entries()) {
+    progress(`عم نجيب الصورة ${k + 1} من ${ids.length}…`);
+    const src = await photoSrc('galleryFull', id, 'src');
+    if (!src) continue;
+    try { imgs.push({ src, img: await loadImg(src) }); } catch { /* skip a broken one */ }
+  }
+  if (!imgs.length) throw new Error('صور الاقتراح مش موجودة (يمكن انحذفت من المعرض)');
+  const W = 1080;
+  const first = imgs[0].img;
+  const H = Math.round(Math.min(1350, Math.max(566, (W * first.naturalHeight) / first.naturalWidth)));
+  const page = ({ src, img }) => {
+    const s = Math.min(W / img.naturalWidth, H / img.naturalHeight);
+    const w = Math.round(img.naturalWidth * s); const h = Math.round(img.naturalHeight * s);
+    return { w: W, h: H, bg: { color: '#0B1020', grid: false },
+      els: [{ type: 'image', src, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h, gray: false, fade: 'none', opacity: 1, rx: 0 }] };
+  };
+  const [head, ...rest] = imgs.map(page);
+  return { v: 1, id: 'gallery', name: sg.album || 'من المعرض', ...head, ...(rest.length ? { more: rest } : {}) };
+}
+const suggestCaption = (sg) => String(sg.desc || '').trim() || String(sg.album || '').trim();
+async function markSuggestion(sg, status, postIds = []) {
+  if (sg.adhoc) return; // a published album picked from the list, not a stored suggestion
+  try {
+    const { db, fs } = deps;
+    await fs.updateDoc(fs.doc(db, SUGGEST, sg.id), { status, handledBy: deps.user()?.email || '', postIds, updatedAt: fs.serverTimestamp() });
+  } catch (e) { console.warn('[suggest]', e); }
+  state.suggest = (state.suggest || []).filter((x) => x.id !== sg.id);
+  renderSuggestions();
+}
+async function acceptSuggestion(sg, btn) {
+  const conn = state.conn || {};
+  const platforms = ['facebook', 'instagram'].filter((k) => conn[k]);
+  if (!platforms.length) { deps.toast('اربط فيسبوك أو إنستغرام أول', true); return; }
+  const n = Math.min(sg.photos.length, MAX_PAGES);
+  const what = n > 1 ? `كاروسيل من ${n} صور` : 'منشور بصورة';
+  const extra = sg.photos.length > MAX_PAGES ? ` (أول ${MAX_PAGES} صور بس: هاد حد إنستغرام)` : '';
+  const verb = deps.owner ? 'ينتشر هلّق' : 'ينبعت لصاحب المنصة للموافقة';
+  if (!confirm(`«${sg.album || 'من المعرض'}»: ${what}${extra}، والنص وصف الألبوم. رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}. أكمل؟`)) return;
+  const prog = $(`sg-progress-${sg.id}`);
+  const progress = (t) => { if (prog) { prog.hidden = !t; prog.textContent = t || ''; } };
+  deps.setBusy(btn, true);
+  try {
+    const deck = await deckFromSuggestion(sg, progress);
+    progress('عم نجهّز الصفحات…');
+    const bases = [];
+    for (const pg of [deck, ...(deck.more || [])]) bases.push(await rasterCanvas(pg));
+    const post = await publishJob({ design: deck, base: bases[0], more: bases.slice(1), fmt: 'post', caption: suggestCaption(sg), platforms, label: n > 1 ? 'الكاروسيل' : 'المنشور', progress });
+    await markSuggestion(sg, 'posted', [post.id]);
+    deps.toast(post.status === 'pending' ? 'انبعت للموافقة ✓' : post.status === 'failed' || post.status === 'partial' ? 'في مشكلة بالنشر: شوف القائمة' : 'انتشر ✓', post.status === 'failed' || post.status === 'partial');
+  } catch (e) {
+    console.error(e); deps.toast(e.message || 'ما زبط النشر', true);
+  } finally { progress(''); deps.setBusy(btn, false); }
+}
+async function editSuggestion(sg, btn) {
+  if (dirty() && !confirm('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح صور المعرض وتتركها؟')) return;
+  const prog = $(`sg-progress-${sg.id}`);
+  const progress = (t) => { if (prog) { prog.hidden = !t; prog.textContent = t || ''; } };
+  deps.setBusy(btn, true);
+  try {
+    const deck = await deckFromSuggestion(sg, progress);
+    stopEditing();
+    state.src = { kind: 'suggest', id: sg.id }; setDeck(deck); state.base = JSON.stringify(deck);
+    state.sel = -1; state.undo = []; state.redo = [];
+    $('studio-caption').value = suggestCaption(sg); state.caption = $('studio-caption').value; $('studio-caption').dispatchEvent(new Event('input'));
+    $('pub-post').checked = true; $('pub-story').checked = false;
+    setPane('content'); refreshAll(); renderPickers(); renderPages(); syncPublishUi();
+    $('studio-stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    deps.toast('فتحت صور الألبوم بالمحرر، كل صورة صفحة. عدّل وانشر من «النشر» تحت.');
+  } catch (e) { console.error(e); deps.toast(e.message || 'ما قدرنا نفتح الصور', true); } finally { progress(''); deps.setBusy(btn, false); }
+}
+async function dismissSuggestion(sg) {
+  if (!confirm(`تلغي اقتراح «${sg.album || 'من المعرض'}»؟ الصور بتضل بالمعرض، بس ما رح تنتشر على السوشيال.`)) return;
+  await markSuggestion(sg, 'dismissed');
+  deps.toast('انلغى الاقتراح');
+}
+const sgFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+function renderSuggestions() {
+  const box = $('studio-suggest'); const h = deps.h; const list = state.suggest || []; const albums = state.albums || [];
+  box.hidden = !list.length && !albums.length;
+  if (box.hidden) { box.replaceChildren(); return; }
+  const row = (sg) => {
+    const thumbs = h('span', { class: 'sg-thumbs', 'aria-hidden': 'true' });
+    sg.photos.slice(0, 5).forEach((id) => {
+      const img = h('img', { alt: '', loading: 'lazy', decoding: 'async' });
+      thumbs.append(img);
+      photoSrc('gallery', id, 'thumb').then((src) => { if (src) img.src = src; else img.remove(); });
+    });
+    if (sg.photos.length > 5) thumbs.append(h('span', { class: 'sg-more' }, `+${sg.photos.length - 5}`));
+    const when = sg.createdAt?.toDate ? sgFmt.format(sg.createdAt.toDate()) : '';
+    return h('li', { class: 'sg-item' },
+      thumbs,
+      h('div', { class: 'sg-info' },
+        h('strong', {}, sg.album || 'صور متنوعة'),
+        h('span', { class: 'muted small' }, [`${sg.photos.length} ${sg.photos.length === 1 ? 'صورة' : sg.photos.length === 2 ? 'صورتين' : 'صور'}`, when, sg.by].filter(Boolean).join(' · ')),
+        sg.desc ? h('p', { class: 'sg-desc' }, sg.desc) : h('p', { class: 'muted small' }, 'ما في وصف: النص رح يكون اسم الألبوم.'),
+        h('p', { class: 'muted small studio-progress', id: `sg-progress-${sg.id}`, 'aria-live': 'polite', hidden: true })),
+      h('div', { class: 'sg-actions' },
+        h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => acceptSuggestion(sg, e.currentTarget) },
+          h('span', { class: 'btn-label' }, deps.owner ? 'انشر' : 'أرسل للموافقة'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => editSuggestion(sg, e.currentTarget) },
+          h('span', { class: 'btn-label' }, 'عدّل قبل النشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+        sg.adhoc ? '' : h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm sg-cancel', onclick: () => dismissSuggestion(sg) }, 'إلغاء')));
+  };
+  const open = (() => { try { return localStorage.getItem('blt-sg-albums') === '1'; } catch { return false; } })();
+  box.replaceChildren(
+    h('div', { class: 'studio-head' }, h('h2', {}, list.length ? `من استوديو المعرض (${list.length})` : 'من المعرض')),
+    list.length
+      ? h('p', { class: 'muted small' }, 'صور انحفظت بالمعرض واقترحوها للسوشيال. «انشر» بينزلها كاروسيل والنص وصف الألبوم، «عدّل قبل النشر» بيفتحها بالمحرر، و«إلغاء» بيشيل الاقتراح (الصور بتضل بالمعرض).')
+      : h('p', { class: 'muted small' }, 'ما في اقتراحات جديدة من استوديو المعرض. فيك تنشر أي ألبوم منشور بالمعرض من تحت.'),
+    list.length ? h('ul', { class: 'sg-list' }, list.map(row)) : '',
+    albums.length ? h('details', { class: 'sg-albums', open, ontoggle: (e) => { try { localStorage.setItem('blt-sg-albums', e.currentTarget.open ? '1' : '0'); } catch { /* private */ } } },
+      h('summary', {}, `ألبومات منشورة بالمعرض (${albums.length})`),
+      h('ul', { class: 'sg-list' }, albums.map(row))) : '');
 }
 
 /* =================== workshop campaign: post + two stories from a workshop =================== */
@@ -1897,6 +2062,7 @@ export function initStudio(d) {
 }
 
 export function showStudio() {
+  loadSuggestions();
   if (started) { renderStage(); return; }
   started = true;
   renderPickers(); renderAdd(); setPane('content'); renderStage(); renderPages(); renderMusic(); autoFormats(); persist(); setPostsView(state.postsView);

@@ -5,7 +5,7 @@
 // or download them. Nothing is stored until you save: the photos live in memory, and the look you
 // picked is remembered in this browser.
 import { NIGHT, NIGHT2, MINT, BERRY, MOSAICS, renderElement } from './social-templates.js';
-import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=10';
+import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=11';
 import { arDate } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);
@@ -328,10 +328,18 @@ async function saveAll() {
     prog.textContent = 'جاري الرفع على المعرض…';
     const album = ($('gs-album').value.trim() || st().title.trim()).slice(0, 80);
     const desc = $('gs-desc').value.trim().slice(0, DESC_MAX);
-    const { done, failed } = await deps.saveToGallery(files, caps, album, desc);
+    const { done, failed, ids = [] } = await deps.saveToGallery(files, caps, album, desc);
+    // «اقترحها على السوشيال»: the saved photos wait in the social studio, to publish or cancel there
+    let suggested = false;
+    if (ids.length && $('gs-suggest')?.checked && deps.suggestToSocial) {
+      try { await deps.suggestToSocial(ids, album, desc); suggested = true; } catch (e) { console.error(e); deps.toast('انحفظت بالمعرض، بس ما قدرنا نقترحها على السوشيال', true); }
+    }
     prog.replaceChildren(
       failed ? `انرفعت ${done}، وفشلت ${failed}. ` : `انحفظت ${done} صورة بألبوم «${album || 'صور متنوعة'}» كمسودات. انشرها من تبويب المعرض لما تكون جاهزة. `,
+      suggested ? 'وانبعتت كاقتراح لاستوديو السوشيال. ' : '',
       deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', 'data-goto': 'gallery' }, 'روح للمعرض'),
+      suggested && deps.canStudio ? ' ' : '',
+      suggested && deps.canStudio ? deps.h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', 'data-goto': 'studio' }, 'روح للسوشيال') : '',
     );
   } catch (e) { console.error(e); prog.textContent = 'صار خطأ بالحفظ، جرّب كمان مرة.'; } finally { deps.setBusy(b, false); }
 }
