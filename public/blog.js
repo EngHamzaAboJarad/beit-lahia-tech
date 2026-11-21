@@ -45,7 +45,8 @@ async function listPage() {
     // the first post gets the big card when nothing is filtered
     grid.replaceChildren(...list.map((p, i) => postCard(p, { big: i === 0 && !tag && !needle && list.length > 2 })));
     status.textContent = list.length ? '' : 'ما في مقالات بتطابق البحث.';
-    $('blog-count').textContent = `${list.length} ${list.length === 1 ? 'مقال' : list.length === 2 ? 'مقالين' : list.length <= 10 ? 'مقالات' : 'مقال'}`;
+    const n = list.length;
+    $('blog-count').textContent = n === 1 ? 'مقال واحد' : n === 2 ? 'مقالين' : `${n} ${n <= 10 ? 'مقالات' : 'مقال'}`;
   };
   $('blog-q').addEventListener('input', (e) => { q = e.target.value; paint(); });
   $('blog-tools').hidden = false;

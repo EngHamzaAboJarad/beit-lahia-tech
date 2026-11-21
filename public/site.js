@@ -7,6 +7,7 @@ import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES, renderFooterLinks,
 import { iconSvg } from './icons.js';
 import { LINES } from './motivation.js';
 import { track } from './track.js';
+import { renderAlbums } from './gallery-ui.js';
 
 const root = document.documentElement;
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -27,28 +28,7 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
-/* ---------- Header: solid on scroll + mobile menu ---------- */
-const header = document.querySelector('.site-header');
-const onScrollHeader = () => header && header.classList.toggle('is-scrolled', window.scrollY > 8);
-onScrollHeader();
-window.addEventListener('scroll', onScrollHeader, { passive: true });
-
-(function mobileMenu() {
-  const btn = document.getElementById('menu-btn');
-  const nav = document.getElementById('site-nav');
-  if (!btn || !nav) return;
-  const set = (open) => {
-    btn.setAttribute('aria-expanded', String(open));
-    btn.setAttribute('aria-label', open ? 'إغلاق القائمة' : 'فتح القائمة');
-    nav.classList.toggle('is-open', open);
-    header.classList.toggle('menu-open', open);
-  };
-  btn.addEventListener('click', () => set(btn.getAttribute('aria-expanded') !== 'true'));
-  nav.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && nav.classList.contains('is-open')) { set(false); btn.focus(); } });
-  document.addEventListener('click', (e) => { if (!header.contains(e.target)) set(false); });
-  window.matchMedia('(min-width: 861px)').addEventListener('change', () => set(false));
-})();
+// the header (solid on scroll, menu, mobile drawer) is nav.js, shared by every page
 
 /* ---------- Hero: the pixel strawberry assembles itself ---------- */
 // the brand strawberry, sampled from the approved social designs on a half-cell grid (14 × 16).
@@ -421,114 +401,13 @@ function renderMembers(list, show) {
   }));
 }
 
-/* ---------- Gallery (hidden until the admin publishes photos) ---------- */
-// Photos come in albums: each album is a stack of cards; a stack opens on all its photos,
-// and a photo opens the lightbox, which walks through that album.
-let photos = []; // the album the lightbox walks through
-let lbIndex = 0;
-const ALBUM_NONE = 'صور متنوعة';
-const photoCount = (n) => (n === 1 ? 'صورة وحدة' : n === 2 ? 'صورتين' : n <= 10 ? `${n} صور` : `${n} صورة`);
-const SVGNS = 'http://www.w3.org/2000/svg';
-function stackIcon() {
-  const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
-  s.innerHTML = '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>'; // fixed markup, no data
-  return s;
-}
-
-function albumsOf(list) {
-  const map = new Map();
-  list.forEach((p) => { const k = String(p.album || '').trim(); if (!map.has(k)) map.set(k, []); map.get(k).push(p); });
-  return [...map].map(([name, items]) => ({ name: name || ALBUM_NONE, photos: items }));
-}
-
+/* ---------- Gallery: albums as stacks of cards (gallery-ui.js); hidden until the admin publishes photos ---------- */
 function renderGallery(list) {
   const section = document.getElementById('gallery');
   const grid = document.getElementById('gallery-grid');
   if (!section || !grid || !list.length) return;
-  const albums = albumsOf(list);
-  grid.setAttribute('data-stagger', '');
-  grid.replaceChildren(...albums.map((a) => {
-    // three cards: the cover in front, the next photos (or brand-coloured cards) behind it
-    const layers = [0, 1, 2].map((k) => {
-      const p = a.photos[k];
-      return p ? h('img', { class: `album-layer l${k}`, src: p.thumb, alt: '', loading: 'lazy', decoding: 'async' })
-        : h('span', { class: `album-layer l${k} is-blank` });
-    }).reverse();
-    const badge = h('span', { class: 'album-badge' }, stackIcon(), String(a.photos.length));
-    const card = h('button', { type: 'button', class: 'album-card', 'aria-label': `افتح ألبوم ${a.name}: ${photoCount(a.photos.length)}` },
-      h('span', { class: 'album-stack', 'aria-hidden': 'true' }, ...layers, badge),
-      h('span', { class: 'album-info' }, h('strong', {}, a.name), h('span', {}, photoCount(a.photos.length))));
-    card.addEventListener('click', () => openAlbum(a));
-    return card;
-  }));
+  renderAlbums(grid, list);
   section.hidden = false;
-  const nav = document.getElementById('nav-gallery');
-  if (nav) nav.hidden = false;
-}
-
-const av = document.getElementById('album-view');
-function openAlbum(a) {
-  if (!av) return;
-  photos = a.photos;
-  document.getElementById('av-title').textContent = a.name;
-  document.getElementById('av-count').textContent = photoCount(a.photos.length);
-  const grid = document.getElementById('av-grid');
-  grid.replaceChildren(...a.photos.map((p, i) => {
-    const b = h('button', {
-      type: 'button', class: 'gallery-item', style: `--i:${Math.min(i, 24)};--r:${((i * 37) % 9) - 4}deg`,
-      'aria-label': p.caption ? `عرض الصورة: ${p.caption}` : `عرض الصورة ${i + 1}`,
-    }, h('img', { src: p.thumb, alt: p.caption || '', loading: 'lazy', decoding: 'async', width: p.w || null, height: p.h || null }),
-    p.caption ? h('span', { class: 'gallery-cap' }, p.caption) : null);
-    b.addEventListener('click', () => openLightbox(i));
-    return b;
-  }));
-  av.showModal();
-  av.scrollTop = 0;
-}
-if (av) {
-  av.addEventListener('click', (e) => { if (e.target.closest('[data-av="close"]')) av.close(); });
-}
-
-const lb = document.getElementById('lightbox');
-async function showPhoto(i) {
-  lbIndex = (i + photos.length) % photos.length;
-  const p = photos[lbIndex];
-  const img = document.getElementById('lb-img');
-  img.src = p.thumb; // instant preview, then swap in the full-size image
-  img.alt = p.caption || '';
-  document.getElementById('lb-caption').textContent = p.caption || '';
-  document.getElementById('lb-count').textContent = `${lbIndex + 1} / ${photos.length}`;
-  lb.classList.toggle('is-single', photos.length < 2);
-  try {
-    const { db, fs } = await getDbLite();
-    const snap = await fs.getDoc(fs.doc(db, 'galleryFull', p.id));
-    if (snap.exists() && photos[lbIndex] === p) img.src = snap.data().src;
-  } catch { /* keep the preview */ }
-}
-function openLightbox(i) {
-  if (!lb || !photos.length) return;
-  showPhoto(i);
-  lb.showModal();
-}
-if (lb) {
-  lb.addEventListener('click', (e) => {
-    const act = e.target.closest('[data-lb]')?.dataset.lb;
-    if (act === 'close' || e.target === lb) lb.close();
-    else if (act === 'next') showPhoto(lbIndex + 1);
-    else if (act === 'prev') showPhoto(lbIndex - 1);
-  });
-  lb.addEventListener('keydown', (e) => {
-    // RTL: the left arrow moves forward
-    if (e.key === 'ArrowLeft') { e.preventDefault(); showPhoto(lbIndex + 1); }
-    if (e.key === 'ArrowRight') { e.preventDefault(); showPhoto(lbIndex - 1); }
-  });
-  let x0 = null;
-  lb.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
-  lb.addEventListener('touchend', (e) => {
-    if (x0 == null) return;
-    const dx = e.changedTouches[0].clientX - x0; x0 = null;
-    if (Math.abs(dx) > 50) showPhoto(lbIndex + (dx > 0 ? 1 : -1)); // RTL: swipe right = next
-  });
 }
 
 /* ---------- the workshops with their state (held / open / closed), under the workshops teaser ---------- */
@@ -578,9 +457,7 @@ async function renderHomeBlog() {
     grid.setAttribute('data-stagger', '');
     grid.replaceChildren(...posts.map((p) => postCard(p)));
     section.hidden = false;
-    const nav = document.getElementById('nav-blog');
-    if (nav) nav.hidden = false;
-  } catch (e) { console.warn('[blog]', e); }
+      } catch (e) { console.warn('[blog]', e); }
 }
 
 /* ---------- Putting live data on the page ---------- */
