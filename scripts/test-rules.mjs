@@ -344,6 +344,24 @@ await t('gallery: only the owner publishes on the site; another admin asks', asy
   assert.equal(await merge('gallery/q1', galAdmin, { published: false }), OK); // so does hiding it
   assert.equal(await merge('gallery/q1', galAdmin, { published: true }), NO); // but not putting it back
 });
+await t('approvals: the owner decides per place whether publishing waits for them', async () => {
+  const ev = { type: 'event', title: 'فعالية', date: '', place: '', description: '', link: '' };
+  const evAdmin = token('evx', 'evx@x.test');
+  await seed('admins/evx', { email: 'evx@x.test', perms: ['events', 'gallery', 'blog'] });
+  // default: events publish straight away, the gallery waits
+  assert.equal(await setWithTime('events/e1', evAdmin, { ...ev, published: true }, 'createdAt'), OK);
+  // the owner turns approval on for events and off for the gallery
+  assert.equal(await set('site/approvals', evAdmin, { events: true, gallery: false }), NO); // only the owner
+  assert.equal(await set('site/approvals', owner, { events: true, gallery: false }), OK);
+  assert.equal(await get('site/approvals', null), OK);
+  assert.equal(await setWithTime('events/e2', evAdmin, { ...ev, published: true }, 'createdAt'), NO);
+  assert.equal(await setWithTime('events/e3', evAdmin, { ...ev, published: false, publishReq: true, reqBy: 'evx@x.test' }, 'createdAt'), OK);
+  assert.equal(await merge('events/e3', owner, { published: true, publishReq: false }), OK);
+  const photo = { thumb: 'data:image/jpeg;base64,' + 'A'.repeat(40), caption: '', published: true, order: 0 };
+  assert.equal(await setWithTime('gallery/free1', evAdmin, photo, 'createdAt'), OK); // gallery no longer waits
+  assert.equal(await set('site/approvals', owner, { x: true }), NO); // known places only
+  await seed('site/approvals', {}); // back to the defaults for the other tests
+});
 await t('public pages still work', async () => {
   assert.equal(await get('site/settings', token('anon', 'a@x.test')), OK);
 });

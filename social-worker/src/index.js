@@ -199,7 +199,8 @@ async function route(req, env, ctx) {
   const owner = isOwner(env, user);
   if (!owner && req.method !== 'GET') {
     const attachment = req.method === 'PUT' && ['video', 'design', 'page'].includes(parts[2]);
-    if (!attachment || post.preparedBy !== user.uid || !['pending', 'uploading'].includes(post.status)) {
+    const mine = post.preparedBy === user.uid || (!post.preparedBy && post.createdBy === (user.email || user.uid));
+    if (!attachment || !mine || !['pending', 'uploading'].includes(post.status)) {
       throw fail(403, 'الموافقة وتعديل المنشورات الجاهزة للنشر لصاحب المنصة بس');
     }
   }
@@ -349,6 +350,18 @@ function jpegFrom(image) {
   return bytes;
 }
 
+// site/approvals.social (the owner's switch in the admin panel › الإعدادات): false = other admins publish without
+// waiting for the owner. No document / no answer = true (wait), the safe side.
+async function socialNeedsOk(env) {
+  try {
+    const r = await fetch(`https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/site/approvals`);
+    if (r.status === 404) return true;
+    if (!r.ok) return true;
+    const v = (await r.json()).fields?.social;
+    return v ? v.booleanValue !== false : true;
+  } catch { return true; }
+}
+
 async function createPost(env, body, user) {
   if (!body || typeof body !== 'object') throw fail(400, 'الطلب فاضي');
   const platforms = Array.isArray(body.platforms) ? [...new Set(body.platforms)].filter((p) => PLATFORMS.includes(p)) : [];
@@ -378,6 +391,8 @@ async function createPost(env, body, user) {
     }
   }
 
+  // the owner, or anyone when the owner switched approval off for social media, publishes without waiting
+  const direct = isOwner(env, user) || !(await socialNeedsOk(env));
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   const post = {
     id,
@@ -390,8 +405,8 @@ async function createPost(env, body, user) {
     duration,
     music: video ? String(body.music || '').slice(0, 120) : '',
     pages,
-    preparedBy: isOwner(env, user) ? null : user.uid,
-    status: video || pages > 1 ? 'uploading' : !isOwner(env, user) ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
+    preparedBy: direct ? null : user.uid,
+    status: video || pages > 1 ? 'uploading' : !direct ? 'pending' : scheduledAt ? 'scheduled' : 'publishing',
     scheduledAt,
     createdAt: new Date().toISOString(),
     createdBy: user.email || user.uid,

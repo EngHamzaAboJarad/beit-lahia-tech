@@ -5,7 +5,7 @@
 // or download them. Nothing is stored until you save: the photos live in memory, and the look you
 // picked is remembered in this browser.
 import { NIGHT, NIGHT2, MINT, BERRY, MOSAICS, renderElement } from './social-templates.js';
-import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=11';
+import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=12';
 import { arDate } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);

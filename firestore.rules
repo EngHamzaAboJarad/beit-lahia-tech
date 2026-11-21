@@ -98,11 +98,23 @@ service cloud.firestore {
     // ---------- محتوى الصفحة والإعدادات ----------
     // settings.currentWorkshop = رقم الورشة اللي بتطلع على /workshop
     match /site/{docId} {
-      allow read: if docId in ['content', 'settings', 'forms'];
+      allow read: if docId in ['content', 'settings', 'forms', 'approvals'];
+      // site/approvals: لكل مكان فيه نشر، هل لازم يمر على صاحب المنصة (true) ولا المشرف بينشر لحاله (false)
+      allow write: if docId == 'approvals' && isOwner()
+        && request.resource.data.keys().hasOnly(['gallery', 'social', 'blog', 'events', 'team', 'workshops', 'updatedAt']);
       allow write: if request.resource.size() < 200 * 1024 && (
         (docId == 'content' && canSite('content'))
         || (docId == 'forms' && can('forms'))
         || (docId == 'settings' && (isFull() || (isAdmin() && settingsKeys().hasOnly(allowedSettingsKeys())))));
+    }
+    // ---------- موافقة صاحب المنصة على النشر (site/approvals) ----------
+    // ما في المستند = الإعداد الافتراضي: المعرض والسوشيال بيمرّوا عليه، الباقي لا.
+    function approvals() {
+      return exists(/databases/$(database)/documents/site/approvals)
+        ? get(/databases/$(database)/documents/site/approvals).data : {};
+    }
+    function mustAsk(area, dflt) {
+      return !isOwner() && approvals().get(area, dflt) == true;
     }
     function settingsKeys() {
       return resource == null ? request.resource.data.keys().toSet() : request.resource.data.diff(resource.data).affectedKeys();
@@ -123,6 +135,8 @@ service cloud.firestore {
         || (resource.data.status == 'live' && published(resource.data));
       allow create, update: if can('workshops')
         && request.resource.data.status in ['draft', 'live', 'done']
+        && (request.resource.data.status == 'draft' || !mustAsk('workshops', false)
+            || (resource != null && resource.data.status != 'draft'))
         && request.resource.data.open is bool
         && isStr(request.resource.data.title, 1, 60)
         && (request.resource.data.get('publishAt', null) == null || request.resource.data.publishAt is timestamp)
@@ -356,13 +370,15 @@ service cloud.firestore {
     // الزوار بيشوفوا المنشور بس؛ الأدمن بيشوف ويعدّل الكل.
     match /events/{eventId} {
       allow read: if resource.data.published == true || canSite('events');
-      allow create, update: if canSite('events') && isValidEvent(request.resource.data);
+      allow create, update: if canSite('events') && isValidEvent(request.resource.data)
+        && (request.resource.data.published == false || !mustAsk('events', false)
+            || (resource != null && resource.data.published == true));
       allow delete: if canSite('events');
     }
 
     function isValidEvent(d) {
       return d.keys().hasOnly(['type', 'title', 'date', 'place', 'description', 'link',
-                               'published', 'createdAt', 'updatedAt'])
+                               'published', 'publishReq', 'reqBy', 'createdAt', 'updatedAt'])
         && d.type in ['event', 'course', 'announcement']
         && isStr(d.title, 1, 120)
         && d.published is bool
@@ -376,12 +392,14 @@ service cloud.firestore {
     // ناس بيضيفهم الأدمن يدوياً؛ الزوار بيشوفوا المنشورين بس. ظهور السكشن نفسه بيتحكم فيه site/settings.showMembers.
     match /team/{memberId} {
       allow read: if resource.data.published == true || can('team');
-      allow create, update: if can('team') && isValidTeamMember(request.resource.data);
+      allow create, update: if can('team') && isValidTeamMember(request.resource.data)
+        && (request.resource.data.published == false || !mustAsk('team', false)
+            || (resource != null && resource.data.published == true));
       allow delete: if can('team');
     }
 
     function isValidTeamMember(d) {
-      return d.keys().hasOnly(['name', 'nameEn', 'role', 'roleEn', 'bio', 'bioEn', 'link', 'facebook', 'instagram', 'linkedin', 'whatsapp', 'photo', 'order', 'published', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'nameEn', 'role', 'roleEn', 'bio', 'bioEn', 'link', 'facebook', 'instagram', 'linkedin', 'whatsapp', 'photo', 'order', 'published', 'publishReq', 'reqBy', 'createdAt', 'updatedAt'])
         && isStr(d.name, 1, 80)
         && d.published is bool
         && (!('role' in d) || isStr(d.role, 0, 80))
@@ -408,7 +426,7 @@ service cloud.firestore {
       // الإخفاء وتعديل صورة منشورة مسموح لكل مشرفين المعرض.
       allow create, update: if canSite('gallery')
         && request.resource.data.keys().hasOnly(['thumb', 'caption', 'album', 'albumDesc', 'published', 'publishReq', 'reqBy', 'order', 'w', 'h', 'createdAt', 'updatedAt'])
-        && (request.resource.data.published == false || isOwner()
+        && (request.resource.data.published == false || !mustAsk('gallery', true)
             || (resource != null && resource.data.published == true))
         && (!('publishReq' in request.resource.data) || request.resource.data.publishReq is bool)
         && (!('reqBy' in request.resource.data) || isStr(request.resource.data.reqBy, 0, 120))
@@ -445,12 +463,14 @@ service cloud.firestore {
     match /blog/{postId} {
       allow get: if can('blog') || postLive(resource.data);
       allow list: if can('blog') || resource.data.status == 'published';
-      allow create, update: if can('blog') && isValidPost(request.resource.data);
+      allow create, update: if can('blog') && isValidPost(request.resource.data)
+        && (request.resource.data.status != 'published' || !mustAsk('blog', false)
+            || (resource != null && resource.data.status == 'published'));
       allow delete: if can('blog');
     }
     function isValidPost(d) {
       return d.keys().hasOnly(['title', 'slug', 'excerpt', 'cover', 'coverAlt', 'tags', 'author', 'date', 'status', 'publishAt',
-                               'pinned', 'readMin', 'createdAt', 'updatedAt'])
+                               'pinned', 'readMin', 'publishReq', 'reqBy', 'createdAt', 'updatedAt'])
         && isStr(d.title, 1, 140)
         && isStr(d.slug, 1, 90) && d.slug.matches('^[^\\s/?#%&]+$')
         && d.status in ['draft', 'published']

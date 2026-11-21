@@ -38,6 +38,7 @@ function kv() {
 /* ---- fake network ---- */
 const calls = [];
 let failInstagram = false;
+let approvalsDoc = null; // site/approvals in the fake Firestore (null = no document)
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   const body = init.body ? Object.fromEntries(new URLSearchParams(String(init.body))) : null;
@@ -45,6 +46,7 @@ globalThis.fetch = async (url, init = {}) => {
   const ok = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'Content-Type': 'application/json' } });
   if (url.includes('securetoken@system')) return ok({ keys: [jwk] });
   if (url.includes('firestore.googleapis.com')) {
+    if (url.endsWith('/site/approvals')) return approvalsDoc ? new Response(JSON.stringify(approvalsDoc), { status: 200 }) : new Response('{}', { status: 404 });
     if (url.endsWith('/admins/admin1')) return new Response('{}', { status: 200 }); // no perms list = everything
     if (url.endsWith('/admins/social1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'studio' }] } } } }), { status: 200 });
     if (url.endsWith('/admins/ws1')) return new Response(JSON.stringify({ fields: { perms: { arrayValue: { values: [{ stringValue: 'workshops' }] } } } }), { status: 200 });
@@ -356,6 +358,23 @@ await t('only the owner can release a studio submission, including scheduled vid
   assert.equal((await env.SOCIAL.get('post:' + video.id, 'json')).status, 'scheduled');
   assert.equal((await call('PUT', base, { token: staff, body })).status, 403);
   assert.equal((await call('PATCH', base, { token: staff, body: { scheduledAt } })).status, 403);
+});
+await t('the owner can switch approval off for social media: then other admins publish straight away', async () => {
+  const staff = await idToken('social1');
+  approvalsDoc = { fields: { social: { booleanValue: false } } };
+  try {
+    const post = (await call('POST', '/posts', { token: staff, body: { image: jpeg, platforms: ['facebook'] } })).data.post;
+    assert.notEqual(post.status, 'pending');
+    assert.equal(post.preparedBy, null);
+    // a carousel's next pages still upload for them
+    const car = (await call('POST', '/posts', { token: staff, body: { image: jpeg, platforms: ['facebook'], pages: 2 } })).data.post;
+    assert.equal(car.status, 'uploading');
+    const up = await call('PUT', `/posts/${car.id}/page/2`, { token: staff, raw: Uint8Array.from(atob(jpeg.replace(/^data:image\/jpeg;base64,/, '')), (c) => c.charCodeAt(0)) });
+    assert.notEqual(up.data.post.status, 'pending');
+  } finally { approvalsDoc = null; }
+  // switched back on (or no setting): it waits again
+  const again = (await call('POST', '/posts', { token: staff, body: { image: jpeg, platforms: ['facebook'] } })).data.post;
+  assert.equal(again.status, 'pending');
 });
 await t('published post statistics keep unavailable metrics separate from zero', async () => {
   const body = { image: jpeg, platforms: ['instagram', 'facebook'] };

@@ -13,11 +13,11 @@
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/styles.css?v=22">
-  <link rel="stylesheet" href="/admin.css?v=50">
+  <link rel="stylesheet" href="/admin.css?v=51">
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js" defer></script>
-  <script type="module" src="/admin.js?v=61"></script>
+  <script type="module" src="/admin.js?v=62"></script>
   <!-- everything the sign-in check needs starts downloading together, instead of one file after another:
        Firebase (app + auth + firestore) and the panel's own modules. The studios load only when opened. -->
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
@@ -162,6 +162,11 @@
             <div class="ov-chips" id="ov-chips"></div>
           </div>
           <svg class="ov-hero-logo" viewBox="0 0 236 266" aria-hidden="true"><use href="#logo"/></svg>
+        </div>
+        <div class="panel ov-approvals" id="ov-approvals" hidden>
+          <div class="ov-panel-head"><h3>طلبات بانتظار موافقتك</h3><button class="btn btn-ghost-dark btn-sm" type="button" data-goto="settings">إعدادات الموافقة</button></div>
+          <p class="muted small">مشرفين طلبوا ينشروا هدول. «وافق وانشر» بينزلهم على الموقع، و«ارفض» بيخليهم مسودات. منشورات السوشيال بتوافق عليها من استوديو السوشيال.</p>
+          <ul class="appr-reqs" id="ov-approvals-list"></ul>
         </div>
         <div class="ov-kpis" id="ov-kpis"></div>
         <div class="ov-grid">
@@ -1642,6 +1647,22 @@
             <div class="set-actions">
               <button class="btn btn-ghost-dark btn-sm" type="button" id="acc-reset"><span class="btn-label">ابعتلي رابط تغيير كلمة السر</span><span class="spinner" aria-hidden="true"></span></button>
               <button class="btn btn-danger btn-sm" type="button" data-signout>تسجيل خروج</button>
+            </div>
+          </div>
+
+          <!-- The owner's approval, per place -->
+          <div class="panel set-card set-approvals" id="appr-card" hidden>
+            <div class="set-head">
+              <span class="set-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6l-8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>
+              <div>
+                <h2>موافقتك على النشر</h2>
+                <p class="muted small">اللي مأشّر عليه: لما مشرف تاني يكبس «انشر»، بيوصلك طلب وما بينتشر إلا لما توافق. اللي مش مأشّر: المشرف بينشر لحاله. إنت بتنشر على طول بكل الحالات.</p>
+              </div>
+            </div>
+            <div class="appr-list" id="appr-list"></div>
+            <div class="set-foot">
+              <span class="set-status" id="appr-status"></span>
+              <button class="btn btn-primary" type="button" id="appr-save"><span class="btn-label">احفظ</span><span class="spinner" aria-hidden="true"></span></button>
             </div>
           </div>
 

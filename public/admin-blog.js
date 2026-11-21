@@ -75,11 +75,13 @@ function renderList() {
           h('span', { class: 'blog-row-meta' },
             h('span', { class: `st ${stCls}` }, stName),
             p.pinned ? h('span', { class: 'st st-pin' }, 'مثبّت') : null,
+            p.publishReq && p.status !== 'published' ? h('span', { class: 'st st-ask', title: p.reqBy ? `طلبه ${p.reqBy}` : null }, 'بانتظار الموافقة') : null,
             when ? h('span', {}, when) : null,
             p.readMin ? h('span', {}, `${p.readMin} د قراءة`) : null,
             ...(p.tags || []).slice(0, 3).map((t) => h('span', { class: 'blog-tag' }, `#${t}`))))),
       h('div', { class: 'blog-row-actions' },
-        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => quickPublish(p, p.status !== 'published') }, p.status === 'published' ? 'إخفاء' : 'انشر'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => quickPublish(p, p.status !== 'published') },
+          p.status === 'published' ? 'إخفاء' : !asks() ? 'انشر' : p.publishReq ? 'إلغاء الطلب' : 'اطلب النشر'),
         h('button', { type: 'button', class: 'icon-btn', title: p.pinned ? 'شيل التثبيت' : 'ثبّت فوق', 'aria-label': p.pinned ? 'شيل التثبيت' : 'ثبّت فوق', 'aria-pressed': String(!!p.pinned), onclick: () => quickPin(p) },
           icon('M12 17v5M9 3h6l-1 7 4 3H6l4-3z')),
         st === 'published' ? h('a', { class: 'icon-btn', href: viewUrl(p), target: '_blank', rel: 'noopener', title: 'شوفه على الموقع', 'aria-label': 'شوفه على الموقع' }, icon('M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5')) : null,
@@ -95,8 +97,20 @@ function icon(d) {
   return s;
 }
 
+// site/approvals.blog (the owner's switch): another admin's «انشر» asks the owner (publishReq) instead
+const asks = () => !!deps.mustAsk?.();
 async function quickPublish(p, on) {
   const { db, fs } = deps;
+  if (on && asks()) {
+    try {
+      const patch = p.publishReq ? { publishReq: false, updatedAt: fs.serverTimestamp() } : deps.reqFields();
+      await fs.updateDoc(fs.doc(db, 'blog', p.id), patch);
+      p.publishReq = !p.publishReq;
+      deps.toast(p.publishReq ? 'انبعت طلب النشر لصاحب المنصة: بينتشر لما يوافق' : 'انلغى طلب النشر');
+      renderList();
+    } catch (e) { deps.toast(deps.errMsg(e), true); }
+    return;
+  }
   try {
     const patch = { status: on ? 'published' : 'draft', updatedAt: fs.serverTimestamp() };
     if (on && !p.date) patch.date = today();
@@ -309,6 +323,9 @@ async function save() {
       pinned: f.pinned, readMin: readMinutes(f.md),
       createdAt: cur.saved?.createdAt || fs.serverTimestamp(), updatedAt: fs.serverTimestamp(),
     };
+    // another admin publishing a draft: it stays a draft and asks the owner
+    const asking = f.status === 'published' && cur.saved?.status !== 'published' && asks();
+    if (asking) Object.assign(meta, { status: 'draft', publishAt: null }, deps.reqFields());
     const batch = fs.writeBatch(db);
     batch.set(fs.doc(db, 'blog', cur.id), meta);
     batch.set(fs.doc(db, 'blogBody', cur.id), { md: f.md, cover: cur.cover ? cur.coverFull || cur.cover : '' });
@@ -325,6 +342,7 @@ async function save() {
     try { localStorage.removeItem(DRAFT_KEY(cur.id)); } catch { /* private mode */ }
     setDirty(false); updateState();
     const st = postState(saved);
+    if (asking) { deps.toast('انحفظ كمسودة، وانبعت طلب النشر لصاحب المنصة'); deps.onRequest?.(); return; }
     deps.toast(st === 'published' ? 'انحفظ ✓ المقال منشور' : st === 'scheduled' ? 'انحفظ ✓ وبينزل بموعده' : 'انحفظت المسودة ✓');
   } catch (e) { console.error(e); deps.toast(deps.errMsg(e), true); } finally { deps.setBusy(b, false); updateState(); }
 }

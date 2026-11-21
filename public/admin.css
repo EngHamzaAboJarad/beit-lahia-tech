@@ -1778,3 +1778,15 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .gs-suggest { margin: 4px 0 10px; }
 .sg-albums { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 .sg-albums summary { cursor: pointer; font-weight: 700; color: var(--night); min-height: 40px; display: flex; align-items: center; }
+
+/* the owner's approval: settings switches + the overview's requests */
+.appr-list { display: grid; gap: 6px; margin: 6px 0 12px; }
+.appr-row { min-height: 44px; }
+.ov-approvals { margin-bottom: 18px; border-color: #FCD34D; background: #FFFDF5; }
+.ov-approvals .ov-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ov-approvals h3 { margin: 0; }
+.appr-reqs { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.appr-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); }
+.appr-item strong { font-family: var(--font-head); }
+.appr-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-ask { background: #FEF3C7; color: #92400E; }

@@ -9,9 +9,9 @@ import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './f
 // the studios (~300 KB with their templates and video encoder) load after sign-in, without holding it up;
 // boot() starts them, and opening their tab waits for them if they're not there yet
 const once = (load) => { let p = null; return () => { p = p || load(); p.catch(() => { p = null; }); return p; }; };
-const studioMod = once(() => import('./admin-social.js?v=11'));
-const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=4'));
-const blogMod = once(() => import('./admin-blog.js?v=1'));
+const studioMod = once(() => import('./admin-social.js?v=12'));
+const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=5'));
+const blogMod = once(() => import('./admin-blog.js?v=2'));
 let studioReady = null; let galleryStudioReady = null; let blogReady = null; // the module, once its init() ran
 const lazyFail = (e) => { console.error('[admin module]', e); toast('ما قدرت أفتح هالقسم. حدّث الصفحة.', true); };
 import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
@@ -364,9 +364,9 @@ TABS.forEach((t, i) => {
 function boot() {
   // modules first: the first selectTab may open their section right away
   $('wsa-social').hidden = !can('studio');
-  if (can('studio')) studioReady = studioMod().then((m) => { m.initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() }); return m; });
+  if (can('studio')) studioReady = studioMod().then((m) => { m.initStudio({ h, toast, setBusy, db, fs, log: logAction, owner: me.owner, mustAsk: () => mustAsk('social'), user: () => auth.currentUser, getToken: () => auth.currentUser.getIdToken() }); return m; });
   if (can('gallery')) galleryStudioReady = galleryStudioMod().then((m) => { m.initGalleryStudio({ h, toast, setBusy, saveToGallery: uploadFiles, suggestToSocial, canStudio: can('studio'), workshops: () => workshops, albums: () => galleryAlbums().map((a) => a.name).filter(Boolean), albumDesc: (name) => galleryAlbums().find((a) => a.name === String(name || '').trim())?.desc || '' }); return m; });
-  if (can('blog')) blogReady = blogMod().then((m) => { m.initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser }); return m; });
+  if (can('blog')) blogReady = blogMod().then((m) => { m.initBlog({ h, toast, setBusy, db, fs, errMsg, user: () => auth.currentUser, mustAsk: () => mustAsk('blog'), reqFields, onRequest: loadRequests }); return m; });
   [studioReady, galleryStudioReady, blogReady].forEach((p) => p?.catch((e) => console.error('[admin module]', e)));
   if (me.owner) initAccess({ h, toast, setBusy, db, fs, au, auth, tabTitle: (t) => TAB_META[t]?.title || '' });
   const [hash, hashWs, hashSub] = location.hash.slice(1).split('/');
@@ -385,7 +385,139 @@ function boot() {
   if (can('team')) loadTeam();
   loadSettings(); // site/settings is public
   if (can('workshops')) loadWorkshopAll();
+  loadApprovals();
+  loadRequests();
   if (can('forms')) { loadTrainers(); loadSurveys(); loadFormsCfg(); }
+}
+
+
+/* =================== the owner's approval, per place (site/approvals) =================== */
+// For every place that publishes, the owner decides in «الإعدادات» whether another admin's «انشر» goes out
+// straight away or waits for the owner (a request: publishReq on the item, approved from «طلبات النشر»).
+// firestore.rules (mustAsk) and the social Worker follow the same switches.
+const APPROVAL_PLACES = [
+  ['gallery', 'المعرض', 'صور وألبومات المعرض على الموقع', true],
+  ['social', 'السوشيال', 'منشورات وستوريات فيسبوك وإنستغرام', true],
+  ['blog', 'المدونة', 'نشر مقال', false],
+  ['events', 'الفعاليات', 'نشر فعالية أو إعلان', false],
+  ['team', 'أعضاء الفريق', 'نشر عضو بالرئيسية', false],
+  ['workshops', 'الورشات', 'نشر ورشة أو أرشفتها', false],
+];
+let approvals = Object.fromEntries(APPROVAL_PLACES.map(([k, , , d]) => [k, d]));
+const mustAsk = (area) => !me.owner && approvals[area] === true;
+const reqFields = () => ({ publishReq: true, reqBy: auth.currentUser?.email || '', updatedAt: fs.serverTimestamp() });
+async function loadApprovals() {
+  try {
+    const snap = await fs.getDoc(fs.doc(db, 'site', 'approvals'));
+    if (snap.exists()) APPROVAL_PLACES.forEach(([k]) => { if (typeof snap.data()[k] === 'boolean') approvals[k] = snap.data()[k]; });
+  } catch (e) { console.warn('[approvals]', e); }
+  renderApprovalSettings();
+  // the lists' «انشر» / «اطلب النشر» follow the switches
+  if (can('events')) renderEvents();
+  if (can('team')) renderTeam();
+  if (can('gallery')) renderGalleryAdmin();
+  if (can('workshops')) renderWorkshopList();
+}
+function renderApprovalSettings() {
+  const box = $('appr-list'); if (!box) return;
+  $('appr-card').hidden = !me.owner;
+  box.replaceChildren(...APPROVAL_PLACES.map(([k, name, what]) => h('label', { class: 'switch appr-row' },
+    h('input', { type: 'checkbox', 'data-appr': k, checked: approvals[k] }),
+    h('span', { class: 'switch-ui', 'aria-hidden': 'true' }),
+    h('span', {}, h('strong', {}, name), h('span', { class: 'muted small' }, ` · ${what}`)))));
+}
+$('appr-save')?.addEventListener('click', async () => {
+  const next = Object.fromEntries([...document.querySelectorAll('[data-appr]')].map((x) => [x.dataset.appr, x.checked]));
+  const btn = $('appr-save');
+  setBusy(btn, true);
+  try {
+    await fs.setDoc(fs.doc(db, 'site', 'approvals'), { ...next, updatedAt: fs.serverTimestamp() });
+    approvals = { ...approvals, ...next };
+    $('appr-status').textContent = 'انحفظ';
+    toast('انحفظ: اللي مأشّر عليه بيستنى موافقتك قبل ما ينتشر');
+  } catch (e) { toast(errMsg(e), true); } finally { setBusy(btn, false); }
+});
+$('appr-list')?.addEventListener('change', () => { $('appr-status').textContent = 'في تعديلات مش محفوظة'; });
+
+/** what to write when someone presses «انشر» (or saves a form as published) on an item of `area` */
+function gate(area, item, wantPublic) {
+  if (!wantPublic) return { publishReq: false };
+  if (item && item.published) return {}; // already on the site: editing it stays open
+  return mustAsk(area) ? { published: false, ...reqFields() } : { publishReq: false };
+}
+const askedText = 'انبعت طلب النشر لصاحب المنصة: بينتشر لما يوافق';
+const pendingBadge = (x) => (x.publishReq && !x.published ? h('span', { class: 'badge badge-pending', title: x.reqBy ? `طلبه ${x.reqBy}` : null }, 'بانتظار الموافقة') : null);
+
+/* ---------- «طلبات بانتظار موافقتك» (the owner's overview) ---------- */
+const REQ_KINDS = [
+  ['gallery', 'gallery', 'صورة', (d) => d.caption || d.album || 'صورة بالمعرض', { published: true }],
+  ['events', 'events', 'فعالية', (d) => d.title, { published: true }],
+  ['team', 'team', 'عضو', (d) => d.name, { published: true }],
+  ['blog', 'blog', 'مقال', (d) => d.title, { status: 'published' }],
+  ['workshops', 'workshop', 'ورشة', (d) => d.titleAr || d.title, null],
+];
+let requests = [];
+async function loadRequests() {
+  if (!me.owner) return;
+  const out = [];
+  await Promise.all(REQ_KINDS.map(async ([col, tab, kind, title, fields]) => {
+    try {
+      const snap = await fs.getDocs(fs.query(fs.collection(db, col), fs.where('publishReq', '==', true)));
+      snap.docs.forEach((d) => out.push({ col, tab, kind, id: d.id, data: d.data(), title: title(d.data()), fields }));
+    } catch (e) { console.warn('[requests]', col, e); }
+  }));
+  requests = out.sort((a, b) => (b.data.updatedAt?.toMillis?.() || 0) - (a.data.updatedAt?.toMillis?.() || 0));
+  renderRequests();
+}
+function renderRequests() {
+  const box = $('ov-approvals'); if (!box) return;
+  box.hidden = !me.owner || !requests.length;
+  setTabCount('overview', me.owner ? requests.length : 0);
+  if (box.hidden) return;
+  const byAlbum = new Map(); // a gallery album asks once, not once per photo
+  const rows = [];
+  requests.forEach((r) => {
+    if (r.col !== 'gallery') { rows.push({ ...r, items: [r] }); return; }
+    const k = String(r.data.album || '').trim();
+    if (!byAlbum.has(k)) { const row = { ...r, title: k || 'صور متنوعة', kind: 'ألبوم', items: [] }; byAlbum.set(k, row); rows.push(row); }
+    byAlbum.get(k).items.push(r);
+  });
+  $('ov-approvals-list').replaceChildren(...rows.map((row) => h('li', { class: 'appr-item' },
+    h('div', {},
+      h('span', { class: 'badge badge-pending' }, row.kind),
+      h('strong', {}, ` ${row.title}`),
+      h('span', { class: 'muted small' }, [row.items.length > 1 ? photoCount(row.items.length) : '', row.data.reqBy ? `طلبه ${row.data.reqBy}` : ''].filter(Boolean).map((x) => ` · ${x}`).join(''))),
+    h('div', { class: 'appr-actions' },
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', 'data-goto': row.tab }, 'شوفه'),
+      h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => decide(row, true, e.currentTarget) }, 'وافق وانشر'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => decide(row, false, e.currentTarget) }, 'ارفض')))));
+}
+async function decide(row, ok, btn) {
+  if (ok && !confirm(`نشر «${row.title}»${row.items.length > 1 ? ` (${photoCount(row.items.length)})` : ''} على الموقع؟`)) return;
+  setBusy(btn, true);
+  try {
+    const batch = fs.writeBatch(db);
+    for (const r of row.items) {
+      const ref = fs.doc(db, r.col, r.id);
+      if (!ok) { batch.update(ref, { publishReq: false, updatedAt: fs.serverTimestamp() }); continue; }
+      if (r.col === 'workshops') {
+        const status = r.data.reqStatus === 'done' ? 'done' : 'live';
+        batch.update(ref, { status, publishReq: false, updatedAt: fs.serverTimestamp() });
+        const at = r.data.publishAt?.toMillis?.() || 0;
+        if (status === 'live') batch.set(fs.doc(db, 'site', 'settings'), at > Date.now() ? { nextWorkshop: r.id, updatedAt: fs.serverTimestamp() } : { currentWorkshop: r.id, updatedAt: fs.serverTimestamp() }, { merge: true });
+      } else batch.update(ref, { ...r.fields, publishReq: false, updatedAt: fs.serverTimestamp() });
+    }
+    await batch.commit();
+    toast(ok ? 'وافقت، وانتشر ✓' : 'رفضت الطلب: بيضل مسودة');
+    const done = new Set(row.items.map((r) => `${r.col}/${r.id}`));
+    requests = requests.filter((r) => !done.has(`${r.col}/${r.id}`));
+    renderRequests();
+    // the lists behind it
+    if (row.col === 'gallery') loadGallery();
+    if (row.col === 'events') loadEvents();
+    if (row.col === 'team') loadTeam();
+    if (row.col === 'workshops') loadWorkshopAll();
+  } catch (e) { toast(errMsg(e), true); setBusy(btn, false); }
 }
 
 /* =================== Overview =================== */
@@ -1142,7 +1274,7 @@ function renderEvents() {
     if (ev.date) { const d = new Date(`${ev.date}T12:00:00`); if (!isNaN(d)) when = dateFmt.format(d); }
     return h('li', { class: ev.published ? 'event-row' : 'event-row is-draft' },
       h('div', { class: 'event-row-top' },
-        h('span', { class: ev.published ? 'badge badge-live' : 'badge badge-draft' }, ev.published ? 'منشور' : 'مسودة'),
+        h('span', { class: ev.published ? 'badge badge-live' : 'badge badge-draft' }, ev.published ? 'منشور' : 'مسودة'), pendingBadge(ev),
         ev.date && ev.date < new Date().toISOString().slice(0, 10)
           ? h('span', { class: 'badge badge-draft', title: 'تاريخها فات، فما بتظهر على الموقع' }, 'انتهت') : null,
         h('span', { class: 'meta' }, [EVENT_TYPES[ev.type] || 'فعالية', when, ev.place].filter(Boolean).join(' · '))),
@@ -1150,7 +1282,7 @@ function renderEvents() {
       ev.description ? h('p', { class: 'meta' }, ev.description.length > 140 ? `${ev.description.slice(0, 140)}…` : ev.description) : null,
       h('div', { class: 'event-row-actions' },
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => editEvent(ev) }, 'تعديل'),
-        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePublish(ev) }, ev.published ? 'إخفاء من الموقع' : 'انشر'),
+        h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => togglePublish(ev) }, ev.published ? 'إخفاء من الموقع' : !mustAsk('events') ? 'انشر' : ev.publishReq ? 'إلغاء الطلب' : 'اطلب النشر'),
         h('button', { type: 'button', class: 'btn btn-danger btn-sm', onclick: () => deleteEvent(ev) }, 'حذف')));
   }));
 }
@@ -1196,6 +1328,7 @@ $('event-form').addEventListener('submit', async (e) => {
     published: $('ev-published').checked,
     updatedAt: fs.serverTimestamp(),
   };
+  Object.assign(data, gate('events', events.find((x) => x.id === editingId), data.published));
   if (!data.title) { err.textContent = 'اكتب عنوان.'; $('ev-title').focus(); return; }
   if (link && !safeUrl(link)) { err.textContent = 'الرابط لازم يبدأ بـ https://'; $('ev-link').focus(); return; }
   const btn = $('event-save');
@@ -1203,7 +1336,7 @@ $('event-form').addEventListener('submit', async (e) => {
   try {
     if (editingId) await fs.updateDoc(fs.doc(db, 'events', editingId), data);
     else await fs.addDoc(fs.collection(db, 'events'), { ...data, createdAt: fs.serverTimestamp() });
-    toast(editingId ? 'انحفظ التعديل' : (data.published ? 'انضافت وانشرت على الموقع' : 'انضافت كمسودة'));
+    toast(data.publishReq ? askedText : editingId ? 'انحفظ التعديل' : (data.published ? 'انضافت وانشرت على الموقع' : 'انضافت كمسودة'));
     resetEventForm();
     await loadEvents();
   } catch (e2) { err.textContent = errMsg(e2); } finally { setBusy(btn, false); }
@@ -1211,8 +1344,14 @@ $('event-form').addEventListener('submit', async (e) => {
 
 async function togglePublish(ev) {
   try {
-    await fs.updateDoc(fs.doc(db, 'events', ev.id), { published: !ev.published, updatedAt: fs.serverTimestamp() });
-    toast(ev.published ? 'انخفت من الموقع' : 'انشرت على الموقع');
+    const ref = fs.doc(db, 'events', ev.id);
+    if (!ev.published && mustAsk('events')) {
+      await fs.updateDoc(ref, ev.publishReq ? { publishReq: false, updatedAt: fs.serverTimestamp() } : reqFields());
+      toast(ev.publishReq ? 'انلغى طلب النشر' : askedText);
+    } else {
+      await fs.updateDoc(ref, { published: !ev.published, publishReq: false, updatedAt: fs.serverTimestamp() });
+      toast(ev.published ? 'انخفت من الموقع' : 'انشرت على الموقع');
+    }
     await loadEvents();
   } catch (e) { toast(errMsg(e), true); }
 }
@@ -1266,6 +1405,7 @@ async function loadGallery() {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
     renderGalleryAdmin();
     if (me.owner) setTabCount('gallery', gallery.filter(waiting).length);
+    if (me.owner) loadRequests();
   } catch (e) { toast(errMsg(e), true); }
 }
 
@@ -1333,7 +1473,7 @@ function renderGalleryAdmin() {
           me.owner && asked ? h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: () => approveAlbum(a) }, `وافق على النشر (${asked})`) : null,
           me.owner && asked ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => rejectAlbum(a) }, 'ارفض') : null,
           all ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, false) }, 'اخفي الألبوم')
-            : me.owner ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, true) }, 'انشر الألبوم كله')
+            : !mustAsk('gallery') ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, true) }, 'انشر الألبوم كله')
               : asked + live < a.photos.length ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => publishAlbum(a, true) }, 'اطلب نشر الألبوم') : null),
         albumDescBox(a),
         h('ul', { class: 'gallery-admin g-strip' }, ...a.photos.map((p, i) => galleryItem(p, i, a.photos)))));
@@ -1365,7 +1505,7 @@ function galleryItem(p, i, same) {
     h('label', { class: 'field g-album-in' }, h('span', { class: 'small muted' }, 'الألبوم'), alb),
     h('div', { class: 'g-actions' },
       h('button', { type: 'button', class: me.owner && ask ? 'btn btn-primary btn-sm' : 'btn btn-ghost-dark btn-sm', onclick: () => togglePhoto(p) },
-        p.published ? 'إخفاء' : me.owner ? (ask ? 'وافق وانشر' : 'انشر') : ask ? 'إلغاء الطلب' : 'اطلب النشر'),
+        p.published ? 'إخفاء' : me.owner ? (ask ? 'وافق وانشر' : 'انشر') : !mustAsk('gallery') ? 'انشر' : ask ? 'إلغاء الطلب' : 'اطلب النشر'),
       me.owner && ask ? h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => rejectPhotos([p]) }, 'ارفض') : null,
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لقدام', title: 'لقدام', disabled: i === 0, onclick: () => movePhoto(p, -1, same) }, svgIcon(ICONS.up)),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'لورا', title: 'لورا', disabled: i === same.length - 1, onclick: () => movePhoto(p, 1, same) }, svgIcon(ICONS.down)),
@@ -1384,13 +1524,14 @@ async function renameAlbum(a) {
 }
 async function publishAlbum(a, on) {
   // another admin asks for the drafts that aren't asked for yet; the owner publishes
-  const todo = a.photos.filter((p) => (on ? !p.published && (me.owner || !waiting(p)) : p.published));
+  const todo = a.photos.filter((p) => (on ? !p.published && (!mustAsk('gallery') || !waiting(p)) : p.published));
   if (!todo.length) return;
   try {
     const batch = fs.writeBatch(db);
-    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), !on ? { published: false, updatedAt: fs.serverTimestamp() } : me.owner ? publishFields() : requestFields()));
+    const direct = !mustAsk('gallery');
+    todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), !on ? { published: false, updatedAt: fs.serverTimestamp() } : direct ? publishFields() : requestFields()));
     await batch.commit();
-    toast(!on ? 'انخفى الألبوم من الموقع' : me.owner ? `انشر الألبوم (${photoCount(todo.length)})` : `انبعت طلب نشر ${photoCount(todo.length)} لصاحب المنصة`);
+    toast(!on ? 'انخفى الألبوم من الموقع' : direct ? `انشر الألبوم (${photoCount(todo.length)})` : `انبعت طلب نشر ${photoCount(todo.length)} لصاحب المنصة`);
     await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }
@@ -1476,7 +1617,7 @@ async function togglePhoto(p) {
   try {
     const ref = fs.doc(db, 'gallery', p.id);
     if (p.published) { await fs.updateDoc(ref, { published: false, updatedAt: fs.serverTimestamp() }); toast('انخفت من الموقع'); }
-    else if (me.owner) { await fs.updateDoc(ref, publishFields()); toast('انشرت على الموقع'); }
+    else if (!mustAsk('gallery')) { await fs.updateDoc(ref, publishFields()); toast('انشرت على الموقع'); }
     else if (waiting(p)) { await fs.updateDoc(ref, { publishReq: false, updatedAt: fs.serverTimestamp() }); toast('انلغى طلب النشر'); }
     else { await fs.updateDoc(ref, requestFields()); toast('انبعت طلب النشر لصاحب المنصة: بتنشر لما يوافق'); }
     await loadGallery();
@@ -1550,10 +1691,10 @@ function renderTeam() {
     h('div', { class: 'team-row-info' },
       h('strong', {}, m.name),
       m.role ? h('span', { class: 'muted small' }, m.role) : null,
-      h('span', { class: m.published ? 'badge badge-live' : 'badge badge-draft' }, m.published ? 'منشور' : 'مسودة')),
+      h('span', { class: m.published ? 'badge badge-live' : 'badge badge-draft' }, m.published ? 'منشور' : 'مسودة'), pendingBadge(m)),
     h('div', { class: 'team-row-actions' },
       h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => editTeam(m) }, 'تعديل'),
-      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => toggleTeam(m) }, m.published ? 'إخفاء' : 'انشر'),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => toggleTeam(m) }, m.published ? 'إخفاء' : !mustAsk('team') ? 'انشر' : m.publishReq ? 'إلغاء الطلب' : 'اطلب النشر'),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${m.name} لفوق`, title: 'لفوق', disabled: i === 0, onclick: () => moveTeam(i, -1) }, svgIcon(ICONS.up)),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': `${m.name} لتحت`, title: 'لتحت', disabled: i === team.length - 1, onclick: () => moveTeam(i, 1) }, svgIcon(ICONS.down)),
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': `حذف ${m.name}`, title: 'حذف', onclick: () => deleteTeam(m) }, svgIcon(ICONS.trash))))));
@@ -1744,12 +1885,13 @@ $('team-form').addEventListener('submit', async (e) => {
     published: $('tm-published').checked,
     updatedAt: fs.serverTimestamp(),
   };
+  Object.assign(data, gate('team', team.find((x) => x.id === teamEditing), data.published));
   const btn = $('team-save');
   setBusy(btn, true);
   try {
     if (teamEditing) await fs.updateDoc(fs.doc(db, 'team', teamEditing), data);
     else await fs.addDoc(fs.collection(db, 'team'), { ...data, order: team.reduce((m, x) => Math.max(m, x.order ?? 0), -1) + 1, createdAt: fs.serverTimestamp() });
-    toast(teamEditing ? 'انحفظ التعديل' : (data.published ? 'انضاف العضو' : 'انضاف كمسودة'));
+    toast(data.publishReq ? askedText : teamEditing ? 'انحفظ التعديل' : (data.published ? 'انضاف العضو' : 'انضاف كمسودة'));
     resetTeamForm();
     await loadTeam();
   } catch (e2) { err.textContent = errMsg(e2); } finally { setBusy(btn, false); }
@@ -1757,8 +1899,14 @@ $('team-form').addEventListener('submit', async (e) => {
 
 async function toggleTeam(m) {
   try {
-    await fs.updateDoc(fs.doc(db, 'team', m.id), { published: !m.published, updatedAt: fs.serverTimestamp() });
-    toast(m.published ? 'انخفى' : 'انشر');
+    const ref = fs.doc(db, 'team', m.id);
+    if (!m.published && mustAsk('team')) {
+      await fs.updateDoc(ref, m.publishReq ? { publishReq: false, updatedAt: fs.serverTimestamp() } : reqFields());
+      toast(m.publishReq ? 'انلغى طلب النشر' : askedText);
+    } else {
+      await fs.updateDoc(ref, { published: !m.published, publishReq: false, updatedAt: fs.serverTimestamp() });
+      toast(m.published ? 'انخفى' : 'انشر');
+    }
     await loadTeam();
   } catch (e) { toast(errMsg(e), true); }
 }
@@ -1994,6 +2142,7 @@ function renderWorkshopList() {
       h('button', { type: 'button', class: 'ws-card-open', 'aria-label': `افتح ورشة ${m.titleAr || m.title}`, onclick: () => openWorkshop(w.id) },
         h('span', { class: 'ws-card-badges' },
           h('span', { class: `badge ${st.cls}` }, st.text),
+          w.publishReq && m.status === 'draft' ? h('span', { class: 'badge badge-pending' }, 'بانتظار الموافقة') : null,
           onSite ? h('span', { class: 'badge badge-current', title: 'هاي اللي بتطلع على /workshop' }, 'الظاهرة على الموقع') : null),
         h('strong', { class: 'ws-card-title' }, m.titleAr || m.title || 'ورشة بدون اسم'),
         m.titleAr && m.title ? h('bdi', { class: 'ws-card-en', dir: 'ltr' }, m.title) : null,
@@ -2023,6 +2172,14 @@ async function setWorkshopState(w, status) {
   if (status === 'live' && !m.date) { toast('حدّد تاريخ الورشة أول (افتحها بزر «إدارة» واكتب التاريخ والوقت والمكان واحفظ)', true); return; }
   if (w.id === selId && wsaDirty && !confirm('في تعديلات مش محفوظة على هاي الورشة، رح تضيع. كمّل؟')) return;
   const label = { live: 'انشرت وصارت ظاهرة على /workshop', draft: 'صارت مسودة ومخفية عن الزوار', done: 'انأرشفت (بتظهر بالورشات السابقة)' }[status];
+  if (status !== 'draft' && m.status === 'draft' && mustAsk('workshops')) {
+    try {
+      await fs.updateDoc(fs.doc(db, 'workshops', w.id), { ...reqFields(), reqStatus: status });
+      Object.assign(w, { publishReq: true, reqStatus: status });
+      toast(askedText); renderWorkshopList();
+    } catch (e) { toast(errMsg(e), true); }
+    return;
+  }
   try {
     const batch = fs.writeBatch(db);
     batch.update(fs.doc(db, 'workshops', w.id), { status, publishAt: null, updatedAt: fs.serverTimestamp() });
@@ -2290,13 +2447,16 @@ $('wsa-form').addEventListener('submit', async (e) => {
     liveFrom: lf ? fs.Timestamp.fromDate(gazaDate($('wsa-date').value, lf)) : null,
     liveTo: lt ? fs.Timestamp.fromDate(gazaDate($('wsa-date').value, lt)) : null,
   };
+  // another admin taking a draft public: it stays a draft and asks the owner (site/approvals.workshops)
+  const asking = status !== 'draft' && ws.status === 'draft' && mustAsk('workshops');
+  if (asking) Object.assign(data, { status: 'draft', ...reqFields(), reqStatus: status });
   const btn = $('wsa-save');
   setBusy(btn, true);
   try {
     // «منشورة» now → it becomes the workshop /workshop shows.
     // «منشورة» with a future time → nextWorkshop: the page switches to it by itself once the rules let visitors read it.
-    const scheduled = status === 'live' && !!publishDate && publishDate.getTime() > Date.now();
-    const makeCurrent = status === 'live' && !scheduled && currentId !== selId;
+    const scheduled = !asking && status === 'live' && !!publishDate && publishDate.getTime() > Date.now();
+    const makeCurrent = !asking && status === 'live' && !scheduled && currentId !== selId;
     const patch = {};
     if (makeCurrent) patch.currentWorkshop = selId;
     if (scheduled && nextId !== selId) patch.nextWorkshop = selId;
@@ -2323,7 +2483,8 @@ $('wsa-form').addEventListener('submit', async (e) => {
     syncSelectedUi();
     renderWorkshopList();
     refreshPreview();
-    toast(scheduled ? `انحفظت ومجدولة: بتطلع على /workshop ويفتح التسجيل ${publishFmt.format(publishDate)}`
+    if (asking) { $('wsa-state').value = 'draft'; syncStateHint(); }
+    toast(asking ? `انحفظت كمسودة، و${askedText}` : scheduled ? `انحفظت ومجدولة: بتطلع على /workshop ويفتح التسجيل ${publishFmt.format(publishDate)}`
       : makeCurrent ? 'انحفظت، وصارت هي الورشة الظاهرة على /workshop'
       : status === 'live' ? (data.open ? 'انحفظت معلومات الورشة (التسجيل مفتوح)' : 'انحفظت معلومات الورشة (التسجيل مسكّر)')
       : `انحفظت الورشة (${WS_STATES[status]})`);

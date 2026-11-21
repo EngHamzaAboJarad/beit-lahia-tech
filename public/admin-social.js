@@ -27,7 +27,9 @@ const PLATFORM_NAME = { facebook: 'فيسبوك', instagram: 'إنستغرام' 
 const whenFmt = new Intl.DateTimeFormat('ar-u-nu-latn', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
-let deps; // { h, toast, setBusy, getToken, db, fs, user }
+let deps; // { h, toast, setBusy, getToken, db, fs, user, owner, mustAsk }
+// does another admin's post wait for the owner? (site/approvals.social; the Worker checks the same switch)
+const asksOwner = () => (deps.mustAsk ? deps.mustAsk() : !deps.owner);
 let started = false;
 const state = {
   src: { kind: 'builtin', id: BUILTIN[0].id }, // where the working design came from
@@ -1230,7 +1232,7 @@ function renderNotify() {
 function syncPublishUi() {
   const later = document.querySelector('input[name="studio-when"]:checked')?.value === 'later';
   $('studio-at').hidden = !later;
-  deps.setBusy($('studio-publish'), false, !deps.owner ? 'أرسل للموافقة' : later ? 'جدول المنشور' : 'انشر الآن');
+  deps.setBusy($('studio-publish'), false, asksOwner() ? 'أرسل للموافقة' : later ? 'جدول المنشور' : 'انشر الآن');
   const c = state.conn || {};
   ['facebook', 'instagram'].forEach((k) => {
     const box = $(`pub-${k}`);
@@ -1281,7 +1283,7 @@ async function publish() {
   const n = pageCount();
   const m = n === 1 ? state.music : null;
   if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
-  const verb = !deps.owner ? 'ينبعت لصاحب المنصة للموافقة' : later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
+  const verb = asksOwner() ? 'ينبعت لصاحب المنصة للموافقة' : later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
   const what = formats.map((f) => (n > 1 ? (f === 'story' ? `${n} ستوريات ورا بعض` : `كاروسيل من ${n} صور`)
     : f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
   if (!confirm(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}. أكمل؟`)) return;
@@ -1324,7 +1326,7 @@ async function publishJob({ design, base = null, more = [], fmt, caption = '', p
     video = await makeVideo({ image: frame, w: frame.width, h: frame.height, clip, motion,
       onProgress: (k) => progress(`${name}: عم نعمل الفيديو… ${Math.round(k * 100)}%`) });
   }
-  progress(`${name}: عم ${!deps.owner ? 'نجهّز طلب الموافقة' : later ? 'نجدول' : 'ننشر'}…`);
+  progress(`${name}: عم ${asksOwner() ? 'نجهّز طلب الموافقة' : later ? 'نجدول' : 'ننشر'}…`);
   let { post } = await api('/posts', { method: 'POST', body: JSON.stringify({
     image: await blobToBase64(jpeg), caption: fmt === 'story' ? '' : caption, platforms, scheduledAt,
     template: template || slugOf(design), title: titleOf(design), story: fmt === 'story', video: !!video, duration: clip ? clip.duration : 0, music: musicName,
@@ -1334,7 +1336,7 @@ async function publishJob({ design, base = null, more = [], fmt, caption = '', p
   await saveDesign(post.id, design);
   post = await uploadPages(post, more, fmt, name, progress);
   if (video) {
-    progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later || !deps.owner ? '' : ' وننشره'}…`);
+    progress(`${name}: عم نرفع الفيديو (${(video.size / 1048576).toFixed(1)} MB)${later || asksOwner() ? '' : ' وننشره'}…`);
     ({ post } = await api(`/posts/${post.id}/video`, { method: 'PUT', raw: video }));
     upsertPost(post);
   }
@@ -1535,7 +1537,7 @@ async function acceptSuggestion(sg, btn) {
   const n = Math.min(sg.photos.length, MAX_PAGES);
   const what = n > 1 ? `كاروسيل من ${n} صور` : 'منشور بصورة';
   const extra = sg.photos.length > MAX_PAGES ? ` (أول ${MAX_PAGES} صور بس: هاد حد إنستغرام)` : '';
-  const verb = deps.owner ? 'ينتشر هلّق' : 'ينبعت لصاحب المنصة للموافقة';
+  const verb = asksOwner() ? 'ينبعت لصاحب المنصة للموافقة' : 'ينتشر هلّق';
   if (!confirm(`«${sg.album || 'من المعرض'}»: ${what}${extra}، والنص وصف الألبوم. رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}. أكمل؟`)) return;
   const prog = $(`sg-progress-${sg.id}`);
   const progress = (t) => { if (prog) { prog.hidden = !t; prog.textContent = t || ''; } };
@@ -1597,7 +1599,7 @@ function renderSuggestions() {
         h('p', { class: 'muted small studio-progress', id: `sg-progress-${sg.id}`, 'aria-live': 'polite', hidden: true })),
       h('div', { class: 'sg-actions' },
         h('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: (e) => acceptSuggestion(sg, e.currentTarget) },
-          h('span', { class: 'btn-label' }, deps.owner ? 'انشر' : 'أرسل للموافقة'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
+          h('span', { class: 'btn-label' }, asksOwner() ? 'أرسل للموافقة' : 'انشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
         h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => editSuggestion(sg, e.currentTarget) },
           h('span', { class: 'btn-label' }, 'عدّل قبل النشر'), h('span', { class: 'spinner', 'aria-hidden': 'true' })),
         sg.adhoc ? '' : h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm sg-cancel', onclick: () => dismissSuggestion(sg) }, 'إلغاء')));
@@ -1685,7 +1687,7 @@ function renderCampaign() {
     h('fieldset', { class: 'field studio-platforms' }, h('legend', {}, 'وين؟'),
       ['facebook', 'instagram'].map((k) => h('label', { class: 'studio-chk' }, h('input', { type: 'checkbox', checked: conn[k] && (c.platforms ? c.platforms.includes(k) : true), disabled: !conn[k], 'data-camp-pf': k, onchange: () => { c.platforms = [...box.querySelectorAll('[data-camp-pf]:checked')].map((x) => x.dataset.campPf); } }), h('span', {}, PLATFORM_NAME[k])))),
     h('div', { class: 'studio-actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'camp-go', onclick: (e) => runCampaign(e.currentTarget) },
-      h('span', { class: 'btn-label' }, deps.owner ? 'انشر وجدول الحملة' : 'أرسل الحملة للموافقة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
+      h('span', { class: 'btn-label' }, asksOwner() ? 'أرسل الحملة للموافقة' : 'انشر وجدول الحملة'), h('span', { class: 'spinner', 'aria-hidden': 'true' }))),
     h('p', { class: 'muted small studio-progress', id: 'camp-progress', 'aria-live': 'polite', hidden: true }));
 }
 async function runCampaign(btn) {
@@ -1711,7 +1713,7 @@ async function runCampaign(btn) {
       it.on = false; it.sent = true;
     }
     const bad = done.filter((p) => p.status === 'failed' || p.status === 'partial');
-    deps.toast(bad.length ? 'في إشي ما انتشر: شوف التقويم' : !deps.owner ? 'انبعتت الحملة للموافقة' : 'تمّت الحملة ✓ شوفها بالتقويم', !!bad.length);
+    deps.toast(bad.length ? 'في إشي ما انتشر: شوف التقويم' : asksOwner() ? 'انبعتت الحملة للموافقة' : 'تمّت الحملة ✓ شوفها بالتقويم', !!bad.length);
     state.calMonth = monthStart(new Date(Math.max(...done.map((p) => Date.parse(p.scheduledAt || p.publishedAt || p.createdAt)))));
     setPostsView('cal');
   } catch (e) {
