@@ -10,7 +10,7 @@ import { initStudio, showStudio, openWorkshopCampaign } from './admin-social.js?
 import { initGalleryStudio, showGalleryStudio } from './admin-gallery-studio.js?v=3';
 import { initBlog, showBlog } from './admin-blog.js?v=1';
 import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
-import { withActivity, startActivity, logAction } from './admin-activity.js?v=3';
+import { withActivity, startActivity, logAction } from './admin-activity.js?v=4';
 import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref, getLiveLink, saveLiveLink, liveShareUrl, syncLiveKeys } from './admin-people.js?v=2';
 
 const $ = (id) => document.getElementById(id);

@@ -17,8 +17,10 @@ export function h(tag, attrs = {}, ...kids) {
 /** the published posts whose time has come, pinned first then newest */
 export async function fetchPosts(db, fs) {
   const snap = await fs.getDocs(fs.query(fs.collection(db, 'blog'), fs.where('status', '==', 'published')));
-  return sortPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => postState(p) === 'published'));
+  return publicPosts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
 }
+/** the posts visitors see (their time has come), in the blog's order */
+export const publicPosts = (list) => sortPosts(list.filter((p) => postState(p) === 'published'));
 
 const meta = (p) => [postDate(p.date), p.readMin ? `${p.readMin} د قراءة` : ''].filter(Boolean).join(' · ');
 

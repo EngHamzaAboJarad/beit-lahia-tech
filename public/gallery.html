@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="/brand.css?v=8">
   <link rel="stylesheet" href="/nav.css?v=2">
   <!-- speed:start (scripts/build-nav.mjs) -->
+  <link rel="preload" as="fetch" href="https://social.beitlahia.tech/site/gallery" crossorigin>
+  <link rel="preconnect" href="https://social.beitlahia.tech" crossorigin>
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
   <link rel="modulepreload" href="/firebase-init.js">
   <link rel="modulepreload" href="/firebase-config.js">
@@ -168,6 +170,6 @@
     <button class="lb-nav lb-next" type="button" data-lb="next" aria-label="الصورة التالية"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
     <p class="lb-count" id="lb-count" dir="ltr"></p>
   </dialog>
-  <script type="module" src="/gallery-page.js?v=1"></script>
+  <script type="module" src="/gallery-page.js?v=2"></script>
 </body>
 </html>

@@ -3,8 +3,11 @@
 // and a photo opens the lightbox (#lightbox), which walks through that album.
 // Firestore: gallery/{id} (thumb, caption, album, albumDesc, published, order) + galleryFull/{id} (full image).
 // albumDesc is the album's description («وصف البوست»): the same on every photo of it.
+// The home page gets the albums light (site-data.js › /site/home: only the first 3 pictures of each album);
+// opening an album fills in the rest from /site/gallery (or Firestore).
 import { getDbLite } from './firebase-init.js';
-import { h } from './blog-ui.js';
+import { siteData } from './site-data.js';
+import { h } from './blog-ui.js?v=2';
 
 let photos = []; // the album the lightbox walks through
 let lbIndex = 0;
@@ -17,6 +20,27 @@ function stackIcon() {
   const s = document.createElementNS(SVGNS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   s.innerHTML = '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>'; // fixed markup, no data
   return s;
+}
+
+/** the published photos, from the Worker's edge cache; Firestore if it can't answer. → { list, settings } */
+export async function loadGallery() {
+  try {
+    const d = await siteData('gallery');
+    return { list: d.gallery || [], settings: d.settings || {} };
+  } catch {
+    const { db, fs } = await getDbLite();
+    const [list, s] = await Promise.all([fetchGallery(db, fs), fs.getDoc(fs.doc(db, 'site', 'settings')).catch(() => null)]);
+    return { list, settings: s?.data?.() || {} };
+  }
+}
+let full = null;
+/** the album's photos with every picture (some may have come without one) */
+async function withPictures(list) {
+  if (list.every((p) => p.thumb)) return list;
+  full = full || loadGallery().then((g) => new Map(g.list.map((p) => [p.id, p])));
+  full.catch(() => { full = null; });
+  const byId = await full;
+  return list.map((p) => (p.thumb ? p : { ...p, thumb: byId.get(p.id)?.thumb || '' }));
 }
 
 /** the published photos, in the admin's order */
@@ -56,8 +80,11 @@ export function renderAlbums(grid, list) {
 }
 
 const av = document.getElementById('album-view');
-export function openAlbum(a) {
+export async function openAlbum(a) {
   if (!av) return;
+  if (a.photos.some((p) => !p.thumb)) {
+    try { a.photos = await withPictures(a.photos); } catch (e) { console.warn('[gallery]', e); }
+  }
   photos = a.photos;
   document.getElementById('av-title').textContent = a.name;
   document.getElementById('av-count').textContent = photoCount(a.photos.length);

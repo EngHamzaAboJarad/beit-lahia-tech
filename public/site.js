@@ -1,13 +1,14 @@
 // Beit Lahia Tech — landing page.
 // Order of work: 1) paint the page from its own files (plus the last saved content, from this browser),
-// 2) start the motion, 3) only after the page has loaded and the browser is idle, fetch fresh content
-// from Firestore in the background and update what changed.
+// 2) start the motion, 3) at the same time fetch the fresh content (one request to the Worker's edge cache,
+// site-data.js; Firestore itself if that fails) and update what changed.
 import { getDbLite } from './firebase-init.js';
+import { siteData } from './site-data.js';
 import { DEFAULT_CONTENT, withDefaults, safeUrl, EVENT_TYPES, renderFooterLinks, socialInfo } from './content-defaults.js';
 import { iconSvg } from './icons.js';
 import { LINES } from './motivation.js';
 import { track } from './track.js';
-import { renderAlbums } from './gallery-ui.js';
+import { renderAlbums } from './gallery-ui.js?v=2';
 
 const root = document.documentElement;
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -411,22 +412,26 @@ function renderGallery(list) {
 }
 
 /* ---------- the workshops with their state (held / open / closed), under the workshops teaser ---------- */
-async function renderHomeWorkshops(settings) {
+// `ready` = the workshops already fetched (site-data.js); without it they're read from Firestore here
+async function workshopsFromFirestore(settings) {
+  const { db, fs } = await getDbLite();
+  const ids = [settings?.nextWorkshop, settings?.currentWorkshop].filter((id) => id && /^[A-Za-z0-9_-]{1,40}$/.test(id));
+  // held ones (archived), plus the current / next one (only readable once published), all at once
+  const [done, ...more] = await Promise.all([
+    fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done'))).catch(() => null),
+    ...ids.map((id) => fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null)),
+  ]);
+  return [...(done?.docs || []), ...more.filter((s) => s?.exists())].map((d) => ({ id: d.id, ...d.data() }));
+}
+async function renderHomeWorkshops(settings, ready) {
   const list = document.getElementById('ws-home-list');
   if (!list) return;
   try {
-    const [{ mergeWorkshop, arDate, placeText, wsPublicState, WS_PUBLIC }, { gazaDay }, { db, fs }] = await Promise.all([
-      import('./workshop-shared.js'), import('./track.js'), getDbLite()]);
+    const [{ mergeWorkshop, arDate, placeText, wsPublicState, WS_PUBLIC }, { gazaDay }, raws] = await Promise.all([
+      import('./workshop-shared.js'), import('./track.js'), ready || workshopsFromFirestore(settings)]);
     const today = gazaDay();
     const byId = new Map();
-    // held ones (archived), plus the current / next one (only readable once published)
-    const done = await fs.getDocs(fs.query(fs.collection(db, 'workshops'), fs.where('status', '==', 'done'))).catch(() => null);
-    done?.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() }));
-    for (const id of [settings?.nextWorkshop, settings?.currentWorkshop]) {
-      if (!id || byId.has(id) || !/^[A-Za-z0-9_-]{1,40}$/.test(id)) continue;
-      const s = await fs.getDoc(fs.doc(db, 'workshops', id)).catch(() => null);
-      if (s?.exists()) byId.set(id, { id, ...s.data() });
-    }
+    raws.forEach((w) => { if (!byId.has(w.id)) byId.set(w.id, w); });
     const rank = { open: 0, closed: 1, held: 2 };
     const items = [...byId.values()].map((raw) => { const w = mergeWorkshop(raw); return { id: raw.id, w, st: wsPublicState(w, today) }; })
       .sort((a, b) => rank[a.st] - rank[b.st] || String(b.w.date || '').localeCompare(String(a.w.date || '')))
@@ -446,12 +451,12 @@ async function renderHomeWorkshops(settings) {
 }
 
 /* ---------- «من المدونة»: the 3 newest posts (hidden until there is one) ---------- */
-async function renderHomeBlog() {
+async function renderHomeBlog(ready) {
   const section = document.getElementById('blog-home');
   if (!section) return;
   try {
-    const [{ fetchPosts, postCard }, { db, fs }] = await Promise.all([import('./blog-ui.js'), getDbLite()]);
-    const posts = (await fetchPosts(db, fs)).slice(0, 3);
+    const { fetchPosts, publicPosts, postCard } = await import('./blog-ui.js?v=2');
+    const posts = (ready ? publicPosts(ready) : await getDbLite().then(({ db, fs }) => fetchPosts(db, fs))).slice(0, 3);
     if (!posts.length) return;
     const grid = document.getElementById('home-posts');
     grid.setAttribute('data-stagger', '');
@@ -472,6 +477,19 @@ function applyLive(live) {
   renderSettings(live.settings || null, content);
 }
 
+const eventOf = (e) => ({ type: e.type, title: e.title, date: e.date || '', place: e.place || '', description: e.description || '', link: e.link || '', ts: e.createdAt?.toMillis?.() || 0 });
+const plainDoc = (d) => { if (!d) return null; const { updatedAt, createdAt, id, ...rest } = d; return rest; };
+
+/** everything the page shows, in one request to the Worker's edge cache */
+async function fetchFromWorker() {
+  const d = await siteData('home');
+  return {
+    live: { content: plainDoc(d.content), settings: plainDoc(d.settings), events: (d.events || []).map(eventOf) },
+    gallery: d.gallery || [], team: d.team || [], posts: d.posts || [], workshops: d.workshops || [],
+  };
+}
+
+/** the same, straight from Firestore (when the Worker can't answer) */
 async function fetchLive() {
   const { db, fs } = await getDbLite();
   const [contentSnap, settingsSnap, eventsSnap, gallerySnap, teamSnap] = await Promise.all([
@@ -489,10 +507,7 @@ async function fetchLive() {
   const live = {
     content: plain(contentSnap),
     settings: plain(settingsSnap),
-    events: eventsSnap ? eventsSnap.docs.map((d) => {
-      const e = d.data();
-      return { type: e.type, title: e.title, date: e.date || '', place: e.place || '', description: e.description || '', link: e.link || '', ts: e.createdAt?.toMillis?.() || 0 };
-    }) : [],
+    events: eventsSnap ? eventsSnap.docs.map((d) => eventOf(d.data())) : [],
   };
   const gallery = gallerySnap ? gallerySnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)) : [];
@@ -509,23 +524,25 @@ if (cached) applyLive(cached);
 setupReveals();
 journey.refresh();
 
-// 3) fresh data, only once the page is fully loaded and the browser is idle
+// 3) fresh data right away (the request started with the page: <link rel="preload"> in index.html);
+// counting the visit waits until the page has loaded and the browser is idle
 const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(fn, 200));
 const afterLoad = (fn) => (document.readyState === 'complete' ? whenIdle(fn) : window.addEventListener('load', () => whenIdle(fn), { once: true }));
-afterLoad(async () => {
-  track('home');
+afterLoad(() => track('home'));
+(async () => {
   try {
-    const { live, gallery, team } = await fetchLive();
+    const { live, gallery, team, posts, workshops } = await fetchFromWorker()
+      .catch((e) => { if (e?.message !== 'site-data: local') console.warn('[site-data]', e); return fetchLive(); });
     if (JSON.stringify(live) !== JSON.stringify(cached)) {
       applyLive(live);
       writeCache(live);
     }
     renderMembers(team, live.settings?.showMembers === true);
     renderGallery(gallery);
-    await Promise.all([renderHomeBlog(), renderHomeWorkshops(live.settings)]);
+    await Promise.all([renderHomeBlog(posts), renderHomeWorkshops(live.settings, workshops)]);
     setupReveals();
     journey.refresh();
   } catch (e) {
     console.warn('[content]', e); // the static page is already complete
   }
-});
+})();

@@ -33,6 +33,7 @@
 //   GET    /notify              owner: e-mail alert settings · POST /notify: save them · POST /notify/test
 //   POST   /notify/reg          public (site forms): { kind: member|workshop, name, workshop? } → the daily digest
 //   GET    /mail · POST /mail/workshop   admin «workshops»: e-mail registrants their check-in pass / certificate (mail.js)
+//   GET    /site/home|gallery|blog   public: the site's data from the edge cache · POST /site/purge: admin (site.js)
 //
 // What goes out where:
 //   post  + image → Facebook page photo        · Instagram feed photo
@@ -46,6 +47,7 @@
 
 import { handleMail } from './mail.js';
 import { handleLive } from './live.js';
+import { handleSite } from './site.js';
 
 const MAX_IMAGE = 8 * 1024 * 1024; // Instagram's limit for photos
 const MAX_DESIGN = 3 * 1024 * 1024; // a design with an uploaded photo inside is ~1–2 MB of JSON
@@ -172,6 +174,7 @@ async function route(req, env, ctx) {
   if (parts[0] === 'mail') return handleMail(req, env, parts, { requireAdmin, fail, json });
   // online workshops: the meeting link behind /live (see live.js)
   if (parts[0] === 'live') return handleLive(req, env, parts, { requireAdmin, fail, json });
+  if (parts[0] === 'site') return handleSite(req, env, ctx, parts, { requireAdmin, fail, json });
 
   if (parts[0] !== 'posts') throw fail(404, 'مش موجود');
   const user = await requireAdmin(req, env, 'studio');

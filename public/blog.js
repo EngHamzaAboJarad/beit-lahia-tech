@@ -2,7 +2,8 @@
 // Hosting sends every /blog/<slug> to post.html (firebase.json › rewrites); /post?s=<slug> works too.
 import { getDbLite } from './firebase-init.js';
 import { renderMarkdown, mediaIds, postDate, postState } from './blog-shared.js';
-import { fetchPosts, postCard, postUrl, h } from './blog-ui.js';
+import { fetchPosts, publicPosts, postCard, postUrl, h } from './blog-ui.js?v=2';
+import { siteData } from './site-data.js';
 import { renderFooterLinks } from './content-defaults.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,8 +18,9 @@ async function listPage() {
   const grid = $('blog-grid'); const status = $('blog-status');
   let posts = [];
   try {
-    const { db, fs } = await getDbLite();
-    posts = await fetchPosts(db, fs);
+    // the Worker's edge cache (site-data.js); Firestore if it can't answer
+    posts = await siteData('blog').then((d) => publicPosts(d.posts || []))
+      .catch(() => getDbLite().then(({ db, fs }) => fetchPosts(db, fs)));
   } catch (e) {
     console.warn(e); status.textContent = 'ما قدرنا نجيب المقالات هلّق. جرّب كمان شوي.'; return;
   }
@@ -149,6 +151,9 @@ if ($('post-body')) postPage();
 // the admin's contact in the footer, once the page has loaded
 addEventListener('load', async () => {
   try {
+    // /blog already has them (the same answer as its posts)
+    const fromCache = $('blog-grid') ? await siteData('blog').then((d) => d.settings).catch(() => null) : null;
+    if (fromCache) { renderFooterLinks($('footer-social'), fromCache); return; }
     const { db, fs } = await getDbLite();
     renderFooterLinks($('footer-social'), (await fs.getDoc(fs.doc(db, 'site', 'settings'))).data() || {});
   } catch { /* the default contact stays */ }

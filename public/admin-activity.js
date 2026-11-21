@@ -60,13 +60,29 @@ function describeMany(ops) {
 }
 
 /** The Firestore SDK with every write reported to the activity log (reads untouched). */
+// The public site reads its data through the Worker's edge cache (social-worker/src/site.js, up to a minute old).
+// A change to anything the site shows clears that cache, so it shows up on the next visit.
+const SITE_COLS = new Set(['site', 'events', 'gallery', 'blog', 'team', 'workshops']);
+const WORKER = (() => { try { return localStorage.getItem('blt-social-worker') || ''; } catch { return ''; } })() || 'https://social.beitlahia.tech';
+let purgeTimer = 0;
+function purgeSite(paths) {
+  if (!paths.some((p) => SITE_COLS.has(String(p || '').split('/')[0]))) return;
+  clearTimeout(purgeTimer);
+  purgeTimer = setTimeout(async () => {
+    try {
+      const token = await ctx?.user?.getIdToken?.();
+      if (token) await fetch(`${WORKER}/site/purge`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    } catch (e) { console.warn('[site-cache]', e); } // the cache refreshes itself within a minute anyway
+  }, 1200);
+}
+
 export function withActivity(fs) {
   const out = { ...fs };
-  const after = (p, text) => p.then((r) => { logAction(text); return r; });
-  out.setDoc = (ref, data, ...o) => after(fs.setDoc(ref, data, ...o), describe('set', ref, data));
-  out.updateDoc = (ref, data, ...o) => after(fs.updateDoc(ref, data, ...o), describe('update', ref, data));
-  out.deleteDoc = (ref) => after(fs.deleteDoc(ref), describe('delete', ref));
-  out.addDoc = (col, data) => after(fs.addDoc(col, data), describe('add', { parent: col }, data));
+  const after = (p, text, paths) => p.then((r) => { logAction(text); purgeSite(paths); return r; });
+  out.setDoc = (ref, data, ...o) => after(fs.setDoc(ref, data, ...o), describe('set', ref, data), [ref.path]);
+  out.updateDoc = (ref, data, ...o) => after(fs.updateDoc(ref, data, ...o), describe('update', ref, data), [ref.path]);
+  out.deleteDoc = (ref) => after(fs.deleteDoc(ref), describe('delete', ref), [ref.path]);
+  out.addDoc = (col, data) => after(fs.addDoc(col, data), describe('add', { parent: col }, data), [col.path]);
   out.writeBatch = (db) => {
     const b = fs.writeBatch(db);
     const ops = [];
@@ -74,7 +90,7 @@ export function withActivity(fs) {
       set(ref, data, o) { ops.push(['set', ref, data]); b.set(ref, data, o); return this; },
       update(ref, data) { ops.push(['update', ref, data]); b.update(ref, data); return this; },
       delete(ref) { ops.push(['delete', ref]); b.delete(ref); return this; },
-      commit() { return ops.length ? after(b.commit(), describeMany(ops)) : b.commit(); },
+      commit() { return ops.length ? after(b.commit(), describeMany(ops), ops.map((o) => o[1].path)) : b.commit(); },
     };
   };
   return out;

@@ -59,8 +59,13 @@ const GROUPS = [
 // · the Firebase bootstrap starts downloading with the page instead of after the page's own script
 // · hovering a menu link (or any link to these pages) gets the page ready, so it opens at once (Chrome/Edge).
 //   track.js waits until such a page is really opened before counting the visit.
+// · the page's data (public/site-data.js: the Worker's edge cache) starts downloading with the page itself
 const PRERENDER = ['/', '/workshop', '/blog', '/blog/*', '/gallery', '/join', '/survey', '/trainer', '/privacy'];
-const SPEED = `<!-- speed:start (scripts/build-nav.mjs) -->
+const SITE_API = 'https://social.beitlahia.tech/site/';
+const DATA = { 'index.html': 'home', 'gallery.html': 'gallery', 'blog.html': 'blog' };
+const SPEED = (file) => `<!-- speed:start (scripts/build-nav.mjs) -->${DATA[file] ? `
+  <link rel="preload" as="fetch" href="${SITE_API}${DATA[file]}" crossorigin>` : ''}
+  <link rel="preconnect" href="https://social.beitlahia.tech" crossorigin>
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
   <link rel="modulepreload" href="/firebase-init.js">
   <link rel="modulepreload" href="/firebase-config.js">
@@ -148,8 +153,8 @@ for (const [file, active] of Object.entries(PAGES)) {
   if (!html.includes('/nav.css')) html = html.replace(/(<link rel="stylesheet" href="\/brand\.css\?v=\d+">)/, `$1\n  <link rel="stylesheet" href="${NAV_CSS}">`);
   else html = html.replace(/\/nav\.css\?v=\d+/, NAV_CSS);
   if (!html.includes('/nav.css')) console.log(`  ! ${file}: no brand.css link to put nav.css after`);
-  if (html.includes('<!-- speed:start')) html = html.replace(/<!-- speed:start[\s\S]*?<!-- speed:end -->/, SPEED);
-  else html = html.replace(/(<link rel="stylesheet" href="\/nav\.css\?v=\d+">)/, `$1\n  ${SPEED}`);
+  if (html.includes('<!-- speed:start')) html = html.replace(/<!-- speed:start[\s\S]*?<!-- speed:end -->/, SPEED(file));
+  else html = html.replace(/(<link rel="stylesheet" href="\/nav\.css\?v=\d+">)/, `$1\n  ${SPEED(file)}`);
   writeFileSync(path, html);
   console.log(`ok ${file}${active ? ` (${active})` : ''}`);
 }
