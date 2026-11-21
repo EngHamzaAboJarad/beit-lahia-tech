@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="/certificate.css?v=7">
   <link rel="stylesheet" href="/admin-people.css?v=1">
   <script src="/vendor/qrcode.js" defer></script>
-  <script type="module" src="/admin.js?v=57"></script>
+  <script type="module" src="/admin.js?v=58"></script>
   <!-- everything the sign-in check needs starts downloading together, instead of one file after another:
        Firebase (app + auth + firestore) and the panel's own modules. The studios load only when opened. -->
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
@@ -123,7 +123,7 @@
         <button role="tab" type="button" id="tab-btn-forms" aria-controls="tab-forms" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h4"/><circle cx="17" cy="16" r="2.2"/></svg><span>إعدادات الفورمات</span></button>
         <span class="tab-group" role="presentation">الورشات</span>
         <button role="tab" type="button" id="tab-btn-workshop" aria-controls="tab-workshop" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 5l9 5-9 5-9-5Z"/><path d="M7 12.5V17c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4.5"/></svg><span>الورشات</span></button>
-        <button role="tab" type="button" id="tab-btn-cert" aria-controls="tab-cert" aria-selected="false" data-gone hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7"/></svg><span>الشهادات</span></button>
+        <button role="tab" type="button" id="tab-btn-cert" aria-controls="ws-sub-cert" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="m9 13.5-1.5 7 4.5-2.5 4.5 2.5-1.5-7"/></svg><span>قالب الشهادة</span></button>
         <span class="tab-group" role="presentation">الموقع</span>
         <button role="tab" type="button" id="tab-btn-content" aria-controls="tab-content" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h5"/></svg><span>محتوى الصفحة</span></button>
         <button role="tab" type="button" id="tab-btn-events" aria-controls="tab-events" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>الفعاليات</span></button>
@@ -887,7 +887,7 @@
         </div>
       </section>
 
-      <!-- the certificate now lives inside a workshop's page (#workshop › «الشهادة»); this empty tab keeps old #cert links working -->
+      <!-- the certificate lives inside a workshop's page (#workshop › «الشهادة»); the sidebar's «قالب الشهادة» opens it there -->
       <section id="tab-cert" role="tabpanel" aria-labelledby="tab-btn-cert" hidden></section>
 
       <!-- Traffic -->

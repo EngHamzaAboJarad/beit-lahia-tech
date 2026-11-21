@@ -286,13 +286,31 @@ function selectTab(name, focus = false) {
   history.replaceState(null, '', `#${name}`);
   if (name === 'workshop') {
     if (wsOpen && selId) openWorkshop(selId, wsOpen);
-    else showWsIndex();
+    else {
+      showWsIndex();
+      if (wsOpen === 'cert' && workshops.length) toast('اختار الورشة اللي بدك تعدّل قالب شهادتها');
+    }
   }
+  syncWsSidebar();
+}
+
+// «قالب الشهادة» in the sidebar = the selected workshop's «الشهادة» section: it lights up there, «الورشات» elsewhere
+function syncWsSidebar() {
+  if ($('tab-workshop').hidden) return;
+  const inCert = !$('ws-detail').hidden && wsSub === 'cert';
+  $('tab-btn-workshop').setAttribute('aria-selected', String(!inCert));
+  $('tab-btn-cert').setAttribute('aria-selected', String(inCert));
+  $('tab-btn-workshop').tabIndex = inCert ? -1 : 0;
+  $('tab-btn-cert').tabIndex = inCert ? 0 : -1;
+  const meta = TAB_META[inCert ? 'cert' : 'workshop'];
+  $('ph-title').textContent = meta.title;
+  document.title = `${meta.title} | لوحة الإدارة`;
+  moveIndicator();
 }
 
 // sidebar, shortcuts and overview panels follow the permissions
 function applyPerms() {
-  TABS.forEach((t) => { $(`tab-btn-${t}`).hidden = !tabAllowed(t) || $(`tab-btn-${t}`).hasAttribute('data-gone'); });
+  TABS.forEach((t) => { $(`tab-btn-${t}`).hidden = !tabAllowed(t); });
   document.querySelectorAll('.admin-tabs .tab-group').forEach((g) => { // a group label with nothing under it goes too
     let n = g.nextElementSibling; let any = false;
     while (n && !n.classList.contains('tab-group')) { if (n.getAttribute('role') === 'tab' && !n.hidden) any = true; n = n.nextElementSibling; }
@@ -336,7 +354,7 @@ TABS.forEach((t, i) => {
     const dir = ['ArrowLeft', 'ArrowDown'].includes(e.key) ? 1 : ['ArrowRight', 'ArrowUp'].includes(e.key) ? -1 : 0;
     if (dir) {
       e.preventDefault();
-      const open = TABS.filter((x) => tabAllowed(x) && !$(`tab-btn-${x}`).hasAttribute('data-gone')); // skip the sections this admin can't open
+      const open = TABS.filter(tabAllowed); // skip the sections this admin can't open
       selectTab(open[(open.indexOf(t) + dir + open.length) % open.length], true);
     }
   });
@@ -2337,6 +2355,7 @@ function showWsIndex() {
   $('ws-index').hidden = false;
   renderWorkshopList();
   if (!$('tab-workshop').hidden) history.replaceState(null, '', '#workshop');
+  syncWsSidebar();
 }
 function openWorkshop(id, sub = 'overview') {
   if (id !== selId) { selectWorkshop(id); if (selId !== id) return; } // unsaved changes elsewhere and the admin stayed
@@ -2359,6 +2378,7 @@ function setWsSub(sub, focus = false) {
   enterPanel($(`ws-sub-${sub}`));
   if (sub === 'cert') { const fix = () => { refitPreview(); refreshPreview(); }; requestAnimationFrame(fix); setTimeout(fix, 250); }
   if (selId && !$('tab-workshop').hidden) history.replaceState(null, '', `#workshop/${encodeURIComponent(selId)}/${sub}`);
+  syncWsSidebar();
 }
 $('ws-back').addEventListener('click', () => { showWsIndex(); scrollTo({ top: 0, behavior: 'auto' }); });
 $('ws-filter').addEventListener('click', (e) => {
