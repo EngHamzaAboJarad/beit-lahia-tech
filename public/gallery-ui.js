@@ -64,7 +64,10 @@ export function openAlbum(a) {
   const desc = document.getElementById('av-desc');
   if (desc) { desc.textContent = a.desc || ''; desc.hidden = !a.desc; }
   const grid = document.getElementById('av-grid');
-  grid.style.setProperty('--ar', ratioOf(a.photos[0])); // every tile in the album's shape; another shape fits inside, whole
+  // every tile in the album's most common shape; a photo of another shape fits inside it, whole
+  const shapes = new Map();
+  a.photos.forEach((p) => { const r = ratioOf(p); shapes.set(r, (shapes.get(r) || 0) + 1); });
+  grid.style.setProperty('--ar', [...shapes].sort((x, y) => y[1] - x[1])[0][0]);
   grid.replaceChildren(...a.photos.map((p, i) => {
     const b = h('button', {
       type: 'button', class: 'gallery-item', style: `--i:${Math.min(i, 24)};--r:${((i * 37) % 9) - 4}deg`,
