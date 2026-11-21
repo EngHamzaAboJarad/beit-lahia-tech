@@ -12,7 +12,14 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="/styles.css?v=20">
   <link rel="stylesheet" href="/brand.css?v=8">
-  <link rel="stylesheet" href="/nav.css?v=1">
+  <link rel="stylesheet" href="/nav.css?v=2">
+  <!-- speed:start (scripts/build-nav.mjs) -->
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="modulepreload" href="/firebase-init.js">
+  <link rel="modulepreload" href="/firebase-config.js">
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js" crossorigin>
+  <script type="speculationrules">{"prerender":[{"where":{"and":[{"href_matches":["/","/workshop","/blog","/blog/*","/gallery","/join","/survey","/trainer","/privacy"]},{"not":{"selector_matches":"[target=_blank], [download], [rel~=nofollow]"}}]},"eagerness":"moderate"}]}</script>
+  <!-- speed:end -->
   <link rel="stylesheet" href="/blog.css?v=1">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Beit Lahia Tech">

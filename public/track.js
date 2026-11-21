@@ -19,6 +19,10 @@ const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private
 /** Count this page view: 'home' (landing), 'join' (form page), 'start' (began filling the form). */
 export async function track(event) {
   if (!EVENTS.includes(event) || read('blt-admin') === '1' || navigator.webdriver) return;
+  // a page the browser got ready in advance (nav hover) only counts once it's actually opened
+  if (document.prerendering) {
+    await new Promise((r) => document.addEventListener('prerenderingchange', r, { once: true }));
+  }
   const day = gazaDay();
   const key = `blt-seen-${event}`;
   if (read(key) === day) return;

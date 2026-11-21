@@ -5,7 +5,13 @@
    two-column menu, and the header tucks away while you scroll down (back as soon as you scroll up).
    Phones: ☰ opens a sheet from the bottom (easy to reach with a thumb; drag it down to close).
    ===================================================================== */
+/* moving between pages: the new page fades in under a header that stays put (Chrome/Edge/Safari) */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .2s; }
+@media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }
+
 .site-header {
+  view-transition-name: site-header;
   position: sticky; top: 0; z-index: 50;
   background: rgba(11, 16, 32, .9); border-bottom: 1px solid rgba(255, 255, 255, .06);
   transition: transform .38s var(--ease-out, ease), background-color .3s ease, box-shadow .3s ease;

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
 const NAV_JS = '/nav.js?v=2';
-const NAV_CSS = '/nav.css?v=1';
+const NAV_CSS = '/nav.css?v=2';
 
 // page file → which link is «you are here»
 const PAGES = {
@@ -54,6 +54,19 @@ const GROUPS = [
     ['trainer', '/trainer', 'كن مدرّباً معنا', 'شارك خبرتك بورشة'],
   ]],
 ];
+
+// Faster page changes, in every page's <head> (between <!-- speed:start --> and <!-- speed:end -->):
+// · the Firebase bootstrap starts downloading with the page instead of after the page's own script
+// · hovering a menu link (or any link to these pages) gets the page ready, so it opens at once (Chrome/Edge).
+//   track.js waits until such a page is really opened before counting the visit.
+const PRERENDER = ['/', '/workshop', '/blog', '/blog/*', '/gallery', '/join', '/survey', '/trainer', '/privacy'];
+const SPEED = `<!-- speed:start (scripts/build-nav.mjs) -->
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="modulepreload" href="/firebase-init.js">
+  <link rel="modulepreload" href="/firebase-config.js">
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js" crossorigin>
+  <script type="speculationrules">{"prerender":[{"where":{"and":[{"href_matches":${JSON.stringify(PRERENDER)}},{"not":{"selector_matches":"[target=_blank], [download], [rel~=nofollow]"}}]},"eagerness":"moderate"}]}</script>
+  <!-- speed:end -->`;
 
 const svg = (key) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[key]}"/></svg>`;
 const cur = (key, active) => (key && key === active ? ' aria-current="page"' : '');
@@ -135,6 +148,8 @@ for (const [file, active] of Object.entries(PAGES)) {
   if (!html.includes('/nav.css')) html = html.replace(/(<link rel="stylesheet" href="\/brand\.css\?v=\d+">)/, `$1\n  <link rel="stylesheet" href="${NAV_CSS}">`);
   else html = html.replace(/\/nav\.css\?v=\d+/, NAV_CSS);
   if (!html.includes('/nav.css')) console.log(`  ! ${file}: no brand.css link to put nav.css after`);
+  if (html.includes('<!-- speed:start')) html = html.replace(/<!-- speed:start[\s\S]*?<!-- speed:end -->/, SPEED);
+  else html = html.replace(/(<link rel="stylesheet" href="\/nav\.css\?v=\d+">)/, `$1\n  ${SPEED}`);
   writeFileSync(path, html);
   console.log(`ok ${file}${active ? ` (${active})` : ''}`);
 }
