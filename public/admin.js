@@ -820,7 +820,7 @@ const waLink = (n) => waHref(n); // any stored format → wa.me/970… (see chec
 
 /* =================== Data tables: sort + pages =================== */
 const PAGERS = {};
-const PAGER_BODY = { m: 'members-body', wr: 'wr-body', tt: 'tt-body', tr: 'tr-body', sv: 'sv-body' }; // pager id → its table body
+const PAGER_BODY = { m: 'members-body', wr: 'wr-body', tt: 'tt-body', tr: 'tr-body', sv: 'sv-body', cl: 'cert-list' }; // pager id → its table body
 const pagerState = (id) => (PAGERS[id] = PAGERS[id] || { page: 1, size: 25, key: '', dir: 1 });
 const tsOf = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0);
 const MEMBER_SORT = {
@@ -2976,20 +2976,34 @@ async function loadCerts() {
   } catch (e) { toast(errMsg(e), true); }
 }
 
+// issued certificates: a table you can sort (newest number first until you pick a column) and page through
+const certReg = (c) => (c.regId ? allRegs.find((r) => r.id === c.regId) : null);
+const certNo = (c) => Number(String(c.no).match(/(\d+)\D*$/)?.[1]) || 0; // BLT-AI-2026-017 → 17
+const CERT_SORT = {
+  no: certNo, name: (c) => c.name || '', date: (c) => tsOf(c.createdAt),
+  source: (c) => (certReg(c) ? 'تسجيلات الورشة' : 'إصدار يدوي'), sent: (c) => (waSent().has(c.id) ? 1 : 0),
+};
 function renderCerts() {
-  const list = [...certs].sort((a, b) => String(b.no).localeCompare(String(a.no), 'en', { numeric: true }));
+  const list = [...certs].sort((a, b) => certNo(b) - certNo(a));
   $('cl-title').textContent = `الشهادات الصادرة (${list.length})`;
   renderDesignSync(list);
   $('cert-empty').hidden = list.length > 0;
-  $('cert-list').replaceChildren(...list.map((c) => {
-    const reg = c.regId ? allRegs.find((r) => r.id === c.regId) : null;
-    return h('li', {},
-      h('span', { class: 'cert-no-tag' }, c.no),
-      h('div', { class: 'cl-info' }, h('strong', {}, c.name), h('span', { class: 'muted small' }, [c.date, reg ? 'من تسجيلات الورشة' : 'إصدار يدوي', waSent().has(c.id) ? 'انبعتت واتساب ✓' : ''].filter(Boolean).join(' · '))),
-      h('div', { class: 'cl-tools' }, certActions(c, reg?.whatsapp, true, reg?.email),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `إلغاء شهادة ${c.name}`, title: 'إلغاء الشهادة', onclick: () => revokeCert(c) }, svgIcon(ICONS.trash))));
+  $('cert-list').closest('.table-wrap').hidden = !list.length;
+  const rows = applyPager('cl', list, CERT_SORT, renderCerts);
+  $('cert-list').replaceChildren(...rows.map((c) => {
+    const reg = certReg(c);
+    const sent = waSent().has(c.id);
+    return h('tr', {},
+      h('td', {}, h('span', { class: 'cert-no-tag' }, c.no)),
+      h('td', { class: 'cell-name' }, h('strong', {}, c.name)),
+      h('td', { class: 'cell-date' }, c.date || '—'),
+      h('td', {}, reg ? 'تسجيلات الورشة' : h('span', { class: 'muted' }, 'إصدار يدوي')),
+      h('td', {}, sent ? h('span', { class: 'cl-sent' }, 'انبعتت ✓') : h('span', { class: 'muted' }, '—')),
+      h('td', {}, h('div', { class: 'cl-tools' }, certActions(c, reg?.whatsapp, true, reg?.email),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `إلغاء شهادة ${c.name}`, title: 'إلغاء الشهادة', onclick: () => revokeCert(c) }, svgIcon(ICONS.trash)))));
   }));
 }
+wireSort('cl', 'cert-list', () => renderCerts());
 
 // how many issued certificates show another design than the saved one → offer to bring them up to date
 function renderDesignSync(list) {
