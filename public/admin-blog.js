@@ -5,6 +5,7 @@
 import {
   renderMarkdown, slugify, cleanSlug, readMinutes, parseTags, plainText, mediaIds, postState, postDate, today, youtubeId,
 } from './blog-shared.js';
+import { ask, askText } from './admin-dialog.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const DRAFT_KEY = (id) => `blt-blog-draft-${id}`;
@@ -133,7 +134,7 @@ async function postMedia(postId) {
   return snap.docs;
 }
 async function removePost(p) {
-  if (!confirm(`حذف «${p.title}» نهائياً؟ المقال ونصّه وصوره بينحذفوا وما بيرجعوا.`)) return;
+  if (!(await ask(`حذف «${p.title}» نهائياً؟ المقال ونصّه وصوره بينحذفوا وما بيرجعوا.`, { tone: 'danger', ok: 'احذف نهائياً' }))) return;
   const { db, fs } = deps;
   try {
     const media = await postMedia(p.id);
@@ -244,7 +245,7 @@ async function loadMedia(text) {
 
 async function openEditor(p) {
   const { db, fs } = deps;
-  if (state.cur && state.dirty && !confirm('فيه تعديلات ما انحفظت على المقال المفتوح. تتركها؟')) return;
+  if (state.cur && state.dirty && !(await ask('فيه تعديلات ما انحفظت على المقال المفتوح. تتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   let body = { md: '', cover: '' };
   if (p) {
     try { body = (await fs.getDoc(fs.doc(db, 'blogBody', p.id))).data() || body; } catch (e) { deps.toast(deps.errMsg(e), true); return; }
@@ -263,7 +264,7 @@ async function openEditor(p) {
     const local = JSON.parse(localStorage.getItem(DRAFT_KEY(id)) || 'null');
     const savedAt = p?.updatedAt?.toMillis ? p.updatedAt.toMillis() : 0;
     if (local && local.savedAt > savedAt + 2000 && (local.md !== v.md || local.title !== v.title)
-      && confirm('في نسخة من هالمقال ما انحفظت (من آخر مرة كتبت فيه بهالمتصفح). ترجّعها؟')) {
+      && (await ask('في نسخة من هالمقال ما انحفظت (من آخر مرة كتبت فيه بهالمتصفح). ترجّعها؟', { title: 'لقينا مسودة', ok: 'رجّعها', no: 'لا، افتح المحفوظ' }))) {
       Object.assign(v, { ...local, tags: (local.tags || []).join('، '), at: local.at ? new Date(local.at - new Date(local.at).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '' });
     } else if (local) localStorage.removeItem(DRAFT_KEY(id));
   } catch { /* nothing kept */ }
@@ -281,7 +282,7 @@ async function openEditor(p) {
   scrollTo({ top: 0 });
 }
 async function closeEditor(force = false) {
-  if (!force && state.dirty && !confirm('فيه تعديلات ما انحفظت. تطلع بدونها؟ (النص بيضل محفوظ بهالمتصفح)')) return;
+  if (!force && state.dirty && !(await ask('فيه تعديلات ما انحفظت. تطلع بدونها؟ (النص بيضل محفوظ بهالمتصفح)', { tone: 'warn', ok: 'اطلع' }))) return;
   const cur = state.cur;
   if (cur?.isNew && state.newMedia.size) { // images uploaded for a post that was never saved
     const { db, fs } = deps;
@@ -374,9 +375,9 @@ function block(text) { // on its own lines
 const ACTIONS = {
   h2: () => linePrefix('## '), h3: () => linePrefix('### '),
   bold: () => wrap('**', '**', 'نص عريض'), italic: () => wrap('*', '*', 'نص مائل'),
-  link: () => {
+  link: async () => {
     const t = md(); const sel = t.value.slice(t.selectionStart, t.selectionEnd) || 'نص الرابط';
-    const url = prompt('الرابط (https://…)', 'https://');
+    const url = await askText('الرابط (https://…)', 'https://', { title: 'إضافة رابط', ok: 'أضف' });
     if (!url || url === 'https://') return;
     insert(`[${sel}](${url.trim()})`, 1, 1 + sel.length);
   },
@@ -384,8 +385,8 @@ const ACTIONS = {
   code: () => { const t = md(); const sel = t.value.slice(t.selectionStart, t.selectionEnd); if (sel.includes('\n') || !sel) block(`\`\`\`\n${sel || 'الكود هون'}\n\`\`\``); else wrap('`', '`', ''); },
   box: () => block(':::tip\nملاحظة مهمة\n:::'),
   hr: () => block('---'),
-  video: () => {
-    const url = prompt('رابط فيديو يوتيوب');
+  video: async () => {
+    const url = await askText('رابط فيديو يوتيوب', '', { title: 'إضافة فيديو', ok: 'أضف', placeholder: 'https://youtu.be/…' });
     if (!url) return;
     if (!youtubeId(url)) { deps.toast('هاد مش رابط يوتيوب', true); return; }
     block(`@[youtube](${url.trim()})`);

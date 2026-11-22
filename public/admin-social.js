@@ -11,6 +11,7 @@ import {
 import { videoSupported, decodeAudio, renderClip, makeVideo, MAX_SECONDS, fmtTime } from './story-video.js';
 import { workshopCampaign } from './social-campaign.js';
 import { SOCIAL_PLATFORMS } from './content-defaults.js';
+import { ask, askText } from './admin-dialog.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const WORKER = (() => { try { return localStorage.getItem('blt-social-worker') || ''; } catch { return ''; } })() || 'https://social.beitlahia.tech';
@@ -80,9 +81,9 @@ function addPage(copy) {
   state.page += 1; state.design = pages()[state.page]; state.sel = -1;
   refreshAll(); renderPages(); syncPublishUi();
 }
-function removePage(k) {
+async function removePage(k) {
   if (pageCount() < 2) return;
-  if (!confirm(`نحذف الصفحة ${k + 1}؟`)) return;
+  if (!(await ask(`نحذف الصفحة ${k + 1}؟`, { tone: 'danger' }))) return;
   checkpoint(true);
   if (k === 0) { // page 1 is the design itself: page 2 takes its place, keeping the name and id
     const [next, ...rest] = state.deck.more;
@@ -229,9 +230,9 @@ function sourceDesign(kind, id) {
   if (kind === 'mine') { const m = state.mine.find((x) => x.id === id); return m && clone(m.design); }
   const b = BUILTIN.find((x) => x.id === id); return b && clone(b);
 }
-function openDesign(kind, id) {
+async function openDesign(kind, id) {
   if (kind === state.src.kind && id === state.src.id) return;
-  if (dirty() && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح قالب تاني وتتركها؟')) return;
+  if (dirty() && !(await ask('عندك تعديلات على القالب الحالي ما انحفظت. تفتح قالب تاني وتتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   const d = sourceDesign(kind, id);
   if (!d) return;
   state.src = { kind, id }; setDeck(d); state.base = JSON.stringify(d);
@@ -756,7 +757,7 @@ async function uploadReady(fileList) {
   const all = [...(fileList || [])].filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type)).sort(byName);
   if (!all.length) { if (fileList?.length) deps.toast('اختار صور JPG أو PNG أو WebP', true); return; }
   const many = all.length > 1;
-  if (dirty() && !confirm(`عندك تعديلات على القالب الحالي ما انحفظت. تفتح ${many ? 'الصور الجاهزة' : 'الصورة الجاهزة'} وتتركها؟`)) return;
+  if (dirty() && !(await ask(`عندك تعديلات على القالب الحالي ما انحفظت. تفتح ${many ? 'الصور الجاهزة' : 'الصورة الجاهزة'} وتتركها؟`, { tone: 'warn', ok: 'اتركها' }))) return;
   const files = all.slice(0, MAX_PAGES);
   const pics = [];
   for (const f of files) {
@@ -1010,7 +1011,7 @@ function payload(name) {
 }
 async function saveNew() {
   if (!deps.db) { deps.toast('الحفظ بيحتاج تسجيل دخول', true); return; }
-  const name = (prompt('اسم القالب الجديد؟', `${state.deck.name} (نسخة)`) || '').trim().slice(0, 60);
+  const name = ((await askText('اسم القالب الجديد؟', `${state.deck.name} (نسخة)`, { title: 'حفظ كقالب جديد', ok: 'احفظ' })) || '').trim().slice(0, 60);
   if (!name) return;
   const btn = $('tpl-save-new'); deps.setBusy(btn, true);
   try {
@@ -1035,7 +1036,7 @@ async function saveChanges() {
 }
 async function deleteMine() {
   const m = state.mine.find((x) => x.id === state.src.id);
-  if (!m || !confirm(`نحذف القالب «${m.name}»؟ ما بيرجع.`)) return;
+  if (!m || !(await ask(`نحذف القالب «${m.name}»؟ ما بيرجع.`, { tone: 'danger' }))) return;
   try {
     await deps.fs.deleteDoc(deps.fs.doc(deps.db, 'socialTemplates', m.id));
     state.mine = state.mine.filter((x) => x.id !== m.id);
@@ -1044,10 +1045,10 @@ async function deleteMine() {
     refreshAll(); renderPickers(); renderPages(); deps.toast('انحذف');
   } catch { deps.toast('ما زبط الحذف', true); }
 }
-function resetToSource() {
+async function resetToSource() {
   const d = sourceDesign(state.src.kind, state.src.id);
   if (!d || !dirty()) return;
-  if (!confirm('نرجّع القالب زي ما كان ونلغي التعديلات؟')) return;
+  if (!(await ask('نرجّع القالب زي ما كان ونلغي التعديلات؟', { tone: 'warn', ok: 'رجّعه' }))) return;
   checkpoint(true); setDeck(d); state.sel = -1; refreshAll(); renderPages(); syncPublishUi();
 }
 
@@ -1219,7 +1220,7 @@ async function selectPage(btn, list) {
   } catch (e) { deps.toast(e.message, true); deps.setBusy(btn, false); }
 }
 async function connectAct(btn, what) {
-  if (what === 'disconnect' && !confirm('نفصل صفحة الفيسبوك والإنستغرام عن المنصة؟ المنشورات المجدولة ما رح تنتشر لحد ما تربط من جديد.')) return;
+  if (what === 'disconnect' && !(await ask('نفصل صفحة الفيسبوك والإنستغرام عن المنصة؟ المنشورات المجدولة ما رح تنتشر لحد ما تربط من جديد.', { tone: 'danger', ok: 'افصل' }))) return;
   deps.setBusy(btn, true);
   try {
     cn.status = what === 'test' ? await api('/connect/test', { method: 'POST' }) : await api('/connect', { method: 'DELETE' });
@@ -1324,7 +1325,7 @@ async function publish() {
   const verb = asksOwner() ? 'ينبعت لصاحب المنصة للموافقة' : later ? `يتجدول على ${whenFmt.format(new Date(scheduledAt))}` : 'ينتشر هلّق';
   const what = formats.map((f) => (n > 1 ? (f === 'story' ? `${n} ستوريات ورا بعض` : `كاروسيل من ${n} صور`)
     : f === 'story' ? (m ? 'ستوري فيديو بالموسيقى' : 'ستوري') : (m ? 'ريل/فيديو بالموسيقى' : 'منشور'))).join(' و');
-  if (!confirm(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}. أكمل؟`)) return;
+  if (!(await ask(`«${d.name}»: ${what}، رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}${m ? ` (الموسيقى: ${musicLabel(m)}، ${m.dur} ثانية)` : ''}.`, { tone: 'publish', ok: 'أكمل' }))) return;
   stopPlay();
   const btn = $('studio-publish');
   deps.setBusy(btn, true);
@@ -1401,7 +1402,7 @@ async function saveDesign(id, design) {
 /* =================== editing a post from the posts list / calendar =================== */
 // scheduled → edit it in place (same post, same time unless changed) · already out → open a copy to publish anew
 async function editPost(p) {
-  if (dirty() && !(state.src.kind === 'post' && state.src.id === p.id) && !confirm('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح المنشور وتتركها؟')) return;
+  if (dirty() && !(state.src.kind === 'post' && state.src.id === p.id) && !(await ask('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح المنشور وتتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   let design;
   try {
     if (p.hasDesign || p.preparedBy) design = await api(`/posts/${p.id}/design`);
@@ -1448,7 +1449,7 @@ function renderEditing() {
     : (m ? `رح ينضاف عليه الموسيقى المختارة تحت: «${musicLabel(m)}» (بيصير فيديو).` : '');
   box.replaceChildren(
     h('div', { class: 'ed-head' }, h('strong', {}, `✎ عم تعدّل ${kind} مجدول: «${p.title || ''}»`),
-      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: () => { if (!dirty() || confirm('تلغي التعديلات؟')) { stopEditing(); } } }, 'إلغاء')),
+      h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: async () => { if (!dirty() || (await ask('تلغي التعديلات؟', { tone: 'warn', ok: 'ألغِها' }))) { stopEditing(); } } }, 'إلغاء')),
     h('p', { class: 'muted small' }, 'غيّر التصميم بالمحرر (المحتوى أو التصميم)، وبعدين «احفظ التعديل». بيضل نفس ال' + kind + ' بنفس المنصات.'),
     h('div', { class: 'field' }, h('label', { for: 'ed-at' }, 'بينزل'), at),
     cap ? h('div', { class: 'field' }, h('label', { for: 'ed-caption' }, 'النص'), cap) : '',
@@ -1465,7 +1466,7 @@ async function saveEdit(btn) {
   if (Number.isNaN(+t) || +t < Date.now() + 5 * 60e3) { deps.toast('الموعد لازم يكون بعد 5 دقايق على الأقل', true); return; }
   const n = pageCount();
   const m = n === 1 ? state.music : null;
-  if (p.video && !m && !confirm(`ال${p.story ? 'ستوري' : 'منشور'} كان فيه موسيقى، وهي مش محمّلة هون. تحفظه صورة بدون موسيقى؟`)) return;
+  if (p.video && !m && !(await ask(`ال${p.story ? 'ستوري' : 'منشور'} كان فيه موسيقى، وهي مش محمّلة هون. تحفظه صورة بدون موسيقى؟`, { tone: 'warn', ok: 'احفظه بدون موسيقى' }))) return;
   if (m && !videoSupported()) { deps.toast('الموسيقى بتحتاج Chrome أو Edge على الكمبيوتر', true); return; }
   const progress = (x) => { const el = $('ed-progress'); if (el) { el.hidden = !x; el.textContent = x || ''; } };
   deps.setBusy(btn, true); stopPlay();
@@ -1608,7 +1609,7 @@ async function acceptSuggestion(sg, btn) {
   const what = n > 1 ? `كاروسيل من ${n} صور` : 'منشور بصورة';
   const extra = sg.photos.length > MAX_PAGES ? ` (أول ${MAX_PAGES} صور بس: هاد حد إنستغرام)` : '';
   const verb = asksOwner() ? 'ينبعت لصاحب المنصة للموافقة' : 'ينتشر هلّق';
-  if (!confirm(`«${sg.album || 'من المعرض'}»: ${what}${extra}، والنص وصف الألبوم. رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}. أكمل؟`)) return;
+  if (!(await ask(`«${sg.album || 'من المعرض'}»: ${what}${extra}، والنص وصف الألبوم. رح ${verb} على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}.`, { tone: 'publish', ok: asksOwner() ? 'أرسل للموافقة' : 'انشر' }))) return;
   const prog = $(`sg-progress-${sg.id}`);
   const progress = (t) => { if (prog) { prog.hidden = !t; prog.textContent = t || ''; } };
   deps.setBusy(btn, true);
@@ -1626,7 +1627,7 @@ async function acceptSuggestion(sg, btn) {
   } finally { progress(''); deps.setBusy(btn, false); }
 }
 async function editSuggestion(sg, btn) {
-  if (dirty() && !confirm('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح صور المعرض وتتركها؟')) return;
+  if (dirty() && !(await ask('عندك تعديلات على التصميم الحالي ما انحفظت. تفتح صور المعرض وتتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   const prog = $(`sg-progress-${sg.id}`);
   const progress = (t) => { if (prog) { prog.hidden = !t; prog.textContent = t || ''; } };
   deps.setBusy(btn, true);
@@ -1643,7 +1644,7 @@ async function editSuggestion(sg, btn) {
   } catch (e) { console.error(e); deps.toast(e.message || 'ما قدرنا نفتح الصور', true); } finally { progress(''); deps.setBusy(btn, false); }
 }
 async function dismissSuggestion(sg) {
-  if (!confirm(`تلغي اقتراح «${sg.album || 'من المعرض'}»؟ الصور بتضل بالمعرض، بس ما رح تنتشر على السوشيال.`)) return;
+  if (!(await ask(`تلغي اقتراح «${sg.album || 'من المعرض'}»؟ الصور بتضل بالمعرض، بس ما رح تنتشر على السوشيال.`, { tone: 'danger', ok: 'ألغِ الاقتراح' }))) return;
   await markSuggestion(sg, 'dismissed');
   deps.toast('انلغى الاقتراح');
 }
@@ -1720,9 +1721,9 @@ function setCampaignPhoto(src) {
   if (state.src.kind === 'campaign') renderStage();
   renderCampaign();
 }
-function editCampaignItem(key) {
+async function editCampaignItem(key) {
   const it = campaignItem(key); if (!it) return;
-  if (dirty() && state.src.kind !== 'campaign' && !confirm('عندك تعديلات على القالب الحالي ما انحفظت. تفتح تصميم الحملة وتتركها؟')) return;
+  if (dirty() && state.src.kind !== 'campaign' && !(await ask('عندك تعديلات على القالب الحالي ما انحفظت. تفتح تصميم الحملة وتتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   stopEditing();
   state.src = { kind: 'campaign', id: key }; setDeck(it.design); state.base = JSON.stringify(it.orig);
   state.sel = -1; state.undo = []; state.redo = [];
@@ -1778,9 +1779,9 @@ async function runCampaign(btn) {
     if (it.past) { deps.toast(`موعد «${it.label}» فات. غيّره أو شيل الإشارة عنه.`, true); return; }
     if (it.key !== 'post' && !it.at) { deps.toast(`«${it.label}» بده موعد`, true); return; }
   }
-  if (items.some((it) => it.design.els.some((e) => e.slot === 'photo' && !e.src && !e.hidden)) && !confirm('ما رفعت صورة المدرّب، فالبوست بيطلع فيه «صورة المدرّب» فاضية. تكمّل هيك؟')) return;
+  if (items.some((it) => it.design.els.some((e) => e.slot === 'photo' && !e.src && !e.hidden)) && !(await ask('ما رفعت صورة المدرّب، فالبوست بيطلع فيه «صورة المدرّب» فاضية. تكمّل هيك؟', { tone: 'warn', ok: 'كمّل هيك' }))) return;
   const lines = items.map((it) => `• ${it.label}: ${it.at ? whenFmt.format(new Date(it.at)) : 'هلّق'}`).join('\n');
-  if (!confirm(`حملة «${c.title}» على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}:\n${lines}\n\nأكمل؟`)) return;
+  if (!(await ask(`على ${platforms.map((p) => PLATFORM_NAME[p]).join(' و')}:\n${lines}`, { tone: 'publish', title: `حملة «${c.title}»`, ok: 'أكمل' }))) return;
   const progress = (t) => { const p = $('camp-progress'); if (p) { p.hidden = !t; p.textContent = t || ''; } };
   deps.setBusy(btn, true);
   const done = [];
@@ -2077,9 +2078,9 @@ function renderPosts() {
   }));
 }
 async function postAct(btn, p, what) {
-  if (what === 'delete' && !confirm(p.status === 'scheduled' ? 'نلغي المنشور المجدول؟' : 'نحذف المنشور من القائمة؟')) return;
-  if (what === 'approve' && !confirm(Date.parse(p.scheduledAt) > Date.now() ? 'توافق على نشره بالموعد المحدد؟' : 'توافق على نشره بدورة النشر الجاية (خلال حوالي 5 دقايق)؟')) return;
-  if (what === 'publish' && !confirm('ننشره هلّق؟')) return;
+  if (what === 'delete' && !(await ask(p.status === 'scheduled' ? 'نلغي المنشور المجدول؟' : 'نحذف المنشور من القائمة؟', { tone: 'danger', ok: p.status === 'scheduled' ? 'ألغِ المنشور' : 'احذف' }))) return;
+  if (what === 'approve' && !(await ask(Date.parse(p.scheduledAt) > Date.now() ? 'توافق على نشره بالموعد المحدد؟' : 'توافق على نشره بدورة النشر الجاية (خلال حوالي 5 دقايق)؟', { tone: 'publish', ok: 'وافق' }))) return;
+  if (what === 'publish' && !(await ask('ننشره هلّق؟', { tone: 'publish', ok: 'انشره هلّق' }))) return;
   btn.disabled = true;
   try {
     if (what === 'delete') { await api(`/posts/${p.id}`, { method: 'DELETE' }); state.posts = state.posts.filter((x) => x.id !== p.id); renderPosts(); deps.toast('تم'); }

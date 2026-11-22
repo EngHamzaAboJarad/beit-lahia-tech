@@ -3,6 +3,7 @@
 // signed in) plus an email to set their own password. An email that already has an account gets an
 // invite (adminInvites/{email}) that turns into access the first time they sign in with a verified email.
 import { getApp, SDK, IS_LOCAL } from './firebase-init.js';
+import { ask, askText } from './admin-dialog.js?v=1';
 
 export const OWNER_EMAIL = 'habojarad305@gmail.com';
 // permission key → its name and the admin tabs it opens
@@ -164,7 +165,7 @@ async function savePerms(r, boxes, btn) {
 
 async function removeRow(r) {
   const what = r.kind === 'invite' ? `نلغي دعوة ${r.email}؟` : `نشيل صلاحية ${r.name || r.email} من لوحة الإدارة؟ (حسابه بيضل، بس ما بيقدر يفوت على اللوحة)`;
-  if (!confirm(what)) return;
+  if (!(await ask(what, { tone: 'danger', ok: r.kind === 'invite' ? 'ألغِ الدعوة' : 'شيل الصلاحية' }))) return;
   try {
     await deps.fs.deleteDoc(deps.fs.doc(deps.db, r.kind === 'invite' ? 'adminInvites' : 'admins', r.id));
     rows = rows.filter((x) => x !== r); render(); deps.toast('تم');

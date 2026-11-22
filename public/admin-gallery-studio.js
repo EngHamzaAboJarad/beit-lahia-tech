@@ -7,7 +7,7 @@
 // «بوست جاهز»: a post / carousel designed elsewhere. The pictures stay as they are (crop and pixelate
 // only, no background or texts), in the order you set, each with its caption, under one description.
 import { NIGHT, NIGHT2, MINT, BERRY, MOSAICS, renderElement } from './social-templates.js';
-import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=13';
+import { fontCss, measure, fontsReady, toDataUrl } from './admin-social.js?v=15';
 import { arDate } from './workshop-shared.js';
 
 const $ = (id) => document.getElementById(id);

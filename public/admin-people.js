@@ -13,6 +13,7 @@
 //   gets /live?w=<id>; a registrant checks in there (pass code, or WhatsApp number → liveKeys) and only then gets it.
 import { waDigits, passLink, parseCheckinCode } from './checkin-shared.js';
 import { mergeWorkshop, arDate, placeText, WS_STATUS, WS_LEVEL } from './workshop-shared.js';
+import { ask, askText } from './admin-dialog.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const WORKER = (() => { try { return localStorage.getItem('blt-social-worker') || ''; } catch { return ''; } })() || 'https://social.beitlahia.tech';
@@ -149,7 +150,7 @@ export async function mailPendingCerts(btn) {
   const st = d.state();
   const list = pendingCertMails();
   if (!list.length) { d.toast('ما في شهادات مستنية إيميل: يا انبعتت، يا ما إلهم إيميل'); return; }
-  if (!confirm(`إرسال الشهادة بالإيميل لـ ${list.length} من الحاضرين؟`)) return;
+  if (!(await ask(`إرسال الشهادة بالإيميل لـ ${list.length} من الحاضرين؟`, { tone: 'publish', ok: 'أرسل' }))) return;
   d.setBusy(btn, true);
   try {
     await mailCerts(list.map((r) => st.allCerts.find((c) => c.id === r.certId)));
@@ -165,7 +166,7 @@ export async function mailPasses(btn) {
   const st = d.state();
   const list = pendingPassMails();
   if (!list.length) { d.toast('كل اللي إلهم إيميل وصلتهم بطاقة الدخول'); return; }
-  if (!confirm(`إرسال بطاقة الدخول (رمز QR) بالإيميل لـ ${list.length} مسجّل؟`)) return;
+  if (!(await ask(`إرسال بطاقة الدخول (رمز QR) بالإيميل لـ ${list.length} مسجّل؟`, { tone: 'publish', ok: 'أرسل' }))) return;
   d.setBusy(btn, true);
   try {
     const res = await sendMails('pass', st.selId, list.map((r) => ({ reg: r, to: r.email, name: r.name, url: passUrlOf(r) })));
@@ -734,6 +735,6 @@ async function addNote(ta, btn, name) {
   } catch (e) { console.error(e); d.toast(e && e.code === 'permission-denied' ? 'ما عندك صلاحية تضيف ملاحظات.' : 'ما انحفظت الملاحظة، جرّب كمان مرة.', true); } finally { d.setBusy(btn, false); }
 }
 async function deleteNote(n) {
-  if (!confirm('حذف الملاحظة؟')) return;
+  if (!(await ask('حذف الملاحظة؟', { tone: 'danger' }))) return;
   try { await d.fs.deleteDoc(d.fs.doc(d.db, 'memberNotes', n.id)); await loadNotes(); } catch (e) { d.toast(e && e.code === 'permission-denied' ? 'بس كاتب الملاحظة بيحذفها.' : 'ما انحذفت.', true); }
 }

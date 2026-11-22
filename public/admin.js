@@ -9,14 +9,15 @@ import { SURVEY_TOPICS, SURVEY_FORMATS, SURVEY_STATUS, TRAINER_MODES } from './f
 // the studios (~300 KB with their templates and video encoder) load after sign-in, without holding it up;
 // boot() starts them, and opening their tab waits for them if they're not there yet
 const once = (load) => { let p = null; return () => { p = p || load(); p.catch(() => { p = null; }); return p; }; };
-const studioMod = once(() => import('./admin-social.js?v=13'));
-const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=6'));
-const blogMod = once(() => import('./admin-blog.js?v=2'));
+const studioMod = once(() => import('./admin-social.js?v=15'));
+const galleryStudioMod = once(() => import('./admin-gallery-studio.js?v=7'));
+const blogMod = once(() => import('./admin-blog.js?v=3'));
 let studioReady = null; let galleryStudioReady = null; let blogReady = null; // the module, once its init() ran
 const lazyFail = (e) => { console.error('[admin module]', e); toast('ما قدرت أفتح هالقسم. حدّث الصفحة.', true); };
-import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=7';
+import { initAccess, PERMS, OWNER_EMAIL, expandPerms } from './admin-access.js?v=8';
 import { withActivity, startActivity, logAction } from './admin-activity.js?v=4';
-import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref, getLiveLink, saveLiveLink, liveShareUrl, syncLiveKeys } from './admin-people.js?v=2';
+import { initPeople, openScanner, openProfile, renderMessages, mailCerts, setAttendance, attendedText, mailPasses, pendingPassMails, mailPendingCerts, pendingCertMails, waHref, getLiveLink, saveLiveLink, liveShareUrl, syncLiveKeys } from './admin-people.js?v=3';
+import { ask, askText } from './admin-dialog.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const STATUS = { tawjihi: 'طالب توجيهي', student: 'طالب جامعة', graduate: 'خريج' };
@@ -213,7 +214,7 @@ $('forgot-btn').addEventListener('click', async () => {
 });
 
 document.querySelectorAll('[data-signout]').forEach((b) => b.addEventListener('click', async () => {
-  if (content.dirty && !confirm('في تعديلات على المحتوى مش محفوظة. بدك تطلع؟')) return;
+  if (content.dirty && !(await ask('في تعديلات على المحتوى مش محفوظة. بدك تطلع؟', { tone: 'warn', ok: 'اطلع' }))) return;
   content.dirty = false;
   await au.signOut(auth);
   location.reload();
@@ -493,7 +494,7 @@ function renderRequests() {
       h('button', { type: 'button', class: 'btn btn-ghost-dark btn-sm', onclick: (e) => decide(row, false, e.currentTarget) }, 'ارفض')))));
 }
 async function decide(row, ok, btn) {
-  if (ok && !confirm(`نشر «${row.title}»${row.items.length > 1 ? ` (${photoCount(row.items.length)})` : ''} على الموقع؟`)) return;
+  if (ok && !(await ask(`نشر «${row.title}»${row.items.length > 1 ? ` (${photoCount(row.items.length)})` : ''} على الموقع؟`, { tone: 'publish' }))) return;
   setBusy(btn, true);
   try {
     const batch = fs.writeBatch(db);
@@ -945,7 +946,7 @@ async function setContacted(m, value, tr, box) {
 }
 
 async function deleteMember(m) {
-  if (!confirm(`نقل تسجيل «${m.name}» لسلة المحذوفات؟ بتقدر ترجّعه خلال ${TRASH_DAYS} يوم.`)) return;
+  if (!(await ask(`نقل تسجيل «${m.name}» لسلة المحذوفات؟ بتقدر ترجّعه خلال ${TRASH_DAYS} يوم.`, { tone: 'danger', ok: 'انقله للسلة' }))) return;
   try {
     await fs.updateDoc(fs.doc(db, 'members', m.id), { deletedAt: fs.serverTimestamp() });
     m.deletedAt = fs.Timestamp.now();
@@ -962,7 +963,7 @@ async function restoreMember(m) {
   } catch (e) { toast(errMsg(e), true); }
 }
 async function purgeMember(m) {
-  if (!confirm(`حذف «${m.name}» نهائياً؟ هاي ما بترجع.`)) return;
+  if (!(await ask(`حذف «${m.name}» نهائياً؟ هاي ما بترجع.`, { tone: 'danger', ok: 'احذف نهائياً' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'members', m.id));
     allMembers = allMembers.filter((x) => x.id !== m.id);
@@ -1247,8 +1248,8 @@ $('content-save').addEventListener('click', async () => {
     toast('انحفظ المحتوى، وصار ظاهر على الموقع');
   } catch (e) { toast(errMsg(e), true); } finally { setBusy(btn, false); }
 });
-$('content-reset').addEventListener('click', () => {
-  if (!confirm('ترجّع كل النصوص للنص الأصلي؟ (ما بتنحفظ إلا لما تضغط «احفظ التعديلات»)')) return;
+$('content-reset').addEventListener('click', async () => {
+  if (!(await ask('ترجّع كل النصوص للنص الأصلي؟ (ما بتنحفظ إلا لما تضغط «احفظ التعديلات»)', { tone: 'warn', ok: 'رجّعها' }))) return;
   content.data = structuredClone(DEFAULT_CONTENT);
   renderEditor();
   markDirty();
@@ -1356,7 +1357,7 @@ async function togglePublish(ev) {
   } catch (e) { toast(errMsg(e), true); }
 }
 async function deleteEvent(ev) {
-  if (!confirm(`حذف «${ev.title}» نهائياً؟`)) return;
+  if (!(await ask(`حذف «${ev.title}» نهائياً؟`, { tone: 'danger' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'events', ev.id));
     if (editingId === ev.id) resetEventForm();
@@ -1512,7 +1513,7 @@ function galleryItem(p, i, same) {
       h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'حذف الصورة', title: 'حذف', onclick: () => deletePhoto(p) }, svgIcon(ICONS.trash))));
 }
 async function renameAlbum(a) {
-  const v = (prompt('الاسم الجديد للألبوم', a.name) || '').trim().slice(0, 80);
+  const v = ((await askText('الاسم الجديد للألبوم', a.name, { title: 'تغيير اسم الألبوم', ok: 'احفظ' })) || '').trim().slice(0, 80);
   if (!v || v === a.name) return;
   try {
     const batch = fs.writeBatch(db);
@@ -1537,7 +1538,7 @@ async function publishAlbum(a, on) {
 }
 async function approveAlbum(a) {
   const todo = a.photos.filter(waiting);
-  if (!todo.length || !confirm(`نشر ${photoCount(todo.length)} من «${a.name || ALBUM_NONE}» على الموقع؟`)) return;
+  if (!todo.length || !(await ask(`نشر ${photoCount(todo.length)} من «${a.name || ALBUM_NONE}» على الموقع؟`, { tone: 'publish' }))) return;
   try {
     const batch = fs.writeBatch(db);
     todo.forEach((p) => batch.update(fs.doc(db, 'gallery', p.id), publishFields()));
@@ -1555,7 +1556,7 @@ async function rejectPhotos(list) {
     await loadGallery();
   } catch (e) { toast(errMsg(e), true); }
 }
-const rejectAlbum = (a) => { if (confirm(`ترفض طلب نشر صور «${a.name || ALBUM_NONE}»؟ بتضل مسودات.`)) rejectPhotos(a.photos.filter(waiting)); };
+const rejectAlbum = async (a) => { if (await ask(`ترفض طلب نشر صور «${a.name || ALBUM_NONE}»؟ بتضل مسودات.`, { tone: 'danger', ok: 'ارفض' })) rejectPhotos(a.photos.filter(waiting)); };
 
 async function uploadFiles(files, captions = [], album, desc = '') {
   const albumName = String(album ?? $('gallery-album').value).trim().slice(0, 80);
@@ -1637,7 +1638,7 @@ async function movePhoto(p, d, same) {
   } catch (e) { toast(errMsg(e), true); }
 }
 async function deletePhoto(p) {
-  if (!confirm('حذف الصورة نهائياً؟')) return;
+  if (!(await ask('حذف الصورة نهائياً؟', { tone: 'danger' }))) return;
   try {
     const batch = fs.writeBatch(db);
     batch.delete(fs.doc(db, 'gallery', p.id));
@@ -1921,7 +1922,7 @@ async function moveTeam(i, d) {
   } catch (e) { toast(errMsg(e), true); }
 }
 async function deleteTeam(m) {
-  if (!confirm(`حذف «${m.name}» من أعضاء المجتمع؟`)) return;
+  if (!(await ask(`حذف «${m.name}» من أعضاء المجتمع؟`, { tone: 'danger' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'team', m.id));
     if (teamEditing === m.id) resetTeamForm();
@@ -2079,9 +2080,10 @@ function applySelection() {
   certs = allCerts.filter((c) => c.workshopId === selId);
 }
 
-function selectWorkshop(id, { force = false } = {}) {
+// async only when it has to ask about unsaved changes (force / nothing changed: it all happens right away)
+async function selectWorkshop(id, { force = false } = {}) {
   if (!force && id === selId) return;
-  if (!force && (certDirty || wsaDirty) && !confirm('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟')) return;
+  if (!force && (certDirty || wsaDirty) && !(await ask('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   selId = id;
   try { if (id) localStorage.setItem(SEL_KEY, id); } catch { /* ignore */ }
   ws = mergeWorkshop(workshops.find((w) => w.id === id) || null);
@@ -2170,7 +2172,7 @@ async function setWorkshopState(w, status) {
   const m = mergeWorkshop(w);
   if (status === 'live' && !m.title) { toast('اكتب اسم الورشة أول', true); return; }
   if (status === 'live' && !m.date) { toast('حدّد تاريخ الورشة أول (افتحها بزر «إدارة» واكتب التاريخ والوقت والمكان واحفظ)', true); return; }
-  if (w.id === selId && wsaDirty && !confirm('في تعديلات مش محفوظة على هاي الورشة، رح تضيع. كمّل؟')) return;
+  if (w.id === selId && wsaDirty && !(await ask('في تعديلات مش محفوظة على هاي الورشة، رح تضيع. كمّل؟', { tone: 'warn' }))) return;
   const label = { live: 'انشرت وصارت ظاهرة على /workshop', draft: 'صارت مسودة ومخفية عن الزوار', done: 'انأرشفت (بتظهر بالورشات السابقة)' }[status];
   if (status !== 'draft' && m.status === 'draft' && mustAsk('workshops')) {
     try {
@@ -2207,7 +2209,7 @@ async function deleteWorkshop(w) {
   const n = wsCounts(w.id);
   if (n.regs || n.certs) { toast('ما بتنحذف ورشة إلها تسجيلات أو شهادات. خلّي حالتها «انتهت» بدل الحذف.', true); return; }
   if (w.id === currentId && isPublic(mergeWorkshop(w))) { toast('هاي الورشة الظاهرة على الموقع. انشر ورشة ثانية أول، وبعدين احذفها.', true); return; }
-  if (!confirm(`حذف ورشة «${wsName(w)}» نهائياً؟`)) return;
+  if (!(await ask(`حذف ورشة «${wsName(w)}» نهائياً؟`, { tone: 'danger' }))) return;
   try {
     const batch = fs.writeBatch(db);
     batch.delete(fs.doc(db, 'workshops', w.id));
@@ -2226,7 +2228,7 @@ async function deleteWorkshop(w) {
 }
 
 $('ws-new').addEventListener('click', async () => {
-  if ((certDirty || wsaDirty) && !confirm('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟')) return;
+  if ((certDirty || wsaDirty) && !(await ask('في تعديلات مش محفوظة على الورشة المختارة. بدك تتركها؟', { tone: 'warn', ok: 'اتركها' }))) return;
   // copy the selected workshop's texts, topics and certificate template; a new workshop starts as a draft
   const base = mergeWorkshop(workshops.find((w) => w.id === selId) || null);
   const data = { ...structuredClone({ ...base, publishAt: null }), status: 'draft', publishAt: null, open: true, date: '', time: '', place: '', whatsappGroup: '' };
@@ -2423,7 +2425,7 @@ $('wsa-form').addEventListener('submit', async (e) => {
   if ((lf || lt) && !(lf && lt)) { toast('حط وقت فتح الدخول ووقت تسكيره الاتنين، أو اتركهم فاضيين', true); $(lf ? 'wsa-live-to' : 'wsa-live-from').focus(); return; }
   if (lf && !$('wsa-date').value) { toast('حط تاريخ الورشة عشان وقت الدخول يمشي عليه', true); $('wsa-date').focus(); return; }
   if (lf && lf >= lt) { toast('وقت تسكير الدخول لازم يكون بعد وقت فتحه', true); $('wsa-live-to').focus(); return; }
-  if (status === 'live' && !$('wsa-date').value && !confirm('ما حطيت تاريخ للورشة، رح يظهر «يُحدَّد قريباً» للزوار. تنشرها هيك؟')) { $('wsa-date').focus(); return; }
+  if (status === 'live' && !$('wsa-date').value && !(await ask('ما حطيت تاريخ للورشة، رح يظهر «يُحدَّد قريباً» للزوار. تنشرها هيك؟', { tone: 'publish', ok: 'انشرها هيك' }))) { $('wsa-date').focus(); return; }
   const publishRaw = status === 'live' ? $('wsa-publish').value : '';
   const publishDate = publishRaw ? new Date(publishRaw) : null;
   if (publishDate && Number.isNaN(publishDate.getTime())) { toast('موعد النشر مش صحيح', true); $('wsa-publish').focus(); return; }
@@ -2493,9 +2495,9 @@ $('wsa-form').addEventListener('submit', async (e) => {
 
 $('wsa-copy-link').addEventListener('click', () => { if (selId) copyText(wsUrl(selId), 'انسخ رابط الورشة'); });
 // «اعمل بوست وستوري»: the studio prepares the workshop's campaign (post + reminder story + «we've started» story)
-$('wsa-social').addEventListener('click', () => {
+$('wsa-social').addEventListener('click', async () => {
   if (!selId) return;
-  if (wsaDirty && !confirm('في تعديلات على الورشة ما انحفظت. الحملة بتاخد آخر نسخة محفوظة. تكمّل؟')) return;
+  if (wsaDirty && !(await ask('في تعديلات على الورشة ما انحفظت. الحملة بتاخد آخر نسخة محفوظة. تكمّل؟', { tone: 'warn' }))) return;
   const url = selId === currentId ? 'https://beitlahia.tech/workshop' : `https://beitlahia.tech/workshop?w=${encodeURIComponent(selId)}`;
   selectTab('studio');
   const w = ws; const id = selId;
@@ -2585,15 +2587,15 @@ function setCertOnly(on) {
     }));
   }
 }
-function openCertOnly(id) {
-  if (id !== selId) { selectWorkshop(id); if (selId !== id) { $('cert-ws-pick').value = selId; return; } }
+async function openCertOnly(id) {
+  if (id !== selId) { await selectWorkshop(id); if (selId !== id) { $('cert-ws-pick').value = selId; return; } }
   setCertOnly(true);
   openWorkshop(id, 'cert');
 }
 $('cert-ws-pick').addEventListener('change', (e) => openCertOnly(e.target.value));
 
-function openWorkshop(id, sub = 'overview') {
-  if (id !== selId) { selectWorkshop(id); if (selId !== id) return; } // unsaved changes elsewhere and the admin stayed
+async function openWorkshop(id, sub = 'overview') {
+  if (id !== selId) { await selectWorkshop(id); if (selId !== id) return; } // unsaved changes elsewhere and the admin stayed
   $('ws-index').hidden = true;
   $('ws-detail').hidden = false;
   setWsSub(WS_SUBS.includes(sub) ? sub : 'overview');
@@ -2774,7 +2776,7 @@ async function setAttended(r, value, tr, box) {
 
 async function deleteReg(r) {
   const c = r.certId ? certById(r.certId) : null;
-  if (!confirm(`حذف تسجيل «${r.name}» نهائياً؟${c ? ' شهادته بتضل شغّالة (بتقدر تلغيها من تبويب «الشهادة»).' : ''}`)) return;
+  if (!(await ask(`حذف تسجيل «${r.name}» نهائياً؟${c ? ' شهادته بتضل شغّالة (بتقدر تلغيها من تبويب «الشهادة»).' : ''}`, { tone: 'danger' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'workshopRegs', r.id));
     allRegs = allRegs.filter((x) => x.id !== r.id);
@@ -2937,7 +2939,7 @@ async function issueForReg(r, btn) {
 $('wr-bulk').addEventListener('click', async () => {
   const pending = regs.filter((r) => r.attended && !hasCert(r));
   if (!pending.length || !canIssue()) return;
-  if (!confirm(`إصدار ${pending.length} شهادة للي حضروا وما إلهم شهادة؟`)) return;
+  if (!(await ask(`إصدار ${pending.length} شهادة للي حضروا وما إلهم شهادة؟`, { tone: 'publish', ok: 'أصدرها' }))) return;
   const btn = $('wr-bulk');
   setBusy(btn, true);
   const made = [];
@@ -3006,7 +3008,7 @@ function renderDesignSync(list) {
 $('cert-sync-btn').addEventListener('click', async () => {
   if (certDirty) { toast('احفظ تعديلات الشهادة أول', true); return; }
   const list = certs.filter((c) => c.design !== savedDesignId);
-  if (!list.length || !confirm(`تطبيق التصميم المحفوظ هلّق على ${list.length} شهادة صادرة؟ روابطهم رح تبين بالتصميم الجديد.`)) return;
+  if (!list.length || !(await ask(`تطبيق التصميم المحفوظ هلّق على ${list.length} شهادة صادرة؟ روابطهم رح تبين بالتصميم الجديد.`, { tone: 'publish', ok: 'طبّقه' }))) return;
   const btn = $('cert-sync-btn');
   setBusy(btn, true);
   try {
@@ -3017,7 +3019,7 @@ $('cert-sync-btn').addEventListener('click', async () => {
 });
 
 async function revokeCert(c) {
-  if (!confirm(`إلغاء شهادة «${c.name}» (${c.no})؟ رابطها رح يبطّل يشتغل.`)) return;
+  if (!(await ask(`إلغاء شهادة «${c.name}» (${c.no})؟ رابطها رح يبطّل يشتغل.`, { tone: 'danger', ok: 'ألغِ الشهادة' }))) return;
   try {
     const batch = fs.writeBatch(db);
     batch.delete(fs.doc(db, 'certificates', c.id));
@@ -3068,18 +3070,6 @@ function initPreview() {
   if (!previewFitted) { previewFitted = true; refitPreview = fitSheet(host); } // scale the A4 sheet to the box, once
   refreshPreview();
 }
-// wide screens: the settings form is exactly as tall as the preview next to it and scrolls inside,
-// so the panels under the preview (issue / issued certificates) come into view right away
-function matchCertForm() {
-  const preview = document.querySelector('#tab-cert .cert-preview-panel');
-  const layout = document.querySelector('#tab-cert .cert-layout');
-  if (!preview || !layout || !('ResizeObserver' in window)) return;
-  new ResizeObserver(() => {
-    if (preview.offsetHeight) layout.style.setProperty('--cert-h', preview.offsetHeight + 'px');
-  }).observe(preview);
-}
-matchCertForm();
-
 function refreshPreview() {
   const host = $('cert-preview');
   const sample = $('cf-sample').value.trim();
@@ -3165,8 +3155,8 @@ function signaturePng(img) {
   });
 });
 
-$('cf-reset').addEventListener('click', () => {
-  if (!confirm('ترجيع كل نصوص الشهادة للنص الأصلي؟ (التواقيع المرفوعة بتضل، وما بينحفظ إشي لحد ما تضغط «احفظ»)')) return;
+$('cf-reset').addEventListener('click', async () => {
+  if (!(await ask('ترجيع كل نصوص الشهادة للنص الأصلي؟ (التواقيع المرفوعة بتضل، وما بينحفظ إشي لحد ما تضغط «احفظ»)', { tone: 'warn', ok: 'رجّعها' }))) return;
   const sigs = certDraft.signers.map((s) => s.sig);
   certDraft = structuredClone(DEFAULT_WORKSHOP.cert);
   certDraft.signers.forEach((s, i) => { s.sig = sigs[i] || ''; });
@@ -3365,7 +3355,7 @@ function renderTrainers() {
     }, svgIcon(ICONS.trash))))));
 }
 async function deleteTrainer(t) {
-  if (!confirm(`حذف «${t.name}» نهائياً من المدربين؟ هاي ما بترجع.`)) return;
+  if (!(await ask(`حذف «${t.name}» نهائياً من المدربين؟ هاي ما بترجع.`, { tone: 'danger', ok: 'احذف نهائياً' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'trainers', t.id));
     trainers = trainers.filter((x) => x.id !== t.id);
@@ -3435,8 +3425,8 @@ function fmAddTopic() {
 }
 $('fm-topic-add').addEventListener('click', fmAddTopic);
 $('fm-topic-new').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fmAddTopic(); } });
-$('fm-topic-reset').addEventListener('click', () => {
-  if (confirm('ترجيع قائمة المواضيع الأصلية؟ (ما بتتحفظ إلا لما تضغط احفظ)')) { fmTopics = SURVEY_TOPICS.map((t) => ({ ...t })); fmRenderTopics(); }
+$('fm-topic-reset').addEventListener('click', async () => {
+  if (await ask('ترجيع قائمة المواضيع الأصلية؟ (ما بتتحفظ إلا لما تضغط احفظ)', { tone: 'warn', ok: 'رجّعها' })) { fmTopics = SURVEY_TOPICS.map((t) => ({ ...t })); fmRenderTopics(); }
 });
 ['survey', 'trainer'].forEach((k) => {
   $('fm-' + k + '-open').addEventListener('change', () => { $('fm-' + k + '-open-label').textContent = $('fm-' + k + '-open').checked ? 'الفورم مفتوح' : 'الفورم مسكّر'; });
@@ -3532,7 +3522,7 @@ function renderSurveys() {
     }, svgIcon(ICONS.trash))))));
 }
 async function deleteSurvey(s) {
-  if (!confirm('حذف هاي الإجابة نهائياً؟ هاي ما بترجع.')) return;
+  if (!(await ask('حذف هاي الإجابة نهائياً؟ هاي ما بترجع.', { tone: 'danger', ok: 'احذف نهائياً' }))) return;
   try {
     await fs.deleteDoc(fs.doc(db, 'topicSurveys', s.id));
     surveys = surveys.filter((x) => x.id !== s.id);

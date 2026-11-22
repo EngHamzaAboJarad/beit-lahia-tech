@@ -314,15 +314,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .sig-thumb { width: 140px; height: 56px; border: 1.5px dashed #CBD5E1; border-radius: 10px; background: #fff; display: grid; place-items: center; overflow: hidden; color: var(--slate-400); font-size: 12px; text-align: center; }
 .sig-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .cert-save { position: sticky; bottom: 0; background: var(--white); padding: 12px 0 2px; border-top: 1px solid var(--line); align-items: center; }
-.cert-side { display: grid; gap: 18px; min-width: 0; }
-.cert-side .panel + .panel { margin-top: 0; }
-.cert-preview-panel { position: sticky; top: 118px; z-index: 2; }
+.cert-side { min-width: 0; align-self: stretch; }
+/* the preview follows you down the settings form only; it stops where the editor ends */
+.cert-preview-panel { position: sticky; top: 118px; }
+.cert-issue { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 18px; align-items: start; margin-top: 18px; }
+.cert-issue .panel { margin-top: 0; }
 .cert-preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .cert-preview-head .field { flex: 0 1 260px; }
 .cert-preview-head input { min-height: 40px !important; padding: 6px 12px !important; font-size: 15px !important; }
 .cert-preview-panel .cert-shadow { border-radius: 6px; overflow: hidden; box-shadow: 0 1px 2px rgba(11,18,32,.08), 0 14px 40px rgba(11,18,32,.14); margin-bottom: 10px; }
 #ci-form { display: grid; gap: 12px; }
-#ci-form h3, .cert-side h3 { font-size: 17px; }
+#ci-form h3, .cert-side h3, .cert-issue h3 { font-size: 17px; }
 .cert-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
 .cert-sync { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin: 10px 0 4px; padding: 10px 14px; border-radius: 12px; border: 1px dashed rgba(52, 211, 153, .35); background: rgba(52, 211, 153, .06); }
 .cert-sync p { margin: 0; flex: 1 1 260px; }
@@ -330,13 +332,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .cert-list .cl-info { flex: 1 1 200px; display: flex; flex-direction: column; min-width: 0; }
 .cert-list .cl-info strong { font-family: var(--font-head); }
 .cert-list .cl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-@media (min-width: 1101px) {
-  .cert-layout { --cert-h: 720px; }
-  .cert-form { max-height: var(--cert-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent; padding-bottom: 0; }
-  .cert-form .cert-save { margin-inline: -4px; padding-inline: 4px; padding-bottom: 14px; }
-}
 @media (max-width: 1100px) {
-  .cert-layout { grid-template-columns: 1fr; }
+  .cert-layout, .cert-issue { grid-template-columns: 1fr; }
   .cert-side { order: -1; }
   .cert-preview-panel { position: static; }
 }
@@ -1798,3 +1795,25 @@ th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; color: 
 .appr-item strong { font-family: var(--font-head); }
 .appr-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .st-ask { background: #FEF3C7; color: #92400E; }
+
+/* the admin's own confirm / prompt (admin-dialog.js) */
+.ask-dlg { border: 0; padding: 0; border-radius: var(--radius-lg); width: min(92vw, 440px); background: var(--white); color: var(--night); box-shadow: 0 28px 80px rgba(11,18,32,.38); }
+.ask-dlg::backdrop { background: rgba(11,18,32,.6); backdrop-filter: blur(2px); }
+.ask-dlg[open] { animation: ask-in .2s var(--ease-out); }
+@keyframes ask-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.ask-box { display: grid; gap: 10px; padding: 26px 24px 22px; }
+.ask-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: #ECFDF5; color: var(--emerald-deep); margin-bottom: 4px; }
+.ask-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ask-dlg[data-tone="danger"] .ask-icon { background: #FFF1F2; color: #E11D48; }
+.ask-dlg[data-tone="warn"] .ask-icon { background: #FEF3C7; color: #B45309; }
+.ask-dlg[data-tone="default"] .ask-icon { background: #F1F5F9; color: var(--slate); }
+.ask-title { font-family: var(--font-head); font-size: 19px; line-height: 1.4; }
+.ask-msg { margin: 0; color: var(--slate); font-size: 15.5px; line-height: 1.75; white-space: pre-line; overflow-wrap: anywhere; }
+.ask-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; margin-top: 4px; }
+.ask-input:focus { outline: 3px solid var(--emerald); outline-offset: 1px; border-color: transparent; }
+.ask-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.ask-actions .btn { min-width: 108px; }
+.btn-danger-solid { background: var(--strawberry); color: var(--white); }
+.btn-danger-solid:hover { background: #E11D48; color: var(--white); box-shadow: 0 6px 20px rgba(244, 63, 94, .28); }
+.ask-actions .btn:focus-visible { outline: 3px solid var(--emerald); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .ask-dlg[open] { animation: none; } }
